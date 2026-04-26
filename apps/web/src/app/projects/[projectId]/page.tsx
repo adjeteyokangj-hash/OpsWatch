@@ -193,7 +193,7 @@ export default function ProjectDetailPage() {
 						<h2>Delete project</h2>
 						<p>Remove this project and its services, checks, results, alerts, incidents, events, and heartbeats.</p>
 					</div>
-					<button type="button" className="danger-button solid-danger-button" onClick={() => setShowDeleteConfirm(true)}>
+					<button type="button" className="danger-button solid-danger-button" onClick={() => setShowDeleteConfirm(true)} data-action="local-ui">
 						Delete project
 					</button>
 				</div>
@@ -209,6 +209,7 @@ export default function ProjectDetailPage() {
 							<button
 								type="button"
 								className="secondary-button"
+								data-action="local-ui"
 								onClick={() => {
 									setShowDeleteConfirm(false);
 									setConfirmName("");
@@ -229,6 +230,8 @@ export default function ProjectDetailPage() {
 							<button
 								type="button"
 								className="danger-button solid-danger-button"
+								data-action="api"
+								data-endpoint="/projects/:projectId"
 								disabled={deleting || confirmName !== project.name}
 								onClick={() => void handleDeleteProject()}
 							>

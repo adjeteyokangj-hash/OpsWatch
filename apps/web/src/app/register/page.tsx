@@ -111,7 +111,7 @@ export default function RegisterPage() {
           </fieldset>
 
           {error ? <div className="error-chip">{error}</div> : null}
-          <button type="submit">Create account</button>
+          <button type="submit" data-action="api" data-endpoint="/auth/register">Create account</button>
           <p className="auth-alt">Already have an account? <a href="/login">Sign in</a></p>
         </form>
       </section>

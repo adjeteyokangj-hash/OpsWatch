@@ -342,6 +342,7 @@ export default function AccuracyPage() {
               <button
                 key={k}
                 className={`sort-btn ${sortKey === k ? "sort-btn-active" : ""}`}
+                data-action="local-ui"
                 onClick={() => setSortKey(k)}
               >
                 {k === "total" ? "Most runs"

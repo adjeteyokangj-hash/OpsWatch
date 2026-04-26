@@ -413,7 +413,7 @@ function ChecksPageContent() {
               <h2>Create check</h2>
               <p>Add a new monitoring check to a service.</p>
             </div>
-            <button className="secondary-button" onClick={() => setShowForm(false)}>Cancel</button>
+            <button className="secondary-button" onClick={() => setShowForm(false)} data-action="local-ui">Cancel</button>
           </div>
           <form className="stack-form" onSubmit={(e) => void handleCreate(e)}>
             <label>
@@ -522,7 +522,7 @@ function ChecksPageContent() {
                 />
               </label>
             </div>
-            <button type="submit" disabled={saving || Boolean(sslValidationError)}>{saving ? "Creating…" : "Create check"}</button>
+            <button type="submit" disabled={saving || Boolean(sslValidationError)} data-action="api" data-endpoint="/services/:serviceId/checks">{saving ? "Creating…" : "Create check"}</button>
           </form>
         </section>
       ) : null}
@@ -534,7 +534,7 @@ function ChecksPageContent() {
             <p>Failing checks are listed first, followed by warnings, pending checks, and passing checks.</p>
           </div>
           {!showForm ? (
-            <button className="primary-button" onClick={() => setShowForm(true)}>+ Add check</button>
+            <button className="primary-button" onClick={() => setShowForm(true)} data-action="local-ui">+ Add check</button>
           ) : null}
         </div>
 
@@ -600,6 +600,8 @@ function ChecksPageContent() {
                   <td>
                     <button
                       className={row.isActive ? "secondary-button" : "primary-button"}
+                      data-action="api"
+                      data-endpoint="/services/:serviceId/checks/:checkId"
                       onClick={() => void toggleCheck(row)}
                     >
                       {row.isActive ? "Pause" : "Resume"}

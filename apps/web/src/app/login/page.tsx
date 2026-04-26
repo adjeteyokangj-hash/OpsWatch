@@ -9,6 +9,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("ChangeMe123!");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [logoMissing, setLogoMissing] = useState(false);
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -23,12 +24,27 @@ export default function LoginPage() {
       });
 
       if (!response.ok) {
-        setError("Invalid credentials");
+        let message = "Invalid credentials";
+        try {
+          const payload = (await response.json()) as { error?: string; message?: string };
+          if (payload?.error || payload?.message) {
+            message = payload.error || payload.message || message;
+          }
+        } catch {
+          // Keep default message when backend doesn't return JSON.
+        }
+        setError(message);
         return;
       }
 
-      const data = (await response.json()) as { token: string };
-      setAuthCookie(data.token);
+      const data = (await response.json()) as { token?: string; accessToken?: string };
+      const token = data.token || data.accessToken;
+      if (!token) {
+        setError("Sign-in failed: API response did not include a token.");
+        return;
+      }
+
+      setAuthCookie(token);
       window.location.href = "/dashboard";
     } catch {
       setError("Sign-in failed: API unavailable. Start the API server and try again.");
@@ -40,7 +56,22 @@ export default function LoginPage() {
   return (
     <main className="auth-wrap">
       <section className="auth-card">
-        <h1>{APP_NAME}</h1>
+        <div className="auth-logo-wrap">
+          <div className="auth-logo">
+            {logoMissing ? (
+              <span className="auth-logo-wordmark" aria-label={APP_NAME}>
+                Ops<span className="auth-logo-accent">Watch</span>
+              </span>
+            ) : (
+              <img
+                src="/brand/opswatch-logo-light.png"
+                alt="OpsWatch"
+                className="auth-logo-img"
+                onError={() => setLogoMissing(true)}
+              />
+            )}
+          </div>
+        </div>
         <p>Central monitoring for every client application.</p>
         <form onSubmit={onSubmit}>
           <label>
@@ -52,7 +83,7 @@ export default function LoginPage() {
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </label>
           {error ? <div className="error-chip">{error}</div> : null}
-          <button type="submit" disabled={submitting}>{submitting ? "Signing in..." : "Sign In"}</button>
+          <button type="submit" disabled={submitting} data-action="api" data-endpoint="/auth/login">{submitting ? "Signing in..." : "Sign In"}</button>
         </form>
       </section>
     </main>

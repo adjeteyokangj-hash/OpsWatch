@@ -23,18 +23,18 @@ export function AlertsTable({ rows }: { rows: Array<any> }) {
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={row.id} className="row-link" onClick={() => router.push(`/alerts/${row.id}`)}>
+          <tr key={row.id} className="row-link" onClick={() => router.push(`/alerts/${row.id}`)} data-action="local-ui">
             <td><SeverityBadge severity={row.severity} /></td>
             <td><span className={`result-pill ${row.status === "RESOLVED" ? "pass" : row.status === "ACKNOWLEDGED" ? "warn" : "fail"}`}>{row.status}</span></td>
             <td>
-              <Link href={`/alerts/${row.id}`} onClick={stopRowNavigation}>{row.title}</Link>
+              <Link href={`/alerts/${row.id}`} onClick={stopRowNavigation} data-action="local-ui">{row.title}</Link>
               <div className="table-subtle">{row.message}</div>
             </td>
             <td>
-              {row.project?.id ? <Link href={`/projects/${row.project.id}`} onClick={stopRowNavigation}>{row.project?.name}</Link> : "-"}
+              {row.project?.id ? <Link href={`/projects/${row.project.id}`} onClick={stopRowNavigation} data-action="local-ui">{row.project?.name}</Link> : "-"}
             </td>
             <td>
-              {row.service?.id ? <Link href={`/checks?serviceId=${row.service.id}`} onClick={stopRowNavigation}>{row.service?.name}</Link> : "-"}
+              {row.service?.id ? <Link href={`/checks?serviceId=${row.service.id}`} onClick={stopRowNavigation} data-action="local-ui">{row.service?.name}</Link> : "-"}
             </td>
             <td>{new Date(row.lastSeenAt).toLocaleString()}</td>
           </tr>

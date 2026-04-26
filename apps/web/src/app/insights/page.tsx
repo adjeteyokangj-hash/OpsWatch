@@ -438,6 +438,8 @@ export default function InsightsPage() {
                             <button
                               type="button"
                               className="secondary-button"
+                              data-action="api"
+                              data-endpoint="/insights/recommendations/:id/apply"
                               onClick={() => void applyRecommendation(recommendation, false)}
                               disabled={applyingId === recommendation.id}
                             >
@@ -446,6 +448,8 @@ export default function InsightsPage() {
                             <button
                               type="button"
                               className="primary-button"
+                              data-action="api"
+                              data-endpoint="/insights/recommendations/:id/apply"
                               onClick={() => void applyRecommendation(recommendation, true)}
                               disabled={applyingId === recommendation.id}
                             >
@@ -456,6 +460,8 @@ export default function InsightsPage() {
                           <button
                             type="button"
                             className={recommendation.level === "SAFE_AUTO_APPLY" ? "primary-button" : "secondary-button"}
+                            data-action="api"
+                            data-endpoint="/insights/recommendations/:id/apply"
                             onClick={() => void applyRecommendation(recommendation, true)}
                             disabled={applyingId === recommendation.id}
                           >
@@ -465,6 +471,7 @@ export default function InsightsPage() {
                         <button
                           type="button"
                           className="ghost-button"
+                          data-action="local-ui"
                           onClick={() => setHistoryFocusId(recommendation.id)}
                           disabled={loading}
                           title="Show history for this recommendation"
@@ -474,6 +481,8 @@ export default function InsightsPage() {
                         <button
                           type="button"
                           className="ghost-button"
+                          data-action="api"
+                          data-endpoint="/insights/recommendations/:id/dismiss"
                           onClick={() => void dismissRecommendation(recommendation)}
                           disabled={dismissingId === recommendation.id || applyingId === recommendation.id}
                           title="Dismiss this recommendation"
@@ -634,7 +643,7 @@ export default function InsightsPage() {
                   <p>Persisted action runs for this project, including who triggered them and what changed.</p>
                 </div>
                 {historyFocusId ? (
-                  <button type="button" className="secondary-button" onClick={() => setHistoryFocusId(null)}>
+                  <button type="button" className="secondary-button" onClick={() => setHistoryFocusId(null)} data-action="local-ui">
                     Clear filter
                   </button>
                 ) : null}

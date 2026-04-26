@@ -103,11 +103,11 @@ export default function OnboardingPage() {
                         </a>
                       ) : null}
                       {!isComplete ? (
-                        <button className="secondary-button" onClick={() => void markComplete(step)}>
+                        <button className="secondary-button" onClick={() => void markComplete(step)} data-action="api" data-endpoint="/onboarding/complete/:step">
                           Mark complete
                         </button>
                       ) : (
-                        <button className="secondary-button" onClick={() => void markIncomplete(step)}>
+                        <button className="secondary-button" onClick={() => void markIncomplete(step)} data-action="api" data-endpoint="/onboarding/complete/:step">
                           Undo
                         </button>
                       )}

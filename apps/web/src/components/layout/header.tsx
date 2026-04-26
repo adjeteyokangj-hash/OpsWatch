@@ -2,14 +2,27 @@
 
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { clearAuthCookie } from "../../lib/auth";
+import { clearAuthCookie, getAuthToken } from "../../lib/auth";
+import { API_BASE_URL } from "../../lib/constants";
 
 export function Header({ title, actions }: { title: string; actions?: ReactNode }) {
   const router = useRouter();
 
-  const handleLogout = () => {
-    clearAuthCookie();
-    router.replace("/login");
+  const handleLogout = async () => {
+    const token = getAuthToken();
+
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        cache: "no-store"
+      });
+    } catch {
+      // Ignore network failures; local sign-out still clears client auth state.
+    } finally {
+      clearAuthCookie();
+      router.replace("/login");
+    }
   };
 
   return (
@@ -20,7 +33,7 @@ export function Header({ title, actions }: { title: string; actions?: ReactNode 
       </div>
       <div className="page-header-actions">
         {actions}
-        <button type="button" className="secondary-button" onClick={handleLogout}>
+        <button type="button" className="secondary-button" onClick={handleLogout} data-action="api" data-endpoint="/auth/logout">
           Logout
         </button>
       </div>

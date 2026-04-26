@@ -25,7 +25,15 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="brand">OpsWatch</div>
+      <div className="sidebar-brand">
+        <div className="sidebar-brand-icon">
+          <img src="/brand/opswatch-icon.png" alt="OpsWatch" />
+        </div>
+        <div className="sidebar-brand-text">
+          <span className="sidebar-brand-name">Ops<span className="sidebar-brand-accent">Watch</span></span>
+          <span className="sidebar-brand-sub">Command Center</span>
+        </div>
+      </div>
       <nav>
         {links.map(([label, href]) => (
           <Link key={href} href={href} className={pathname.startsWith(href) ? "active" : ""}>

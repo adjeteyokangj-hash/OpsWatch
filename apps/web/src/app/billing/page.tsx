@@ -155,6 +155,8 @@ export default function BillingPage() {
                         <button
                           className="primary-button"
                           disabled={upgrading === plan.id}
+                          data-action="api"
+                          data-endpoint="/billing/upgrade"
                           onClick={() => void handleUpgrade(plan.id)}
                         >
                           {upgrading === plan.id ? "Upgrading..." : "Select plan"}

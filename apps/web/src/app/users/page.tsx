@@ -120,7 +120,7 @@ export default function UsersPage() {
               <h2>Invite team member</h2>
               <p>They will be added to your organization with the selected role.</p>
             </div>
-            <button className="secondary-button" onClick={() => setShowInvite(false)}>Cancel</button>
+            <button className="secondary-button" onClick={() => setShowInvite(false)} data-action="local-ui">Cancel</button>
           </div>
           <form className="stack-form" onSubmit={(e) => void handleInvite(e)}>
             <label>
@@ -150,7 +150,7 @@ export default function UsersPage() {
                 <option value="VIEWER">Viewer (read-only)</option>
               </select>
             </label>
-            <button type="submit" disabled={saving}>{saving ? "Sending…" : "Send invitation"}</button>
+            <button type="submit" disabled={saving} data-action="api" data-endpoint="/auth/invite">{saving ? "Sending…" : "Send invitation"}</button>
           </form>
         </section>
       ) : null}
@@ -162,7 +162,7 @@ export default function UsersPage() {
             <p>All users in your organization.</p>
           </div>
           {!showInvite ? (
-            <button className="primary-button" onClick={() => setShowInvite(true)}>+ Invite member</button>
+            <button className="primary-button" onClick={() => setShowInvite(true)} data-action="local-ui">+ Invite member</button>
           ) : null}
         </div>
 
@@ -208,6 +208,8 @@ export default function UsersPage() {
                     {user.isActive ? (
                       <button
                         className="danger-button"
+                        data-action="api"
+                        data-endpoint="/users/:id"
                         onClick={() => void deactivateUser(user.id)}
                       >
                         Deactivate

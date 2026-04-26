@@ -298,7 +298,7 @@ export default function OrgPage() {
                   Slug (read-only)
                   <input value={org.slug} disabled />
                 </label>
-                <button type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
+                <button type="submit" disabled={saving} data-action="api" data-endpoint="/org">{saving ? "Saving…" : "Save changes"}</button>
               </form>
             </section>
 
@@ -359,7 +359,7 @@ export default function OrgPage() {
                   />
                   Public (visible without login)
                 </label>
-                <button type="submit" disabled={saving}>{saving ? "Creating…" : "Create status page"}</button>
+                <button type="submit" disabled={saving} data-action="api" data-endpoint="/org/status-pages">{saving ? "Creating…" : "Create status page"}</button>
               </form>
             </section>
           </section>
@@ -409,7 +409,7 @@ export default function OrgPage() {
                   <h2>API Keys &amp; Access</h2>
                   <p>Manage secure access for external systems and integrations.</p>
                 </div>
-                <button type="button" className="primary-button" onClick={() => setShowCreateKeyModal(true)}>+ Create API Key</button>
+                <button type="button" className="primary-button" onClick={() => setShowCreateKeyModal(true)} data-action="local-ui">+ Create API Key</button>
               </div>
               <div className="hint-panel">
                 <strong>How to create an API key</strong>
@@ -467,7 +467,7 @@ export default function OrgPage() {
                           </td>
                           <td>
                             {key.status === "ACTIVE" ? (
-                              <button type="button" className="secondary-button" onClick={() => setRevokeTarget({ id: key.id, name: key.name })}>
+                              <button type="button" className="secondary-button" onClick={() => setRevokeTarget({ id: key.id, name: key.name })} data-action="local-ui">
                                 Revoke
                               </button>
                             ) : (
@@ -516,7 +516,7 @@ export default function OrgPage() {
                 <h2>Revoke key</h2>
                 <p>Revoke <strong>{revokeTarget.name}</strong>? This cannot be undone.</p>
               </div>
-              <button type="button" className="secondary-button" onClick={() => { setRevokeTarget(null); setRevokeReason(""); }}>Cancel</button>
+              <button type="button" className="secondary-button" onClick={() => { setRevokeTarget(null); setRevokeReason(""); }} data-action="local-ui">Cancel</button>
             </div>
             <div className="stack-form">
               <label>
@@ -528,7 +528,7 @@ export default function OrgPage() {
                   maxLength={255}
                 />
               </label>
-              <button type="button" onClick={() => void handleRevokeApiKey(revokeTarget.id, revokeReason)}>
+              <button type="button" onClick={() => void handleRevokeApiKey(revokeTarget.id, revokeReason)} data-action="api" data-endpoint="/org/api-keys/:id/revoke">
                 Confirm revoke
               </button>
             </div>
@@ -544,7 +544,7 @@ export default function OrgPage() {
                 <h2>Create API Key</h2>
                 <p>Generate a new key for ingestion and integrations.</p>
               </div>
-              <button type="button" className="secondary-button" onClick={closeCreateKeyModal}>Close</button>
+              <button type="button" className="secondary-button" onClick={closeCreateKeyModal} data-action="local-ui">Close</button>
             </div>
 
             {createdKey ? (
@@ -556,6 +556,7 @@ export default function OrgPage() {
                 <button
                   type="button"
                   className="primary-button"
+                  data-action="local-ui"
                   onClick={() => void navigator.clipboard.writeText(createdKey.key)}
                 >
                   Copy
@@ -622,7 +623,7 @@ export default function OrgPage() {
                   />
                 </label>
 
-                <button className="primary-button" type="submit" disabled={creatingKey || createKeyForm.scopes.length === 0}>
+                <button className="primary-button" type="submit" disabled={creatingKey || createKeyForm.scopes.length === 0} data-action="api" data-endpoint="/org/api-keys">
                   {creatingKey ? "Creating..." : "Create key"}
                 </button>
               </form>

@@ -333,6 +333,8 @@ export default function IncidentDetailPage() {
           {!diagnosis && (
             <button
               className="primary-button"
+              data-action="api"
+              data-endpoint="/remediation/suggest"
               onClick={runDiagnosis}
               disabled={diagnosing}
             >
@@ -486,6 +488,8 @@ export default function IncidentDetailPage() {
                         ) : (
                           <button
                             className="primary-button ai-action-btn"
+                            data-action="api"
+                            data-endpoint="/remediation/execute"
                             disabled={executing === sa.action || isBlocked}
                             onClick={() => executeAction(sa.action, sa.requiresApproval)}
                           >
@@ -537,7 +541,7 @@ export default function IncidentDetailPage() {
               placeholder="Describe the root cause…"
             />
           </label>
-          <button onClick={saveIncident} disabled={saving}>
+          <button onClick={saveIncident} disabled={saving} data-action="api" data-endpoint="/incidents/:incidentId">
             {saving ? "Saving…" : "Save"}
           </button>
           {saveMsg && <p className="metric-label">{saveMsg}</p>}

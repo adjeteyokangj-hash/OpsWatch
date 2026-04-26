@@ -23,14 +23,14 @@ export function IncidentsTable({ rows }: { rows: Array<any> }) {
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={row.id} className="row-link" onClick={() => router.push(`/incidents/${row.id}`)}>
+          <tr key={row.id} className="row-link" onClick={() => router.push(`/incidents/${row.id}`)} data-action="local-ui">
             <td><SeverityBadge severity={row.severity} /></td>
             <td><span className={`result-pill ${row.status === "RESOLVED" ? "pass" : row.status === "OPEN" ? "fail" : "warn"}`}>{row.status}</span></td>
             <td>
-              <Link href={`/incidents/${row.id}`} onClick={stopRowNavigation}>{row.title}</Link>
+              <Link href={`/incidents/${row.id}`} onClick={stopRowNavigation} data-action="local-ui">{row.title}</Link>
               <div className="table-subtle">{row.resolvedAt ? "Historical incident" : "Active incident"}</div>
             </td>
-            <td>{row.project?.id ? <Link href={`/projects/${row.project.id}`} onClick={stopRowNavigation}>{row.project?.name}</Link> : "-"}</td>
+            <td>{row.project?.id ? <Link href={`/projects/${row.project.id}`} onClick={stopRowNavigation} data-action="local-ui">{row.project?.name}</Link> : "-"}</td>
             <td>{new Date(row.openedAt).toLocaleString()}</td>
             <td>{row.resolvedAt ? new Date(row.resolvedAt).toLocaleString() : "-"}</td>
           </tr>

@@ -1,5 +1,31 @@
 import { API_BASE_URL } from "./constants";
 
+const LOCAL_API_FALLBACK = "http://localhost:4000/api";
+
+const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, "");
+
+const shouldTryLocalFallback = (status: number, baseUrl: string): boolean => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  if (status !== 404 && status < 500) {
+    return false;
+  }
+
+  const isLocalHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  if (!isLocalHost) {
+    return false;
+  }
+
+  const normalizedBase = trimTrailingSlash(baseUrl);
+  const isRelativeBase = normalizedBase.startsWith("/");
+  const isSameOriginBase = normalizedBase.startsWith(window.location.origin);
+  const isAlreadyFallback = normalizedBase === LOCAL_API_FALLBACK;
+
+  return (isRelativeBase || isSameOriginBase) && !isAlreadyFallback;
+};
+
 const getToken = (): string | undefined => {
   if (typeof document === "undefined") {
     return undefined;
@@ -15,7 +41,7 @@ const getToken = (): string | undefined => {
 
 export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const token = getToken();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const requestInit: RequestInit = {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -23,7 +49,13 @@ export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> 
       ...(init?.headers || {})
     },
     cache: "no-store"
-  });
+  };
+
+  let response = await fetch(`${API_BASE_URL}${path}`, requestInit);
+
+  if (!response.ok && shouldTryLocalFallback(response.status, API_BASE_URL)) {
+    response = await fetch(`${LOCAL_API_FALLBACK}${path}`, requestInit);
+  }
 
   if (!response.ok) {
     throw new Error(`API request failed: ${response.status}`);

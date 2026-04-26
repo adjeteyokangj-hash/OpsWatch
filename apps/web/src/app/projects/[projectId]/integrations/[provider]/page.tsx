@@ -312,10 +312,10 @@ export default function ProviderIntegrationDetailPage() {
             {renderProviderFields()}
 
             <div className="channel-actions">
-              <button type="submit" className="secondary-button" disabled={saving || validating}>
+              <button type="submit" className="secondary-button" disabled={saving || validating} data-action="api" data-endpoint="/settings/integrations/:projectId/:provider">
                 {saving ? "Saving..." : "Save integration"}
               </button>
-              <button type="button" className="primary-button" onClick={() => void validateIntegration()} disabled={saving || validating}>
+              <button type="button" className="primary-button" onClick={() => void validateIntegration()} disabled={saving || validating} data-action="api" data-endpoint="/settings/integrations/:projectId/:provider/validate">
                 {validating ? "Validating..." : "Save and validate"}
               </button>
             </div>

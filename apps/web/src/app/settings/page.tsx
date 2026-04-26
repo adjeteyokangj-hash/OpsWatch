@@ -405,7 +405,7 @@ export default function SettingsPage() {
               Use as default channel for alerts across projects
             </label>
 
-            <button type="submit" disabled={saving}>
+            <button type="submit" disabled={saving} data-action="api" data-endpoint="/settings/notifications">
               {saving ? "Saving..." : "Add channel"}
             </button>
           </form>
@@ -440,10 +440,10 @@ export default function SettingsPage() {
                   </div>
                   <div className="channel-target">{channel.target}</div>
                   <div className="channel-actions">
-                    <button type="button" className="secondary-button" onClick={() => void toggleChannel(channel)}>
+                    <button type="button" className="secondary-button" onClick={() => void toggleChannel(channel)} data-action="api" data-endpoint="/settings/notifications/:id">
                       {channel.isActive ? "Disable" : "Enable"}
                     </button>
-                    <button type="button" className="secondary-button danger-button" onClick={() => void deleteChannel(channel.id)}>
+                    <button type="button" className="secondary-button danger-button" onClick={() => void deleteChannel(channel.id)} data-action="api" data-endpoint="/settings/notifications/:id">
                       Delete
                     </button>
                   </div>
@@ -530,6 +530,7 @@ export default function SettingsPage() {
                               <button
                                 type="button"
                                 className="secondary-button integration-preset-button"
+                                data-action="local-ui"
                                 onClick={() => applyConfigPreset(project.id, type)}
                               >
                                 Apply preset
@@ -551,6 +552,8 @@ export default function SettingsPage() {
                             <button
                               type="button"
                               className="secondary-button"
+                              data-action="api"
+                              data-endpoint="/settings/integrations/:projectId/:type"
                               onClick={() => void saveIntegration(project.id, type)}
                               disabled={integrationSavingKey === key}
                             >
@@ -559,6 +562,8 @@ export default function SettingsPage() {
                             <button
                               type="button"
                               className="secondary-button"
+                              data-action="api"
+                              data-endpoint="/settings/integrations/:projectId/:type/validate"
                               onClick={() => void validateIntegration(project.id, type)}
                               disabled={integrationValidatingKey === key || !row}
                             >

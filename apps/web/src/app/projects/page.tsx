@@ -91,7 +91,7 @@ function ProjectsPageContent() {
 
   return (
     <Shell>
-      <Header title="Projects" actions={!showForm ? <button type="button" className="primary-button" onClick={() => setShowForm(true)}>+ New project</button> : null} />
+      <Header title="Projects" actions={!showForm ? <button type="button" className="primary-button" onClick={() => setShowForm(true)} data-action="local-ui">+ New project</button> : null} />
       {healthFilter ? <section className="panel">Showing only <strong>{healthFilter}</strong> projects.</section> : null}
       <section className="grid-6">
         <StatCard label="Projects" value={projects.length} href="/projects" />
@@ -109,7 +109,7 @@ function ProjectsPageContent() {
               <h2>Create project</h2>
               <p>Start fresh with a new monitored app.</p>
             </div>
-            <button type="button" className="secondary-button" onClick={() => setShowForm(false)}>Cancel</button>
+            <button type="button" className="secondary-button" onClick={() => setShowForm(false)} data-action="local-ui">Cancel</button>
           </div>
           <form className="stack-form" onSubmit={(event) => void createProject(event)}>
             <div className="form-row">
@@ -159,7 +159,7 @@ function ProjectsPageContent() {
               Repository URL
               <input value={form.repoUrl} onChange={(event) => setForm((current) => ({ ...current, repoUrl: event.target.value }))} placeholder="https://github.com/..." />
             </label>
-            <button className="primary-button" type="submit" disabled={saving}>{saving ? "Creating..." : "Create project"}</button>
+            <button className="primary-button" type="submit" disabled={saving} data-action="api" data-endpoint="/projects">{saving ? "Creating..." : "Create project"}</button>
           </form>
         </section>
       ) : null}
@@ -172,7 +172,7 @@ function ProjectsPageContent() {
               <h2>No matching projects.</h2>
               <p>Create a project or adjust filters to continue operational review.</p>
             </div>
-            <button type="button" className="primary-button" onClick={() => setShowForm(true)}>+ New project</button>
+            <button type="button" className="primary-button" onClick={() => setShowForm(true)} data-action="local-ui">+ New project</button>
           </div>
         </section>
       ) : (

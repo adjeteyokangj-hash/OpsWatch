@@ -145,6 +145,8 @@ export default function AlertDetailPage() {
               <button
                 type="button"
                 className="secondary-button"
+                data-action="api"
+                data-endpoint="/alerts/:alertId/acknowledge"
                 onClick={() => void runStatusAction("acknowledge")}
                 disabled={saving || alert.status !== "OPEN"}
               >
@@ -153,6 +155,8 @@ export default function AlertDetailPage() {
               <button
                 type="button"
                 className="secondary-button"
+                data-action="api"
+                data-endpoint="/alerts/:alertId/resolve"
                 onClick={() => void runStatusAction("resolve")}
                 disabled={saving || alert.status === "RESOLVED"}
               >

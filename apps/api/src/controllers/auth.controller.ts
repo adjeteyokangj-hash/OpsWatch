@@ -16,3 +16,9 @@ export const loginController = async (req: Request, res: Response) => {
 	}
 };
 
+export const logoutController = (_req: Request, res: Response) => {
+	// JWT auth is stateless for now; this endpoint exists so clients can perform
+	// a clean server round-trip when ending a session.
+	res.status(204).send();
+};
+

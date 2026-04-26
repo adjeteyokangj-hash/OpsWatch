@@ -18,7 +18,7 @@ export function CopyFilterLink({ label = "Copy filter link" }: Props) {
   }, []);
 
   return (
-    <button type="button" className="secondary-button copy-link-btn" onClick={copy}>
+    <button type="button" className="secondary-button copy-link-btn" onClick={copy} data-action="local-ui">
       {label}
     </button>
   );

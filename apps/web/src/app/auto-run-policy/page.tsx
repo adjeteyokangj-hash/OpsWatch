@@ -141,6 +141,8 @@ export default function AutoRunPolicyPage() {
           <button
             className={`policy-toggle ${globalEnabled ? "policy-toggle-on" : "policy-toggle-off"}`}
             disabled={saving === "GLOBAL:"}
+            data-action="api"
+            data-endpoint="/remediation/policy"
             onClick={() => toggle("GLOBAL", "", globalEnabled)}
           >
             {saving === "GLOBAL:" ? "Saving…" : globalEnabled ? "Enabled — click to disable" : "Disabled — click to enable"}
@@ -189,6 +191,8 @@ export default function AutoRunPolicyPage() {
                     <button
                       className={`policy-toggle policy-toggle-sm ${enabled ? "policy-toggle-on" : "policy-toggle-off"}`}
                       disabled={saving === saveKey || !isEligible}
+                      data-action="api"
+                      data-endpoint="/remediation/policy"
                       onClick={() => toggle("ACTION", entry.action, enabled)}
                     >
                       {isEligible ? (saving === saveKey ? "…" : enabled ? "On" : "Off") : "Not eligible"}
@@ -234,6 +238,8 @@ export default function AutoRunPolicyPage() {
                       <button
                         className={`policy-toggle policy-toggle-sm ${enabled ? "policy-toggle-on" : "policy-toggle-off"}`}
                         disabled={saving === saveKey}
+                        data-action="api"
+                        data-endpoint="/remediation/policy"
                         onClick={() => toggle("PROJECT", proj.id, enabled)}
                       >
                         {saving === saveKey ? "…" : enabled ? "On" : "Off"}

@@ -6,6 +6,12 @@ const healthClass = (status: string) => {
   return "warn";
 };
 
+const healthToneClass = (status: string) => {
+  if (status === "HEALTHY") return "healthy";
+  if (status === "DOWN") return "down";
+  return "degraded";
+};
+
 const projectReason = (row: any) => {
   const openAlerts = row.alerts || [];
   const unresolvedIncidents = (row.incidents || []).filter((incident: any) => incident.status !== "RESOLVED");
@@ -36,9 +42,25 @@ const heartbeatLabel = (row: any): string => {
   return `${ageDays} d ago`;
 };
 
+const issueSummary = (row: any): string => {
+  if (row.status === "DOWN") {
+    return "Service down";
+  }
+
+  if (row.status === "DEGRADED") {
+    const extraIssues = Math.max((row.alerts?.length || 0) - 1, 0);
+    if (extraIssues > 0) {
+      return `Heartbeat stale (+${extraIssues} issue${extraIssues === 1 ? "" : "s"})`;
+    }
+    return "Heartbeat stale";
+  }
+
+  return projectReason(row);
+};
+
 export function ProjectsTable({ rows }: { rows: Array<any> }) {
   return (
-    <table className="data-table">
+    <table className="data-table projects-table">
       <thead>
         <tr>
           <th>Project</th>
@@ -61,11 +83,17 @@ export function ProjectsTable({ rows }: { rows: Array<any> }) {
             <td>{row.clientName}</td>
             <td>{row.environment}</td>
             <td>
-              <Link href={`/alerts?projectId=${row.id}&status=OPEN`} className={`result-pill ${healthClass(row.status)}`}>
+              <Link href={`/alerts?projectId=${row.id}&status=OPEN`} className={`result-pill ${healthClass(row.status)} pill ${healthToneClass(row.status)}`}>
                 {row.status}
               </Link>
             </td>
-            <td>{projectReason(row)}</td>
+            <td>
+              {row.status !== "HEALTHY" ? <span className="needs-attention">Needs attention</span> : null}
+              {row.status !== "HEALTHY" ? " " : null}
+              <span className={`issue-text${row.status === "DOWN" ? " critical" : ""}`}>
+                {issueSummary(row)}
+              </span>
+            </td>
             <td>{row.services?.length || 0}</td>
             <td>
               {row.heartbeats?.[0]?.receivedAt ? (
@@ -77,7 +105,18 @@ export function ProjectsTable({ rows }: { rows: Array<any> }) {
               )}
             </td>
             <td>
-              <Link href={`/alerts?projectId=${row.id}&status=OPEN`}>{row.alerts?.length || 0}</Link>
+              <Link
+                href={`/alerts?projectId=${row.id}&status=OPEN`}
+                className={
+                  (row.alerts?.length || 0) === 0
+                    ? undefined
+                    : row.status === "DOWN"
+                      ? "alert-count-critical"
+                      : "alert-count-warning"
+                }
+              >
+                {row.alerts?.length || 0}
+              </Link>
             </td>
             <td>
               <Link href={`/incidents?projectId=${row.id}&onlyUnresolved=true`}>
