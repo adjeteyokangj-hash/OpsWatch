@@ -1,7 +1,7 @@
 {
-  "buildCommand": "pnpm install && pnpm --filter @opswatch/web build",
+  "buildCommand": "pnpm --filter @opswatch/web build",
   "outputDirectory": "apps/web/.next",
   "framework": "nextjs",
-  "installCommand": "pnpm install",
+  "installCommand": "pnpm install --prod=false",
   "devCommand": "pnpm --filter @opswatch/web dev"
 }
