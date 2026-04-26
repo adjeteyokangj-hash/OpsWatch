@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": [
+    "src/controllers/product-insights.controller.ts",
+    "src/routes/product-insights.routes.ts",
+    "src/lib/prisma.ts"
+  ]
+}

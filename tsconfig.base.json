@@ -1,0 +1,21 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "CommonJS",
+		"moduleResolution": "Node",
+		"ignoreDeprecations": "5.0",
+		"strict": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"skipLibCheck": true,
+		"resolveJsonModule": true,
+		"noUncheckedIndexedAccess": true,
+		"baseUrl": ".",
+		"paths": {
+			"@opswatch/client": ["packages/opswatch-client/src"],
+			"@opswatch/client/*": ["packages/opswatch-client/src/*"],
+			"@opswatch/shared": ["packages/shared/src"],
+			"@opswatch/shared/*": ["packages/shared/src/*"]
+		}
+	}
+}

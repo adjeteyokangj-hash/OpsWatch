@@ -1,0 +1,40 @@
+{
+	"name": "opswatch",
+	"version": "0.1.0",
+	"private": true,
+	"packageManager": "pnpm@9.12.3",
+	"scripts": {
+		"dev": "pnpm -r --parallel dev",
+		"dev:web": "pnpm --filter @opswatch/web dev",
+		"dev:api": "pnpm --filter @opswatch/api dev",
+		"dev:worker": "pnpm --filter @opswatch/worker dev",
+		"sparkle:smoke": "tsx scripts/sparkle-smoke.ts",
+		"verify:monitoring": "tsx scripts/verify-live-monitoring.ts",
+		"demo:real-app": "tsx scripts/demo-real-app.ts",
+		"notify:webhook-listener": "tsx scripts/webhook-listener.ts",
+		"verify:notifications": "tsx scripts/verify-notifications.ts",
+		"dashboard:smoke": "tsx scripts/dashboard-mvp-smoke.ts",
+		"insights:smoke": "powershell -ExecutionPolicy Bypass -File scripts/insights-stateful-smoke.ps1",
+		"insights:verify-frontend": "powershell -ExecutionPolicy Bypass -File scripts/verify-insights-frontend-runtime.ps1",
+		"build": "pnpm -r build",
+		"lint": "pnpm -r lint",
+		"typecheck": "pnpm -r typecheck",
+		"db:generate": "pnpm --filter @opswatch/api db:generate",
+		"db:migrate": "pnpm --filter @opswatch/api db:migrate",
+		"db:seed": "pnpm --filter @opswatch/api db:seed"
+	},
+	"dependencies": {
+		"@opswatch/client": "workspace:*",
+		"@opswatch/shared": "workspace:*",
+		"@prisma/client": "^5.22.0"
+	},
+	"devDependencies": {
+		"@typescript-eslint/eslint-plugin": "^8.46.1",
+		"@typescript-eslint/parser": "^8.46.1",
+		"@types/node": "^22.19.17",
+		"eslint": "^8.57.1",
+		"eslint-config-next": "15.0.0",
+		"tsx": "^4.21.0",
+		"typescript": "^5.6.3"
+	}
+}

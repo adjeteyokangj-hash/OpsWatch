@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: opswatch-api
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: pnpm install && pnpm exec prisma generate --schema=apps/api/prisma/schema.prisma && pnpm --filter @opswatch/api build
+    startCommand: node apps/api/dist/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: OPSWATCH_WEB_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+
+  - type: worker
+    name: opswatch-worker
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: pnpm install && pnpm --filter @opswatch/worker build
+    startCommand: node apps/worker/dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false

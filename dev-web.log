@@ -1,0 +1,273 @@
+
+> opswatch@0.1.0 dev:web C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch
+> pnpm --filter @opswatch/web dev
+
+
+> @opswatch/web@0.1.0 dev C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web
+> next dev
+
+  Ôû▓ Next.js 15.0.0
+  - Local:        http://localhost:3000
+
+ Ô£ô Starting...
+ Ô£ô Ready in 10.2s
+ Ôùï Compiling /status ...
+ Ô£ô Compiled /status in 27.6s (534 modules)
+ GET /status 200 in 28158ms
+ Ôùï Compiling / ...
+ Ô£ô Compiled / in 1286ms (529 modules)
+ GET / 307 in 1537ms
+ Ôùï Compiling /dashboard ...
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+ Ô¿» [Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[Error: EBUSY: resource busy or locked, open 'C:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\web\.next\server\server-reference-manifest.js'] {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'open',
+  path: 'C:\\Users\\edwar\\OneDrive\\My Project\\OpsWatch\\opswatch\\apps\\web\\.next\\server\\server-reference-manifest.js'
+}
+[?25h

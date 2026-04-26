@@ -1,0 +1,534 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Alert {
+  id               String          @id
+  projectId        String
+  serviceId        String?
+  sourceType       String
+  sourceId         String?
+  severity         AlertSeverity
+  title            String
+  message          String
+  status           AlertStatus     @default(OPEN)
+  firstSeenAt      DateTime        @default(now())
+  lastSeenAt       DateTime        @default(now())
+  acknowledgedAt   DateTime?
+  resolvedAt       DateTime?
+  assignedToUserId String?
+  category         AlertCategory   @default(AVAILABILITY)
+  integrationId    String?
+  User             User?           @relation(fields: [assignedToUserId], references: [id])
+  Project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  Service          Service?        @relation(fields: [serviceId], references: [id])
+  IncidentAlert    IncidentAlert[]
+}
+
+model AuditLog {
+  id           String   @id
+  userId       String?
+  action       String
+  entityType   String
+  entityId     String
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+  User         User?    @relation(fields: [userId], references: [id])
+}
+
+model AutoRemediationPolicy {
+  id             String   @id
+  organizationId String
+  policyType     String
+  policyKey      String
+  enabled        Boolean  @default(false)
+  updatedBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+
+  @@unique([organizationId, policyType, policyKey])
+  @@index([organizationId])
+}
+
+model Check {
+  id                 String        @id
+  serviceId          String
+  name               String
+  type               CheckType
+  intervalSeconds    Int
+  timeoutMs          Int
+  expectedStatusCode Int?
+  expectedKeyword    String?
+  failureThreshold   Int           @default(3)
+  recoveryThreshold  Int           @default(2)
+  configJson         Json?
+  isActive           Boolean       @default(true)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime
+  Service            Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  CheckResult        CheckResult[]
+}
+
+model CheckResult {
+  id             String      @id
+  checkId        String
+  status         CheckStatus
+  responseCode   Int?
+  responseTimeMs Int?
+  message        String?
+  rawJson        Json?
+  checkedAt      DateTime    @default(now())
+  Check          Check       @relation(fields: [checkId], references: [id], onDelete: Cascade)
+
+  @@index([checkId, checkedAt])
+}
+
+model Event {
+  id          String        @id
+  projectId   String
+  serviceId   String?
+  type        EventType
+  severity    AlertSeverity
+  source      String
+  message     String
+  fingerprint String?
+  payloadJson Json?
+  createdAt   DateTime      @default(now())
+  Project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  Service     Service?      @relation(fields: [serviceId], references: [id])
+
+  @@index([projectId, createdAt])
+}
+
+model Heartbeat {
+  id          String   @id
+  projectId   String
+  environment String
+  appVersion  String?
+  commitSha   String?
+  status      String
+  message     String?
+  payloadJson Json?
+  receivedAt  DateTime @default(now())
+  Project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, receivedAt])
+}
+
+model Incident {
+  id              String          @id
+  projectId       String
+  title           String
+  severity        AlertSeverity
+  status          IncidentStatus  @default(OPEN)
+  openedAt        DateTime        @default(now())
+  acknowledgedAt  DateTime?
+  resolvedAt      DateTime?
+  rootCause       String?
+  resolutionNotes String?
+  Project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  IncidentAlert   IncidentAlert[]
+
+  @@index([projectId, openedAt])
+}
+
+model IncidentAlert {
+  incidentId String
+  alertId    String
+  Alert      Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  Incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@id([incidentId, alertId])
+}
+
+model NotificationChannel {
+  id        String   @id
+  type      String
+  name      String
+  target    String
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  projectId String?
+  updatedAt DateTime
+  Project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, isActive])
+}
+
+model OnboardingProgress {
+  id             String       @id
+  organizationId String       @unique
+  completedSteps String[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model OrgApiKey {
+  id                String       @id
+  organizationId    String
+  name              String
+  keyHash           String       @unique
+  lastUsedAt        DateTime?
+  expiresAt         DateTime?
+  isActive          Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  projectId         String?
+  keyId             String?      @unique
+  secretHash        String?
+  scopes            Json?
+  environment       String?
+  revokedAt         DateTime?
+  lastUsedRoute     String?
+  lastUsedIp        String?
+  lastUsedUserAgent String?
+  revokeReason      String?
+  Organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, revokedAt])
+  @@index([projectId])
+}
+
+model Organization {
+  id                 String              @id
+  name               String
+  slug               String              @unique
+  plan               BillingPlan         @default(FREE)
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime
+  OnboardingProgress OnboardingProgress?
+  OrgApiKey          OrgApiKey[]
+  Project            Project[]
+  StatusPage         StatusPage[]
+  User               User[]
+}
+
+model Project {
+  id                  String                @id
+  name                String
+  slug                String                @unique
+  clientName          String
+  description         String?
+  environment         String
+  status              ProjectStatus         @default(HEALTHY)
+  frontendUrl         String?
+  backendUrl          String?
+  repoUrl             String?
+  vercelProjectId     String?
+  renderServiceId     String?
+  apiKey              String                @unique
+  signingSecret       String
+  maintenanceTier     String?
+  isActive            Boolean               @default(true)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  organizationId      String?
+  Alert               Alert[]
+  Event               Event[]
+  Heartbeat           Heartbeat[]
+  Incident            Incident[]
+  NotificationChannel NotificationChannel[]
+  Organization        Organization?         @relation(fields: [organizationId], references: [id])
+  ProjectIntegration  ProjectIntegration[]
+  Service             Service[]
+  StatusPage          StatusPage[]
+
+  @@index([organizationId])
+}
+
+model ProjectIntegration {
+  id                String                      @id
+  projectId         String
+  type              IntegrationType
+  name              String?
+  enabled           Boolean                     @default(true)
+  configJson        Json?
+  secretRef         String?
+  validationStatus  IntegrationValidationStatus @default(UNKNOWN)
+  validationMessage String?
+  lastValidatedAt   DateTime?
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime
+  Project           Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, type])
+  @@index([projectId, enabled])
+}
+
+model RemediationLog {
+  id                  String            @id
+  organizationId      String
+  alertId             String?
+  incidentId          String?
+  action              String
+  contextJson         Json?
+  executedBy          String?
+  status              RemediationStatus @default(PENDING_APPROVAL)
+  resultJson          Json?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime
+  approvedBy          String?
+  executedAt          DateTime?
+  projectId           String?
+  serviceId           String?
+  impactTier          String?
+  predictedLabel      String?
+  predictedScore      Int?
+  executionMode       String            @default("MANUAL")
+  policySnapshot      Json?
+  suppressionSnapshot Json?
+
+  @@index([organizationId, action, status])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, executionMode, createdAt])
+}
+
+model Service {
+  id         String        @id
+  projectId  String
+  name       String
+  type       ServiceType
+  status     ProjectStatus @default(HEALTHY)
+  baseUrl    String?
+  isCritical Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime
+  Alert      Alert[]
+  Check      Check[]
+  Event      Event[]
+  Project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model StatusPage {
+  id             String       @id
+  organizationId String
+  projectId      String?
+  title          String
+  slug           String       @unique
+  description    String?
+  isPublic       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project        Project?     @relation(fields: [projectId], references: [id])
+}
+
+model User {
+  id             String        @id
+  name           String
+  email          String        @unique
+  passwordHash   String
+  role           String        @default("MEMBER")
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime
+  organizationId String?
+  Alert          Alert[]
+  AuditLog       AuditLog[]
+  Organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+model CoverageTarget {
+  id             String   @id
+  projectId      String
+  targetType     String
+  targetKey      String
+  label          String
+  criticality    String   @default("HIGH")
+  isCovered      Boolean  @default(false)
+  coverageSource String?
+  detailsJson    Json?
+  updatedAt      DateTime @default(now())
+
+  @@unique([projectId, targetKey])
+  @@index([projectId, isCovered])
+}
+
+model InsightActionRun {
+  id                      String    @id
+  projectId               String
+  insightRecommendationId String?
+  actionType              String
+  status                  String    @default("PENDING")
+  requestedById           String?
+  approvedById            String?
+  resultJson              Json?
+  errorMessage            String?
+  createdAt               DateTime  @default(now())
+  completedAt             DateTime?
+
+  @@index([insightRecommendationId])
+  @@index([projectId, createdAt(sort: Desc)])
+  @@index([projectId, status])
+}
+
+model InsightRecommendation {
+  id          String    @id
+  projectId   String
+  type        String
+  title       String
+  description String
+  priority    Int       @default(50)
+  riskLevel   String    @default("MEDIUM")
+  actionLevel String    @default("MANUAL_APPLY")
+  payloadJson Json?
+  status      String    @default("OPEN")
+  source      String    @default("COVERAGE")
+  createdAt   DateTime  @default(now())
+  appliedAt   DateTime?
+  dismissedAt DateTime?
+
+  @@index([projectId, source])
+  @@index([projectId, status])
+}
+
+model MonitoringProfile {
+  id             String   @id
+  key            String   @unique
+  name           String
+  providerType   String
+  description    String
+  definitionJson Json
+  isSystem       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+}
+
+model SyntheticJourney {
+  id             String    @id
+  projectId      String
+  name           String
+  type           String    @default("BROWSER")
+  status         String    @default("DRAFT")
+  definitionJson Json
+  lastRunAt      DateTime?
+  lastStatus     String?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+
+  @@index([projectId, status])
+}
+
+enum AlertCategory {
+  AVAILABILITY
+  RELIABILITY
+  PERFORMANCE
+  SECURITY
+  DEPENDENCY_CHANGE
+}
+
+enum AlertSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum BillingPlan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum CheckStatus {
+  PASS
+  FAIL
+  WARN
+}
+
+enum CheckType {
+  HTTP
+  SSL
+  KEYWORD
+  RESPONSE_TIME
+  HEARTBEAT_STALE
+}
+
+enum EventType {
+  BOOKING_FAILED
+  PAYMENT_FAILED
+  WEBHOOK_FAILED
+  EMAIL_FAILED
+  AUTH_SPIKE
+  CRON_MISSED
+  GOOGLE_API_FAILED
+  DEPLOYMENT_STARTED
+  DEPLOYMENT_FINISHED
+  SERVICE_DOWN
+  HEARTBEAT_MISSED
+  AUTH_FAILURE_SPIKE
+  TRAFFIC_SPIKE
+  WEBHOOK_SIGNATURE_FAILED
+  DEPLOY_FAILED
+  SSL_EXPIRING
+  DOMAIN_EXPIRING
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  MONITORING
+  RESOLVED
+}
+
+enum IntegrationType {
+  WEBHOOK
+  EMAIL
+  STRIPE
+  WORKER_PROVIDER
+  SERVICE_PROVIDER
+  DEPLOYMENT_PROVIDER
+  STATUS_PROVIDER
+  RUNBOOK_PROVIDER
+}
+
+enum IntegrationValidationStatus {
+  UNKNOWN
+  VALID
+  INVALID
+}
+
+enum ProjectStatus {
+  HEALTHY
+  DEGRADED
+  DOWN
+  PAUSED
+}
+
+enum RemediationStatus {
+  PENDING_APPROVAL
+  APPROVED
+  EXECUTING
+  SUCCEEDED
+  FAILED
+  REJECTED
+  MISSING_CONTEXT
+  MISCONFIGURED_ENV
+}
+
+enum ServiceType {
+  FRONTEND
+  API
+  DATABASE
+  WORKER
+  WEBHOOK
+  EMAIL
+  PAYMENT
+  THIRD_PARTY
+}
