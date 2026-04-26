@@ -357,7 +357,6 @@ export default function IncidentDetailPage() {
                 </span>
                 <div
                   className="usage-bar-track ai-confidence-bar"
-                  // eslint-disable-next-line @typescript-eslint/naming-convention
                   style={{ "--confidence": `${confidencePct}%` } as React.CSSProperties}
                 >
                   <div className="usage-bar-fill ai-confidence-fill" />
