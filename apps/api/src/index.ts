@@ -3,8 +3,13 @@ import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { prisma } from "./lib/prisma";
 
-const server = app.listen(env.port, () => {
-  logger.info(`OpsWatch API listening on port ${env.port}`);
+const server = app.listen(env.port, "0.0.0.0", () => {
+  logger.info(`OpsWatch API listening on 0.0.0.0:${env.port}`);
+});
+
+server.on("error", (error) => {
+  logger.error("HTTP server failed to start", error);
+  process.exit(1);
 });
 
 const shutdown = async (signal: string) => {
@@ -17,3 +22,10 @@ const shutdown = async (signal: string) => {
 
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT",  () => void shutdown("SIGINT"));
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled promise rejection", reason);
+});
+process.on("uncaughtException", (error) => {
+  logger.error("Uncaught exception", error);
+  process.exit(1);
+});
