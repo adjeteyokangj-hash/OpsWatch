@@ -9,7 +9,11 @@
 		"start": "node dist/index.js",
 		"db:generate": "prisma generate",
 		"db:migrate": "prisma migrate deploy",
+		"db:seed": "prisma db seed",
 		"typecheck": "tsc -p tsconfig.json --noEmit"
+	},
+	"prisma": {
+		"seed": "tsx prisma/seed.ts"
 	},
 	"dependencies": {
 		"@opswatch/shared": "workspace:*",

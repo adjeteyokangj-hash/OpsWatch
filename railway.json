@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.railway.app/railway.schema.json",
+  "build": {
+    "buildCommand": "pnpm install && pnpm --filter @opswatch/api db:generate && pnpm --filter @opswatch/api build"
+  },
+  "deploy": {
+    "startCommand": "pnpm --filter @opswatch/api db:migrate && node apps/api/dist/index.js",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 300
+  }
+}
