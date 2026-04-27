@@ -384,8 +384,7 @@ export const revokeApiKey = async (req: AuthRequest, res: Response) => {
     where: { id: row.id },
     data: {
       revokedAt: new Date(),
-      revokeReason: req.body?.reason ? String(req.body.reason) : null,
-      isActive: false
+      revokeReason: req.body?.reason ? String(req.body.reason) : null
     }
   });
 

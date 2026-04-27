@@ -62,7 +62,6 @@ const authorizeApiKey = async (req: AuthRequest, requiredScopes: string[]): Prom
   const row = await prisma.orgApiKey.findFirst({
     where: {
       keyId: parsed.keyId,
-      isActive: true,
       revokedAt: null
     }
   });
