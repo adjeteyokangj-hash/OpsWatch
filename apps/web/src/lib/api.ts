@@ -66,7 +66,20 @@ export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> 
   }
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    let detail = "";
+    try {
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const payload = (await response.json()) as { error?: string; message?: string };
+        detail = payload?.error || payload?.message || "";
+      } else {
+        detail = (await response.text()).trim();
+      }
+    } catch {
+      detail = "";
+    }
+
+    throw new Error(detail ? `API request failed: ${response.status} - ${detail}` : `API request failed: ${response.status}`);
   }
 
   if (response.status === 204) {

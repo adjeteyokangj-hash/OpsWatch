@@ -87,6 +87,7 @@ export default function OrgPage() {
   const [saving, setSaving] = useState(false);
   const [creatingKey, setCreatingKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [createKeyError, setCreateKeyError] = useState<string | null>(null);
   const [nameEdit, setNameEdit] = useState("");
   const [spForm, setSpForm] = useState({ title: "", slug: "", description: "", projectId: "", isPublic: true });
   const [showCreateKeyModal, setShowCreateKeyModal] = useState(false);
@@ -228,15 +229,27 @@ export default function OrgPage() {
 
   const handleCreateApiKey = async (event: FormEvent) => {
     event.preventDefault();
-    setCreatingKey(true);
     setError(null);
+    setCreateKeyError(null);
+
+    let expiresAtIso: string | undefined;
+    if (createKeyForm.expiresAt) {
+      const parsed = new Date(createKeyForm.expiresAt);
+      if (Number.isNaN(parsed.getTime())) {
+        setCreateKeyError("Expiry date/time is invalid. Please pick a valid value.");
+        return;
+      }
+      expiresAtIso = parsed.toISOString();
+    }
+
+    setCreatingKey(true);
     try {
       const payload: Record<string, unknown> = {
         name: createKeyForm.name,
         environment: createKeyForm.environment,
         scopes: createKeyForm.scopes,
         projectId: createKeyForm.projectId || undefined,
-        expiresAt: createKeyForm.expiresAt ? new Date(createKeyForm.expiresAt).toISOString() : undefined
+        expiresAt: expiresAtIso
       };
 
       const created = await apiFetch<CreateApiKeyResponse>("/org/api-keys", {
@@ -245,9 +258,12 @@ export default function OrgPage() {
       });
 
       setCreatedKey(created);
+      setCreateKeyError(null);
       await refreshApiKeys();
     } catch (err: any) {
-      setError(err?.message || "Failed to create API key");
+      const message = err?.message || "Failed to create API key";
+      setError(message);
+      setCreateKeyError(message);
     } finally {
       setCreatingKey(false);
     }
@@ -280,6 +296,7 @@ export default function OrgPage() {
   const closeCreateKeyModal = () => {
     setShowCreateKeyModal(false);
     setCreatedKey(null);
+    setCreateKeyError(null);
   };
 
   const formatLastUsed = (value: string | null): string => {
@@ -662,6 +679,8 @@ export default function OrgPage() {
                     onChange={(e) => setCreateKeyForm((prev) => ({ ...prev, expiresAt: e.target.value }))}
                   />
                 </label>
+
+                {createKeyError ? <div className="error-chip">{createKeyError}</div> : null}
 
                 <button className="primary-button" type="submit" disabled={creatingKey || createKeyForm.scopes.length === 0} data-action="api" data-endpoint="/org/api-keys">
                   {creatingKey ? "Creating..." : "Create key"}
