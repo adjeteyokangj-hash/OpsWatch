@@ -316,38 +316,52 @@ export const createApiKey = async (req: AuthRequest, res: Response) => {
   const keyId = `ow_${randomBytes(6).toString("hex")}`;
   const secret = randomBytes(24).toString("base64url");
 
-  const created = await prisma.orgApiKey.create({
-    data: {
-      id: randomUUID(),
-      organizationId: orgId,
-      name,
-      keyHash: sha256(`${keyId}.${secret}`),
+  try {
+    const created = await prisma.orgApiKey.create({
+      data: {
+        id: randomUUID(),
+        organizationId: orgId,
+        name,
+        keyHash: sha256(`${keyId}.${secret}`),
+        keyId,
+        secretHash: sha256(secret),
+        scopes,
+        environment,
+        projectId,
+        expiresAt,
+        isActive: true
+      }
+    });
+
+    const project = created.projectId
+      ? await prisma.project.findFirst({ where: { id: created.projectId, organizationId: orgId }, select: { id: true, name: true } })
+      : null;
+
+    res.status(201).json({
+      id: created.id,
       keyId,
-      secretHash: sha256(secret),
+      key: `${keyId}.${secret}`,
+      prefix: keyId.slice(0, 12),
+      name: created.name,
       scopes,
       environment,
-      projectId,
-      expiresAt,
-      isActive: true
+      project,
+      expiresAt: created.expiresAt?.toISOString() ?? null,
+      createdAt: created.createdAt.toISOString()
+    });
+  } catch (error) {
+    if (isPrismaSchemaDriftError(error)) {
+      res.status(503).json({ error: "API key creation is temporarily unavailable. Please run latest database migrations and try again." });
+      return;
     }
-  });
 
-  const project = created.projectId
-    ? await prisma.project.findFirst({ where: { id: created.projectId, organizationId: orgId }, select: { id: true, name: true } })
-    : null;
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      res.status(409).json({ error: "API key collision detected. Please retry." });
+      return;
+    }
 
-  res.status(201).json({
-    id: created.id,
-    keyId,
-    key: `${keyId}.${secret}`,
-    prefix: keyId.slice(0, 12),
-    name: created.name,
-    scopes,
-    environment,
-    project,
-    expiresAt: created.expiresAt?.toISOString() ?? null,
-    createdAt: created.createdAt.toISOString()
-  });
+    throw error;
+  }
 };
 
 export const revokeApiKey = async (req: AuthRequest, res: Response) => {
