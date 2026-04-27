@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "./constants";
+import { clearAuthCookie } from "./auth";
 
 const LOCAL_API_FALLBACK = "http://localhost:4000/api";
 
@@ -55,6 +56,13 @@ export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> 
 
   if (!response.ok && shouldTryLocalFallback(response.status, API_BASE_URL)) {
     response = await fetch(`${LOCAL_API_FALLBACK}${path}`, requestInit);
+  }
+
+  if (response.status === 401 && typeof window !== "undefined") {
+    clearAuthCookie();
+    if (!window.location.pathname.startsWith("/login")) {
+      window.location.href = "/login";
+    }
   }
 
   if (!response.ok) {
