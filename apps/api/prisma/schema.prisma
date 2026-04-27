@@ -175,16 +175,14 @@ model OrgApiKey {
   id                String       @id
   organizationId    String
   name              String
-  keyHash           String       @unique
+  keyId             String       @unique
+  secretHash        String
+  scopes            Json
+  environment       String
   lastUsedAt        DateTime?
   expiresAt         DateTime?
-  isActive          Boolean      @default(true)
   createdAt         DateTime     @default(now())
   projectId         String?
-  keyId             String?      @unique
-  secretHash        String?
-  scopes            Json?
-  environment       String?
   revokedAt         DateTime?
   lastUsedRoute     String?
   lastUsedIp        String?

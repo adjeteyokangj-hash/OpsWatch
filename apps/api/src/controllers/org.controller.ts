@@ -256,7 +256,6 @@ export const getApiKeyUsage = async (req: AuthRequest, res: Response) => {
       where: {
         organizationId: orgId,
         revokedAt: null,
-        isActive: true,
         OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }]
       }
     });
@@ -322,14 +321,12 @@ export const createApiKey = async (req: AuthRequest, res: Response) => {
         id: randomUUID(),
         organizationId: orgId,
         name,
-        keyHash: sha256(`${keyId}.${secret}`),
         keyId,
         secretHash: sha256(secret),
         scopes,
         environment,
         projectId,
-        expiresAt,
-        isActive: true
+        expiresAt
       }
     });
 
