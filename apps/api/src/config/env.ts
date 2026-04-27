@@ -14,7 +14,9 @@ export const env = {
 	port: Number(process.env.PORT || 4000),
 	databaseUrl: required(process.env.DATABASE_URL, "DATABASE_URL"),
 	jwtSecret: required(process.env.JWT_SECRET, "JWT_SECRET"),
-	webUrl: process.env.OPSWATCH_WEB_URL || "http://localhost:3000",
+	webUrl:
+		process.env.OPSWATCH_WEB_URL ||
+		(process.env.NODE_ENV === "production" ? "https://ops-watch-web.vercel.app" : "http://localhost:3000"),
 	smtpHost: process.env.SMTP_HOST,
 	smtpPort: Number(process.env.SMTP_PORT || 587),
 	smtpUser: process.env.SMTP_USER,
