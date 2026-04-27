@@ -26,26 +26,11 @@ import { orgRouter } from "./routes/org.routes";
 import { onboardingRouter } from "./routes/onboarding.routes";
 import { trueNumerisRouter } from "./routes/truenumeris.routes";
 
-import { env } from "./config/env";
-
 export const app = express();
-
-const allowedOrigins = new Set([env.webUrl]);
-if (env.nodeEnv !== "production") {
-  ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"].forEach((origin) => {
-    allowedOrigins.add(origin);
-  });
-}
 
 app.use(
   cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) {
-        callback(null, true);
-        return;
-      }
-      callback(new Error(`Origin not allowed by CORS: ${origin}`));
-    },
+    origin: ["http://localhost:3000", "https://ops-watch-web.vercel.app"],
     credentials: true
   })
 );
