@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "crypto";
 import { Response } from "express";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { sha256 } from "../utils/crypto";
 import type { AuthRequest } from "../middleware/auth";
@@ -22,6 +23,13 @@ const toApiKeyStatus = (row: { revokedAt: Date | null; expiresAt: Date | null })
   if (row.revokedAt) return "REVOKED";
   if (row.expiresAt && row.expiresAt.getTime() < Date.now()) return "EXPIRED";
   return "ACTIVE";
+};
+
+const isPrismaSchemaDriftError = (error: unknown): boolean => {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return error.code === "P2021" || error.code === "P2022";
+  }
+  return false;
 };
 
 export const getOrg = async (req: AuthRequest, res: Response) => {
@@ -105,26 +113,34 @@ export const listStatusPages = async (req: AuthRequest, res: Response) => {
   const orgId = orgIdOr403(req, res);
   if (!orgId) return;
 
-  const rows = await prisma.statusPage.findMany({
-    where: { organizationId: orgId },
-    include: {
-      Project: {
-        select: { id: true, name: true, slug: true }
-      }
-    },
-    orderBy: { createdAt: "desc" }
-  });
+  try {
+    const rows = await prisma.statusPage.findMany({
+      where: { organizationId: orgId },
+      include: {
+        Project: {
+          select: { id: true, name: true, slug: true }
+        }
+      },
+      orderBy: { createdAt: "desc" }
+    });
 
-  res.json(
-    rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      slug: row.slug,
-      description: row.description,
-      isPublic: row.isPublic,
-      project: row.Project
-    }))
-  );
+    res.json(
+      rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        slug: row.slug,
+        description: row.description,
+        isPublic: row.isPublic,
+        project: row.Project
+      }))
+    );
+  } catch (error) {
+    if (isPrismaSchemaDriftError(error)) {
+      res.json([]);
+      return;
+    }
+    throw error;
+  }
 };
 
 export const createStatusPage = async (req: AuthRequest, res: Response) => {
@@ -189,58 +205,78 @@ export const listApiKeys = async (req: AuthRequest, res: Response) => {
   const orgId = orgIdOr403(req, res);
   if (!orgId) return;
 
-  const rows = await prisma.orgApiKey.findMany({
-    where: { organizationId: orgId },
-    orderBy: { createdAt: "desc" }
-  });
+  try {
+    const rows = await prisma.orgApiKey.findMany({
+      where: { organizationId: orgId },
+      orderBy: { createdAt: "desc" }
+    });
 
-  const projectIds = rows.map((row) => row.projectId).filter((value): value is string => Boolean(value));
-  const projects = projectIds.length
-    ? await prisma.project.findMany({ where: { id: { in: projectIds }, organizationId: orgId }, select: { id: true, name: true } })
-    : [];
-  const projectById = new Map(projects.map((project) => [project.id, project]));
+    const projectIds = rows.map((row) => row.projectId).filter((value): value is string => Boolean(value));
+    const projects = projectIds.length
+      ? await prisma.project.findMany({ where: { id: { in: projectIds }, organizationId: orgId }, select: { id: true, name: true } })
+      : [];
+    const projectById = new Map(projects.map((project) => [project.id, project]));
 
-  res.json(
-    rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      keyId: row.keyId,
-      prefix: row.keyId ? row.keyId.slice(0, 12) : "",
-      scopes: asScopes(row.scopes),
-      environment: row.environment === "test" ? "test" : "live",
-      project: row.projectId ? projectById.get(row.projectId) ?? null : null,
-      lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
-      lastUsedRoute: row.lastUsedRoute,
-      lastUsedIp: row.lastUsedIp,
-      lastUsedUserAgent: row.lastUsedUserAgent,
-      expiresAt: row.expiresAt?.toISOString() ?? null,
-      revokedAt: row.revokedAt?.toISOString() ?? null,
-      revokeReason: row.revokeReason,
-      requests24h: 0,
-      failedAttempts24h: 0,
-      status: toApiKeyStatus(row)
-    }))
-  );
+    res.json(
+      rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        keyId: row.keyId,
+        prefix: row.keyId ? row.keyId.slice(0, 12) : "",
+        scopes: asScopes(row.scopes),
+        environment: row.environment === "test" ? "test" : "live",
+        project: row.projectId ? projectById.get(row.projectId) ?? null : null,
+        lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+        lastUsedRoute: row.lastUsedRoute,
+        lastUsedIp: row.lastUsedIp,
+        lastUsedUserAgent: row.lastUsedUserAgent,
+        expiresAt: row.expiresAt?.toISOString() ?? null,
+        revokedAt: row.revokedAt?.toISOString() ?? null,
+        revokeReason: row.revokeReason,
+        requests24h: 0,
+        failedAttempts24h: 0,
+        status: toApiKeyStatus(row)
+      }))
+    );
+  } catch (error) {
+    if (isPrismaSchemaDriftError(error)) {
+      res.json([]);
+      return;
+    }
+    throw error;
+  }
 };
 
 export const getApiKeyUsage = async (req: AuthRequest, res: Response) => {
   const orgId = orgIdOr403(req, res);
   if (!orgId) return;
 
-  const activeKeys = await prisma.orgApiKey.count({
-    where: {
-      organizationId: orgId,
-      revokedAt: null,
-      isActive: true,
-      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }]
-    }
-  });
+  try {
+    const activeKeys = await prisma.orgApiKey.count({
+      where: {
+        organizationId: orgId,
+        revokedAt: null,
+        isActive: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }]
+      }
+    });
 
-  res.json({
-    last24hRequests: 0,
-    failedAuthAttempts: 0,
-    activeKeys
-  });
+    res.json({
+      last24hRequests: 0,
+      failedAuthAttempts: 0,
+      activeKeys
+    });
+  } catch (error) {
+    if (isPrismaSchemaDriftError(error)) {
+      res.json({
+        last24hRequests: 0,
+        failedAuthAttempts: 0,
+        activeKeys: 0
+      });
+      return;
+    }
+    throw error;
+  }
 };
 
 export const createApiKey = async (req: AuthRequest, res: Response) => {

@@ -101,29 +101,69 @@ export default function OrgPage() {
     expiresAt: ""
   });
 
+  const asErrorMessage = (error: unknown): string => {
+    if (error instanceof Error && error.message) return error.message;
+    return "Unknown API error";
+  };
+
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [orgData, spData, pData, keyData, usageData] = await Promise.all([
+      const [orgResult, spResult, projectsResult, apiKeysResult, apiUsageResult] = await Promise.allSettled([
         apiFetch<OrgData>("/org"),
         apiFetch<StatusPage[]>("/org/status-pages"),
         apiFetch<ProjectOption[]>("/projects"),
         apiFetch<ApiKeyRow[]>("/org/api-keys"),
         apiFetch<ApiKeyUsage>("/org/api-keys/usage")
       ]);
+
+      if (orgResult.status === "rejected") {
+        throw orgResult.reason;
+      }
+
+      if (projectsResult.status === "rejected") {
+        throw projectsResult.reason;
+      }
+
+      const orgData = orgResult.value;
+      const pData = projectsResult.value;
+      const partialFailures: string[] = [];
+
       setOrg(orgData);
       setNameEdit(orgData.name);
-      setStatusPages(spData);
+      if (spResult.status === "fulfilled") {
+        setStatusPages(spResult.value);
+      } else {
+        setStatusPages([]);
+        partialFailures.push(`status pages (${asErrorMessage(spResult.reason)})`);
+      }
+
       setProjects(pData);
-      setApiKeys(keyData);
-      setApiUsage(usageData);
+      if (apiKeysResult.status === "fulfilled") {
+        setApiKeys(apiKeysResult.value);
+      } else {
+        setApiKeys([]);
+        partialFailures.push(`API keys (${asErrorMessage(apiKeysResult.reason)})`);
+      }
+
+      if (apiUsageResult.status === "fulfilled") {
+        setApiUsage(apiUsageResult.value);
+      } else {
+        setApiUsage({ last24hRequests: 0, failedAuthAttempts: 0, activeKeys: 0 });
+        partialFailures.push(`API key usage (${asErrorMessage(apiUsageResult.reason)})`);
+      }
+
       setCreateKeyForm((prev) => {
         if (prev.projectId || pData.length === 0) return prev;
         const sparkle = pData.find((project) => project.slug === "sparkle" || project.name.toLowerCase().includes("sparkle"));
         const defaultProject = sparkle || pData[0];
         return defaultProject ? { ...prev, projectId: defaultProject.id } : prev;
       });
+
+      if (partialFailures.length > 0) {
+        setError(`Some organization sections could not load: ${partialFailures.join(", ")}`);
+      }
     } catch (err: any) {
       setError(err?.message || "Failed to load organization");
     } finally {
