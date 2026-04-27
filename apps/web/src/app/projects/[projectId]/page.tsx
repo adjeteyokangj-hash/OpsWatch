@@ -9,8 +9,8 @@ import { apiFetch } from "../../../lib/api";
 import { ProjectHealthCard } from "../../../components/projects/project-health-card";
 import { ServiceList } from "../../../components/projects/service-list";
 
-const heartbeatAgeLabel = (receivedAt?: string | null): string => {
-	if (!receivedAt) return "No heartbeat";
+const signalAgeLabel = (receivedAt?: string | null): string => {
+	if (!receivedAt) return "Awaiting first check";
 	const ageMs = Date.now() - new Date(receivedAt).getTime();
 	const ageMin = Math.floor(ageMs / 60000);
 	if (ageMin < 2) return "Just now";
@@ -30,6 +30,29 @@ const normalizeProject = (row: any) => ({
 	integrations: row.integrations ?? row.ProjectIntegration ?? [],
 	notificationChannels: row.notificationChannels ?? row.NotificationChannel ?? []
 });
+
+const latestCheckAt = (project: any): string | null => {
+	const services = Array.isArray(project?.services) ? project.services : [];
+	let latest: string | null = null;
+
+	for (const service of services) {
+		const checks = Array.isArray(service?.checks) ? service.checks : Array.isArray(service?.Check) ? service.Check : [];
+		for (const check of checks) {
+			const result = Array.isArray(check?.checkResults)
+				? check.checkResults[0]
+				: Array.isArray(check?.CheckResult)
+					? check.CheckResult[0]
+					: null;
+			const checkedAt = result?.checkedAt ? String(result.checkedAt) : null;
+			if (!checkedAt) continue;
+			if (!latest || new Date(checkedAt).getTime() > new Date(latest).getTime()) {
+				latest = checkedAt;
+			}
+		}
+	}
+
+	return latest;
+};
 
 export default function ProjectDetailPage() {
 	const params = useParams<{ projectId: string }>();
@@ -102,7 +125,7 @@ export default function ProjectDetailPage() {
 	const openAlerts = project.alerts.filter((alert: any) => alert.status === "OPEN" || alert.status === "ACKNOWLEDGED");
 	const unresolvedIncidents = project.incidents.filter((incident: any) => incident.status !== "RESOLVED");
 	const resolvedIncidents = project.incidents.filter((incident: any) => incident.status === "RESOLVED");
-	const latestHeartbeat = project.heartbeats?.[0]?.receivedAt ?? null;
+	const latestSignal = project.heartbeats?.[0]?.receivedAt ?? latestCheckAt(project);
 
 	return (
 		<Shell>
@@ -128,7 +151,7 @@ export default function ProjectDetailPage() {
 						<strong>Live risk:</strong> {openAlerts.length} open alerts and {unresolvedIncidents.length} unresolved incidents.
 					</li>
 					<li>
-						<strong>Latest heartbeat:</strong> {heartbeatAgeLabel(latestHeartbeat)}.
+						<strong>Latest signal:</strong> {signalAgeLabel(latestSignal)}.
 					</li>
 				</ul>
 			</section>
@@ -145,8 +168,8 @@ export default function ProjectDetailPage() {
 					href={`/incidents?projectId=${project.id}&onlyUnresolved=true`}
 				/>
 				<ProjectHealthCard
-					title="Latest Heartbeat"
-					value={heartbeatAgeLabel(latestHeartbeat)}
+					title="Latest Signal"
+					value={signalAgeLabel(latestSignal)}
 					href={`/projects/${project.id}/activity`}
 				/>
 			</section>

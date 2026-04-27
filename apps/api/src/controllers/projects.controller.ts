@@ -31,7 +31,15 @@ export const listProjects = async (req: AuthRequest, res: Response) => {
 	const rows = await prisma.project.findMany({
 		where: { organizationId: orgId },
 		include: {
-			Service: true,
+			Service: {
+				include: {
+					Check: {
+						include: {
+							CheckResult: { orderBy: { checkedAt: "desc" }, take: 1 }
+						}
+					}
+				}
+			},
 			Alert: { where: { status: { in: ["OPEN", "ACKNOWLEDGED"] } } },
 			Incident: { where: { status: { in: ["OPEN", "INVESTIGATING", "MONITORING"] } } },
 			Heartbeat: { orderBy: { receivedAt: "desc" }, take: 1 }
@@ -78,7 +86,15 @@ export const getProjectById = async (req: AuthRequest, res: Response) => {
 	const row = await prisma.project.findFirst({
 		where: { id: req.params.projectId, organizationId: orgId },
 		include: {
-			Service: true,
+			Service: {
+				include: {
+					Check: {
+						include: {
+							CheckResult: { orderBy: { checkedAt: "desc" }, take: 1 }
+						}
+					}
+				}
+			},
 			Alert: { orderBy: { lastSeenAt: "desc" }, take: 100 },
 			Incident: { orderBy: { openedAt: "desc" }, take: 50 },
 			Heartbeat: { orderBy: { receivedAt: "desc" }, take: 50 },

@@ -29,9 +29,32 @@ const projectReason = (row: any) => {
   return "-";
 };
 
-const heartbeatLabel = (row: any): string => {
-  const latest = row.heartbeats?.[0]?.receivedAt;
-  if (!latest) return "No heartbeat";
+const latestCheckAt = (row: any): string | null => {
+  const services = Array.isArray(row.services) ? row.services : [];
+  let latest: string | null = null;
+
+  for (const service of services) {
+    const checks = Array.isArray(service?.checks) ? service.checks : Array.isArray(service?.Check) ? service.Check : [];
+    for (const check of checks) {
+      const result = Array.isArray(check?.checkResults)
+        ? check.checkResults[0]
+        : Array.isArray(check?.CheckResult)
+          ? check.CheckResult[0]
+          : null;
+      const checkedAt = result?.checkedAt ? String(result.checkedAt) : null;
+      if (!checkedAt) continue;
+      if (!latest || new Date(checkedAt).getTime() > new Date(latest).getTime()) {
+        latest = checkedAt;
+      }
+    }
+  }
+
+  return latest;
+};
+
+const signalLabel = (row: any): string => {
+  const latest = row.heartbeats?.[0]?.receivedAt ?? latestCheckAt(row);
+  if (!latest) return "Awaiting first check";
   const ageMs = Date.now() - new Date(latest).getTime();
   const ageMin = Math.floor(ageMs / 60000);
   if (ageMin < 2) return "Just now";
@@ -50,9 +73,9 @@ const issueSummary = (row: any): string => {
   if (row.status === "DEGRADED") {
     const extraIssues = Math.max((row.alerts?.length || 0) - 1, 0);
     if (extraIssues > 0) {
-      return `Heartbeat stale (+${extraIssues} issue${extraIssues === 1 ? "" : "s"})`;
+      return `Monitoring degraded (+${extraIssues} issue${extraIssues === 1 ? "" : "s"})`;
     }
-    return "Heartbeat stale";
+    return "Monitoring degraded";
   }
 
   return projectReason(row);
@@ -69,7 +92,7 @@ export function ProjectsTable({ rows }: { rows: Array<any> }) {
           <th>Health</th>
           <th>Reason</th>
           <th>Services</th>
-          <th>Last Heartbeat</th>
+          <th>Last Signal</th>
           <th>Open Alerts</th>
           <th>Unresolved Incidents</th>
         </tr>
@@ -96,13 +119,7 @@ export function ProjectsTable({ rows }: { rows: Array<any> }) {
             </td>
             <td>{row.services?.length || 0}</td>
             <td>
-              {row.heartbeats?.[0]?.receivedAt ? (
-                <Link href={`/projects/${row.id}/activity`}>
-                  {heartbeatLabel(row)}
-                </Link>
-              ) : (
-                <Link href={`/projects/${row.id}/activity`}>No heartbeat</Link>
-              )}
+              <Link href={`/projects/${row.id}/activity`}>{signalLabel(row)}</Link>
             </td>
             <td>
               <Link
