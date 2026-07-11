@@ -14,17 +14,17 @@ Restore login and API access using **Vercel (API) + Supabase (database)**. Do no
 
 1. Vercel → **Add New Project** → import `adjeteyokangj-hash/OpsWatch`
 2. **Root Directory:** `apps/api`
-3. **Framework Preset:** Other (repo `apps/api/vercel.json` sets `"framework": null`)
+3. **Framework Preset:** Express (repo `apps/api/vercel.json` sets `"framework": "express"`)
 4. **Override dashboard settings** if they conflict with the repo file:
    - **Install Command:** `cd ../.. && pnpm install --prod=false`
    - **Build Command:** `cd ../.. && pnpm --filter @opswatch/api vercel-build`
-   - **Output Directory:** leave **blank** (clear any override such as `public`, `dist`, or `.vercel/output`)
+   - **Output Directory:** **Override OFF** — leave blank; do not use `public`, `dist`, or `.vercel/output`
 5. Deploy after env vars are set (step 2)
 
 **Build log must show** `@opswatch/api vercel-build`, `prisma generate`, `tsc`.  
 **Must not show** `@opswatch/web build`, `next build`, or `No Output Directory named "public"`.
 
-If Vercel reports **No Output Directory named "public" found**, the dashboard still has **Output Directory** set to `public`. Clear it completely — this API uses `apps/api/api/index.ts` as a serverless function and does not produce static output.
+If Vercel reports **No Output Directory named "public" found**, the project is still treated as a static **Other** build. Use **Express** framework (`"framework": "express"`) and ensure **Output Directory** override is off. Express deploys the exported app as a Vercel Function — no static output folder is required.
 
 ## 2. API environment variables (Vercel)
 
