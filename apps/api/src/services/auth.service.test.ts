@@ -42,7 +42,9 @@ describe("changePassword", () => {
       })
     });
 
-    const updatedHash = prismaMock.user.update.mock.calls[0][0].data.passwordHash as string;
+    const updateCall = prismaMock.user.update.mock.calls[0]?.[0];
+    expect(updateCall).toBeDefined();
+    const updatedHash = updateCall!.data.passwordHash as string;
     expect(await bcrypt.compare("NewSecurePassword99!", updatedHash)).toBe(true);
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
