@@ -30,7 +30,11 @@ export const app = express();
 
 app.use(
   cors({
-    origin: ["http://localhost:3000", "https://ops-watch-web.vercel.app"],
+    origin: [
+      "http://localhost:3000",
+      "https://ops-watch-web.vercel.app",
+      "https://opswatch.okanggroup.com"
+    ],
     credentials: true
   })
 );
