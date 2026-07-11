@@ -18,11 +18,13 @@ Restore login and API access using **Vercel (API) + Supabase (database)**. Do no
 4. **Override dashboard settings** if they conflict with the repo file:
    - **Install Command:** `cd ../.. && pnpm install --prod=false`
    - **Build Command:** `cd ../.. && pnpm --filter @opswatch/api vercel-build`
-   - **Output Directory:** leave blank
+   - **Output Directory:** leave **blank** (clear any override such as `public`, `dist`, or `.vercel/output`)
 5. Deploy after env vars are set (step 2)
 
 **Build log must show** `@opswatch/api vercel-build`, `prisma generate`, `tsc`.  
-**Must not show** `@opswatch/web build` or `next build`.
+**Must not show** `@opswatch/web build`, `next build`, or `No Output Directory named "public"`.
+
+If Vercel reports **No Output Directory named "public" found**, the dashboard still has **Output Directory** set to `public`. Clear it completely — this API uses `apps/api/api/index.ts` as a serverless function and does not produce static output.
 
 ## 2. API environment variables (Vercel)
 
