@@ -1,11 +1,12 @@
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x", "debian-openssl-3.0.x"]
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x", "debian-openssl-3.0.x", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Alert {
@@ -25,6 +26,8 @@ model Alert {
   assignedToUserId String?
   category         AlertCategory   @default(AVAILABILITY)
   integrationId    String?
+  maintenanceSuppressed Boolean    @default(false)
+  maintenanceWindowId String?
   User             User?           @relation(fields: [assignedToUserId], references: [id])
   Project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   Service          Service?        @relation(fields: [serviceId], references: [id])
@@ -122,20 +125,25 @@ model Heartbeat {
 }
 
 model Incident {
-  id              String          @id
-  projectId       String
-  title           String
-  severity        AlertSeverity
-  status          IncidentStatus  @default(OPEN)
-  openedAt        DateTime        @default(now())
-  acknowledgedAt  DateTime?
-  resolvedAt      DateTime?
-  rootCause       String?
-  resolutionNotes String?
-  Project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  IncidentAlert   IncidentAlert[]
+  id                   String          @id
+  projectId            String
+  correlationGroupId   String?
+  title                String
+  severity             AlertSeverity
+  status               IncidentStatus  @default(OPEN)
+  openedAt             DateTime        @default(now())
+  acknowledgedAt       DateTime?
+  resolvedAt           DateTime?
+  rootCause            String?
+  resolutionNotes      String?
+  ChangeEvent          ChangeEvent[]
+  IncidentTimelineEvent IncidentTimelineEvent[]
+  Project              Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  IncidentAlert        IncidentAlert[]
+  CorrelationGroup     OrganizationIncidentGroup? @relation(fields: [correlationGroupId], references: [id], onDelete: SetNull)
 
   @@index([projectId, openedAt])
+  @@index([correlationGroupId])
 }
 
 model IncidentAlert {
@@ -207,6 +215,23 @@ model Organization {
   Project            Project[]
   StatusPage         StatusPage[]
   User               User[]
+  IncidentGroups     OrganizationIncidentGroup[]
+  MaintenanceWindows MaintenanceWindow[]
+}
+
+model OrganizationIncidentGroup {
+  id                 String   @id
+  organizationId     String
+  correlationKey     String
+  rootCauseSummary   String?
+  primaryIncidentId  String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime
+  Organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Incidents          Incident[]
+
+  @@index([organizationId, correlationKey])
+  @@index([organizationId, createdAt])
 }
 
 model Project {
@@ -216,7 +241,17 @@ model Project {
   clientName          String
   description         String?
   environment         String
-  status              ProjectStatus         @default(HEALTHY)
+  status              ProjectStatus         @default(UNKNOWN)
+  healthReason        String?
+  healthSource        String?
+  lastCompletedCheckAt DateTime?
+  lastSignalAt        DateTime?
+  monitoringEnabled   Boolean               @default(true)
+  monitoringStartedAt DateTime?
+  automationMode      String                @default("OBSERVE")
+  projectOwner        String?
+  operationalContact  String?
+  defaultRegion       String?
   frontendUrl         String?
   backendUrl          String?
   repoUrl             String?
@@ -230,14 +265,21 @@ model Project {
   updatedAt           DateTime
   organizationId      String?
   Alert               Alert[]
+  ChangeEvent         ChangeEvent[]
   Event               Event[]
   Heartbeat           Heartbeat[]
   Incident            Incident[]
+  IncidentTimelineEvent IncidentTimelineEvent[]
   NotificationChannel NotificationChannel[]
   Organization        Organization?         @relation(fields: [organizationId], references: [id])
   ProjectIntegration  ProjectIntegration[]
+  ServiceDependency   ServiceDependency[]
   Service             Service[]
+  SLODefinition       SLODefinition[]
+  SLOWindow           SLOWindow[]
   StatusPage          StatusPage[]
+  MaintenanceWindows  MaintenanceWindow[]
+  ProjectBilling      ProjectBilling?
 
   @@index([organizationId])
 }
@@ -283,10 +325,156 @@ model RemediationLog {
   executionMode       String            @default("MANUAL")
   policySnapshot      Json?
   suppressionSnapshot Json?
+  idempotencyKey      String?
 
+  @@unique([organizationId, idempotencyKey])
   @@index([organizationId, action, status])
   @@index([organizationId, createdAt])
   @@index([organizationId, executionMode, createdAt])
+  @@index([incidentId, status, createdAt])
+}
+
+model RemediationLock {
+  id             String   @id
+  lockKey        String   @unique
+  organizationId String
+  incidentId     String?
+  action         String?
+  holder         String
+  acquiredAt     DateTime @default(now())
+  expiresAt      DateTime
+
+  @@index([expiresAt])
+  @@index([organizationId, incidentId])
+}
+
+model AutomationPlaybook {
+  id          String   @id
+  key         String   @unique
+  name        String
+  description String
+  riskLevel   String   @default("LOW")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  Versions    AutomationPlaybookVersion[]
+}
+
+model AutomationPlaybookVersion {
+  id             String   @id
+  playbookId     String
+  version        Int
+  definitionJson Json?
+  status         AutomationPlaybookVersionStatus @default(DRAFT)
+  submittedById  String?
+  submittedAt    DateTime?
+  reviewedById   String?
+  reviewedAt     DateTime?
+  reviewReason   String?
+  approvedAt     DateTime?
+  deprecatedAt   DateTime?
+  publishedAt    DateTime @default(now())
+  publishedBy    String?
+  Playbook       AutomationPlaybook @relation(fields: [playbookId], references: [id], onDelete: Cascade)
+  Steps          AutomationPlaybookStep[]
+  Runs           AutomationRun[]
+
+  @@unique([playbookId, version])
+  @@index([playbookId, status])
+}
+
+model AutomationPlaybookStep {
+  id                 String @id
+  versionId          String
+  stepOrder          Int
+  action             String
+  targetServiceKey   String?
+  approvalRequired   Boolean @default(false)
+  description        String
+  Version            AutomationPlaybookVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, stepOrder])
+}
+
+model AutomationRun {
+  id                 String   @id
+  organizationId     String
+  projectId          String
+  incidentId         String
+  versionId          String
+  approvedVersionId  String?
+  executionMode      String   @default("OBSERVE")
+  status             String   @default("PLANNED")
+  planJson           Json
+  analysisMode       String?
+  confidence         Float?
+  riskLevel          String?
+  reason             String?
+  createdBy          String?
+  approvedBy         String?
+  approvedAt         DateTime?
+  cancelledBy        String?
+  cancelledAt        DateTime?
+  currentStepOrder   Int?
+  supersededByRunId  String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime
+  Version            AutomationPlaybookVersion @relation(fields: [versionId], references: [id])
+  Steps              AutomationRunStep[]
+  Approvals          AutomationApproval[]
+  Outcomes           AutomationOutcome[]
+
+  @@index([organizationId, incidentId, createdAt])
+  @@index([projectId, status])
+}
+
+model AutomationRunStep {
+  id                 String @id
+  runId              String
+  stepOrder          Int
+  action             String
+  targetServiceId    String?
+  approvalRequired   Boolean @default(false)
+  status             String  @default("PENDING")
+  remediationLogId   String?
+  resultJson         Json?
+  Run                AutomationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, stepOrder])
+}
+
+model AutomationApproval {
+  id         String   @id
+  runId      String
+  approvedBy String?
+  reason     String
+  decision   String
+  scope      String   @default("RUN")
+  createdAt  DateTime @default(now())
+  Run        AutomationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model AutomationPolicy {
+  id             String   @id
+  organizationId String
+  policyKey      String
+  enabled        Boolean  @default(false)
+  executionMode  String   @default("OBSERVE")
+  updatedBy      String?
+  updatedAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, policyKey])
+}
+
+model AutomationOutcome {
+  id          String   @id
+  runId       String
+  summary     String
+  success     Boolean
+  detailsJson Json?
+  createdAt   DateTime @default(now())
+  Run         AutomationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 }
 
 model Service {
@@ -294,15 +482,129 @@ model Service {
   projectId  String
   name       String
   type       ServiceType
-  status     ProjectStatus @default(HEALTHY)
+  status     ProjectStatus @default(UNKNOWN)
+  criticality String       @default("MEDIUM")
   baseUrl    String?
   isCritical Boolean       @default(false)
   createdAt  DateTime      @default(now())
   updatedAt  DateTime
   Alert      Alert[]
   Check      Check[]
+  ChangeEvent ChangeEvent[]
   Event      Event[]
+  IncomingDependencies ServiceDependency[] @relation("DependencyToService")
+  OutgoingDependencies ServiceDependency[] @relation("DependencyFromService")
   Project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  SLODefinition SLODefinition[]
+  MaintenanceWindowServices MaintenanceWindowService[]
+}
+
+model ChangeEvent {
+  id             String   @id
+  organizationId String
+  projectId      String?
+  serviceId      String?
+  incidentId     String?
+  eventType      String
+  actor          String?
+  summary        String
+  detailsJson    Json?
+  occurredAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  Incident       Incident? @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  Project        Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Service        Service?  @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, occurredAt])
+  @@index([projectId, occurredAt])
+  @@index([serviceId, occurredAt])
+  @@index([incidentId, occurredAt])
+}
+
+model ServiceDependency {
+  id             String   @id
+  projectId      String
+  fromServiceId  String
+  toServiceId    String
+  dependencyType String   @default("RUNTIME")
+  criticality    String   @default("HIGH")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+  FromService    Service  @relation("DependencyFromService", fields: [fromServiceId], references: [id], onDelete: Cascade)
+  Project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ToService      Service  @relation("DependencyToService", fields: [toServiceId], references: [id], onDelete: Cascade)
+
+  @@unique([fromServiceId, toServiceId, dependencyType])
+  @@index([projectId, isActive])
+  @@index([fromServiceId])
+  @@index([toServiceId])
+}
+
+model IncidentTimelineEvent {
+  id         String        @id
+  incidentId String
+  projectId  String
+  eventType  String
+  summary    String
+  sourceType String?
+  sourceId   String?
+  severity   AlertSeverity?
+  payloadJson Json?
+  occurredAt DateTime      @default(now())
+  createdAt  DateTime      @default(now())
+  Incident   Incident      @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  Project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId, occurredAt])
+  @@index([projectId, occurredAt])
+  @@index([sourceType, sourceId])
+}
+
+model SLODefinition {
+  id                 String    @id
+  projectId          String
+  serviceId          String?
+  targetType         String    @default("SERVICE")
+  targetId           String?
+  name               String
+  sliType            String
+  targetPct          Float
+  windowDays         Int       @default(30)
+  windowType         String    @default("ROLLING")
+  latencyThresholdMs Int?
+  enabled            Boolean   @default(true)
+  archivedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime
+  Project            Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  Service            Service?  @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  SLOWindow          SLOWindow[]
+
+  @@index([projectId, enabled])
+  @@index([projectId, archivedAt])
+  @@index([serviceId, enabled])
+}
+
+model SLOWindow {
+  id              String        @id
+  sloDefinitionId String
+  projectId       String
+  windowStart     DateTime
+  windowEnd       DateTime
+  windowMinutes   Int
+  availabilityPct Float?
+  errorRatePct    Float?
+  p95LatencyMs    Int?
+  burnRate        Float?
+  status          String        @default("HEALTHY")
+  createdAt       DateTime      @default(now())
+  Project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  SLODefinition   SLODefinition @relation(fields: [sloDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([sloDefinitionId, windowStart, windowEnd])
+  @@index([projectId, windowEnd])
+  @@index([status, windowEnd])
 }
 
 model StatusPage {
@@ -504,10 +806,49 @@ enum IntegrationValidationStatus {
 }
 
 enum ProjectStatus {
+  UNKNOWN
   HEALTHY
   DEGRADED
   DOWN
   PAUSED
+  MAINTENANCE
+  RECOVERING
+}
+
+enum BillingPlanType {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+  CUSTOM
+}
+
+enum BillingStatus {
+  ACTIVE
+  TRIAL
+  PAST_DUE
+  CANCELLED
+  SUSPENDED
+}
+
+model ProjectBilling {
+  id                 String          @id
+  projectId          String          @unique
+  plan               BillingPlanType @default(FREE)
+  monthlyPrice       Float           @default(0)
+  currency           String          @default("GBP")
+  billingStatus      BillingStatus   @default(ACTIVE)
+  billingStartDate   DateTime?
+  renewalDate        DateTime?
+  dataRetentionDays  Int             @default(30)
+  checkLimit         Int?
+  userLimit          Int?
+  automationRunLimit Int?
+  customLimits       Json?
+  internalNotes      String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime
+  Project            Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 enum RemediationStatus {
@@ -522,6 +863,10 @@ enum RemediationStatus {
 }
 
 enum ServiceType {
+  APP
+  MODULE
+  WORKFLOW
+  COMPONENT
   FRONTEND
   API
   DATABASE
@@ -530,4 +875,55 @@ enum ServiceType {
   EMAIL
   PAYMENT
   THIRD_PARTY
+}
+
+enum MaintenanceWindowStatus {
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum AutomationPlaybookVersionStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  DEPRECATED
+}
+
+model MaintenanceWindow {
+  id                 String                   @id
+  organizationId     String
+  projectId          String?
+  name               String
+  description        String?
+  startsAt           DateTime
+  endsAt             DateTime
+  status             MaintenanceWindowStatus    @default(SCHEDULED)
+  suppressAlerts     Boolean                  @default(true)
+  suppressIncidents  Boolean                  @default(false)
+  allowAutonomous    Boolean                  @default(false)
+  createdById        String
+  cancelledById      String?
+  cancelledAt        DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime
+  Organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project            Project?                 @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Services           MaintenanceWindowService[]
+
+  @@index([organizationId, startsAt])
+  @@index([organizationId, status])
+  @@index([projectId, startsAt])
+}
+
+model MaintenanceWindowService {
+  id                  String            @id
+  maintenanceWindowId String
+  serviceId           String
+  MaintenanceWindow   MaintenanceWindow @relation(fields: [maintenanceWindowId], references: [id], onDelete: Cascade)
+  Service             Service           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([maintenanceWindowId, serviceId])
 }
