@@ -21,15 +21,15 @@ Restore login and API access using **Vercel (API) + Supabase (database)**. Do no
    - **Output Directory:** leave blank
 5. Deploy after env vars are set (step 2)
 
-**Build log must show** `@opswatch/api vercel-build`, `prisma generate`, `prisma migrate deploy`, `tsc`.  
+**Build log must show** `@opswatch/api vercel-build`, `prisma generate`, `tsc`.  
 **Must not show** `@opswatch/web build` or `next build`.
 
 ## 2. API environment variables (Vercel)
 
 | Variable | Purpose |
 |----------|---------|
-| `DATABASE_URL` | Supabase **transaction pooler** URI (runtime) |
-| `DIRECT_URL` | Supabase **direct** URI (migrations at build) |
+| `DATABASE_URL` | Supabase **transaction pooler** (port **6543**, `?pgbouncer=true`) — runtime |
+| `DIRECT_URL` | Supabase **session pooler** (port **5432** on `*.pooler.supabase.com`) — migrations only |
 | `JWT_SECRET` | Auth signing (≥32 chars, production-only value) |
 | `WORKER_INTERNAL_SECRET` | Secured internal routes (≥16 chars) |
 | `OPSWATCH_WEB_URL` | `https://opswatch.okanggroup.com` |
@@ -39,10 +39,18 @@ Restore login and API access using **Vercel (API) + Supabase (database)**. Do no
 | `OPENAI_API_KEY` | Optional; only if LLM features enabled |
 | Integration/webhook secrets | As used by your deployment |
 
-**Supabase connection strings**
+### Supabase connection strings (important)
 
-- `DATABASE_URL`: Project Settings → Database → Connection string → **URI** → **Transaction pooler**
-- `DIRECT_URL`: Same page → **Direct connection** (port 5432)
+Vercel often **cannot reach** `db.<ref>.supabase.co:5432` (P1001). Use the **pooler** hostnames from Supabase → Project Settings → Database:
+
+| Variable | Supabase UI | Example shape |
+|----------|-------------|---------------|
+| `DATABASE_URL` | **Transaction pooler** → URI | `postgresql://postgres.<ref>:<pass>@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true` |
+| `DIRECT_URL` | **Session pooler** → URI (port 5432) | `postgresql://postgres.<ref>:<pass>@aws-0-<region>.pooler.supabase.com:5432/postgres` |
+
+Do **not** use `db.<ref>.supabase.co` for `DATABASE_URL` or Vercel runtime on the free tier unless you have Supabase IPv4 add-on.
+
+Also confirm the Supabase project is **not paused** (Dashboard → project status).
 
 ## 3. Build behaviour
 
@@ -50,8 +58,17 @@ Restore login and API access using **Vercel (API) + Supabase (database)**. Do no
 
 1. Builds `@opswatch/shared`
 2. `prisma generate`
-3. `prisma migrate deploy` (uses `DIRECT_URL` via schema)
-4. `tsc` compile
+3. `tsc` compile
+
+**Migrations are not run during Vercel build** (avoids P1001/network failures and is safer for production). Run once before or after first deploy:
+
+```bash
+cd apps/api
+# Use DIRECT_URL / session pooler from your machine or CI
+pnpm db:migrate
+```
+
+Optional one-off with migrate in build: `pnpm vercel-build:migrate` (only after pooler URLs are verified).
 
 Serverless entry: `apps/api/api/index.ts` exports the Express `app` (no `listen()`).
 
