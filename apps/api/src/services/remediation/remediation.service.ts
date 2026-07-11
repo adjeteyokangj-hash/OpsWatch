@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { randomUUID } from "crypto";
 import { logger } from "../../config/logger";
@@ -126,7 +127,7 @@ const emitEscalationHook = async (input: {
         retryPolicy: input.result.details?.retryPolicy ?? null,
         confidenceSnapshot: input.result.details?.confidenceSnapshot ?? null,
         summary: input.result.summary
-      }
+      } as unknown as Prisma.InputJsonValue
     }
   });
 };
