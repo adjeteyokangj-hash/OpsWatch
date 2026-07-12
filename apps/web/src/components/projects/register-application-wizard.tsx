@@ -104,13 +104,37 @@ const getJourneySteps = (step: WizardStep, isConnected: boolean): JourneyStep[] 
 };
 
 function ApiKeyCopyField({ apiKey, onCopy }: { apiKey: string; onCopy: () => void | Promise<void> }) {
+  const [copied, setCopied] = useState(false);
+  const resetCopiedRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetCopiedRef.current) clearTimeout(resetCopiedRef.current);
+    };
+  }, []);
+
+  const handleCopy = async () => {
+    await onCopy();
+    setCopied(true);
+    if (resetCopiedRef.current) clearTimeout(resetCopiedRef.current);
+    resetCopiedRef.current = setTimeout(() => {
+      setCopied(false);
+      resetCopiedRef.current = null;
+    }, 2000);
+  };
+
   return (
     <label>
       API key
       <div className="api-key-copy-row">
         <input value={apiKey} readOnly className="api-key-copy-input" />
-        <button type="button" className="secondary-button api-key-copy-button" onClick={() => void onCopy()} data-action="local-ui">
-          Copy
+        <button
+          type="button"
+          className={`secondary-button api-key-copy-button${copied ? " api-key-copy-button--copied" : ""}`}
+          onClick={() => void handleCopy()}
+          data-action="local-ui"
+        >
+          {copied ? "✓ Copied" : "Copy"}
         </button>
       </div>
       <span className="warn-text api-key-once-warning">

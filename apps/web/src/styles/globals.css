@@ -1415,6 +1415,11 @@ h1 {
   white-space: nowrap;
 }
 
+.api-key-copy-button--copied {
+  border-color: color-mix(in srgb, var(--healthy) 45%, var(--line));
+  color: var(--healthy);
+}
+
 .api-key-once-warning {
   display: block;
   margin-top: 8px;
