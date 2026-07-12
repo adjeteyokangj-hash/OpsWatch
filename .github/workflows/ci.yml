@@ -73,6 +73,9 @@ jobs:
       - name: Seed database
         run: pnpm --filter @opswatch/api db:seed
 
+      - name: Build shared package
+        run: pnpm --filter @opswatch/shared build
+
       - name: Lint
         run: pnpm lint
 
