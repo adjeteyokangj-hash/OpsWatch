@@ -36,23 +36,38 @@ export const login = async (
   password: string,
   context: { ipAddress?: string; userAgent?: string } = {}
 ): Promise<{ user: SessionUser; session: CreatedSession }> => {
-  const normalizedEmail = email.trim().toLowerCase();
-  const user = await prisma.user.findFirst({
-    where: { email: { equals: normalizedEmail, mode: "insensitive" } }
-  });
-  if (!user || !user.isActive) {
+  const trimmedEmail = email.trim();
+  const normalizedEmail = trimmedEmail.toLowerCase();
+
+  const user =
+    (await prisma.user.findUnique({ where: { email: trimmedEmail } })) ??
+    (await prisma.user.findUnique({ where: { email: normalizedEmail } })) ??
+    (await prisma.user.findFirst({
+      where: { email: { equals: trimmedEmail, mode: "insensitive" } }
+    }));
+
+  if (!user) {
+    console.error("LOGIN ERROR: user not found", { email: normalizedEmail });
+    throw new Error("Invalid credentials");
+  }
+
+  if (!user.isActive) {
+    console.error("LOGIN ERROR: user inactive", { email: user.email, userId: user.id });
     throw new Error("Invalid credentials");
   }
 
   const isValid = await bcrypt.compare(password, user.passwordHash);
   if (!isValid) {
+    console.error("LOGIN ERROR: password mismatch", {
+      email: user.email,
+      userId: user.id,
+      hashLength: user.passwordHash.length
+    });
     throw new Error("Invalid credentials");
   }
 
-  console.log("Login: password valid, revoking prior sessions for", user.id);
   await revokeAllUserSessions(user.id, "LOGIN_ROTATION");
 
-  console.log("Login: creating session for", user.id);
   const session = await createUserSession({
     userId: user.id,
     ipAddress: context.ipAddress,
