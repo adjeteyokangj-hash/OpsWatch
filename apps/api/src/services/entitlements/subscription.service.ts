@@ -98,6 +98,10 @@ export const ensureDefaultSubscription = async (
       planCode: existing.Plan.code,
       planName: existing.Plan.name,
       subscriptionStatus: existing.status,
+      accessMode: "FULL" as const,
+      billingWarning: null,
+      allowMutations: true,
+      allowMonitoringExecution: true,
       entitlements: mapSubscriptionEntitlements(existing.Plan.PlanEntitlement)
     };
   }
@@ -126,6 +130,10 @@ export const ensureDefaultSubscription = async (
     planCode: subscription.Plan.code,
     planName: subscription.Plan.name,
     subscriptionStatus: subscription.status,
+    accessMode: "FULL" as const,
+    billingWarning: null,
+    allowMutations: true,
+    allowMonitoringExecution: true,
     entitlements: mapSubscriptionEntitlements(subscription.Plan.PlanEntitlement)
   };
 };
@@ -215,13 +223,19 @@ export const getSubscriptionSummary = async (organizationId: string) => {
           trialEndsAt: subscription.trialEndsAt,
           currentPeriodStart: subscription.currentPeriodStart,
           currentPeriodEnd: subscription.currentPeriodEnd,
-          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+          stripeCustomerId: subscription.stripeCustomerId,
+          stripeSubscriptionId: subscription.stripeSubscriptionId,
+          pendingSync: Boolean(subscription.stripeSubscriptionId && subscription.status === "SUSPENDED")
         }
       : null,
     plan: {
       code: entitlements.planCode,
       name: entitlements.planName
     },
+    accessMode: entitlements.accessMode,
+    billingWarning: entitlements.billingWarning,
+    allowMutations: entitlements.allowMutations,
     entitlements: entitlements.entitlements,
     entitlementsByDomain: groupEntitlementsByDomain(entitlements.entitlements),
     remediationGovernance: governance,

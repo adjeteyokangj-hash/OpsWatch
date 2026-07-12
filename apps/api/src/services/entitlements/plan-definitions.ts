@@ -92,7 +92,8 @@ export const PLAN_DEFINITIONS: PlanDefinition[] = [
       entitlement(ENTITLEMENT.REMEDIATION_AUTONOMOUS, false),
       entitlement(ENTITLEMENT.SECURITY_MTLS, false),
       entitlement(ENTITLEMENT.SECURITY_SSO, false),
-      entitlement(ENTITLEMENT.API_ACCESS, false)
+      entitlement(ENTITLEMENT.API_ACCESS, false),
+      entitlement(ENTITLEMENT.RETENTION_INCIDENT_MEMORY_DAYS, true, { retentionDays: 90 })
     ]
   },
   {
@@ -122,7 +123,8 @@ export const PLAN_DEFINITIONS: PlanDefinition[] = [
       entitlement(ENTITLEMENT.REMEDIATION_AUTONOMOUS, false),
       entitlement(ENTITLEMENT.SECURITY_MTLS, false),
       entitlement(ENTITLEMENT.SECURITY_SSO, false),
-      entitlement(ENTITLEMENT.API_ACCESS, false)
+      entitlement(ENTITLEMENT.API_ACCESS, false),
+      entitlement(ENTITLEMENT.RETENTION_INCIDENT_MEMORY_DAYS, true, { retentionDays: 90 })
     ]
   },
   {
@@ -152,7 +154,8 @@ export const PLAN_DEFINITIONS: PlanDefinition[] = [
       entitlement(ENTITLEMENT.REMEDIATION_AUTONOMOUS, false),
       entitlement(ENTITLEMENT.SECURITY_MTLS, false),
       entitlement(ENTITLEMENT.SECURITY_SSO, false),
-      entitlement(ENTITLEMENT.API_ACCESS, true)
+      entitlement(ENTITLEMENT.API_ACCESS, true),
+      entitlement(ENTITLEMENT.RETENTION_INCIDENT_MEMORY_DAYS, true, { retentionDays: 180 })
     ]
   },
   {
@@ -183,7 +186,8 @@ export const PLAN_DEFINITIONS: PlanDefinition[] = [
       entitlement(ENTITLEMENT.REMEDIATION_AUTONOMOUS, true),
       entitlement(ENTITLEMENT.SECURITY_MTLS, true),
       entitlement(ENTITLEMENT.SECURITY_SSO, true),
-      entitlement(ENTITLEMENT.API_ACCESS, true)
+      entitlement(ENTITLEMENT.API_ACCESS, true),
+      entitlement(ENTITLEMENT.RETENTION_INCIDENT_MEMORY_DAYS, true, { retentionDays: 365 })
     ]
   },
   {
@@ -213,7 +217,8 @@ export const PLAN_DEFINITIONS: PlanDefinition[] = [
       entitlement(ENTITLEMENT.REMEDIATION_AUTONOMOUS, true),
       entitlement(ENTITLEMENT.SECURITY_MTLS, true),
       entitlement(ENTITLEMENT.SECURITY_SSO, true),
-      entitlement(ENTITLEMENT.API_ACCESS, true)
+      entitlement(ENTITLEMENT.API_ACCESS, true),
+      entitlement(ENTITLEMENT.RETENTION_INCIDENT_MEMORY_DAYS, true, { retentionDays: null })
     ]
   }
 ];

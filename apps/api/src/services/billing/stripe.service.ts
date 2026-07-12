@@ -8,6 +8,13 @@ import type { PlanCode } from "../entitlements/plan-definitions";
 
 export type BillingInterval = "monthly" | "annual";
 
+export class StripeWebhookProcessingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StripeWebhookProcessingError";
+  }
+}
+
 let stripeClient: Stripe | null = null;
 
 export const isStripeConfigured = (): boolean => Boolean(process.env.STRIPE_SECRET_KEY);
@@ -33,8 +40,9 @@ const mapStripeStatus = (status: Stripe.Subscription.Status): SubscriptionStatus
       return "TRIAL";
     case "past_due":
       return "PAST_DUE";
-    case "canceled":
     case "unpaid":
+      return "UNPAID";
+    case "canceled":
       return "CANCELLED";
     case "incomplete":
     case "incomplete_expired":
@@ -95,9 +103,21 @@ export const createCheckoutSession = async (input: {
   planCode: PlanCode;
   interval: BillingInterval;
   email?: string;
-}): Promise<{ url: string }> => {
+}): Promise<{ url: string; reusedPortal?: boolean }> => {
   await seedPlans();
   const stripe = getStripe();
+
+  const existingSubscription = await prisma.subscription.findUnique({
+    where: { organizationId: input.organizationId }
+  });
+
+  if (
+    existingSubscription?.stripeSubscriptionId &&
+    ["ACTIVE", "TRIAL", "PAST_DUE"].includes(existingSubscription.status)
+  ) {
+    const portal = await createBillingPortalSession({ organizationId: input.organizationId });
+    return { url: portal.url, reusedPortal: true };
+  }
 
   const plan = await prisma.plan.findUnique({ where: { code: input.planCode } });
   if (!plan) {
@@ -171,9 +191,16 @@ const syncSubscriptionFromStripe = async (stripeSubscription: Stripe.Subscriptio
 
   const item = stripeSubscription.items.data[0];
   const priceId = item?.price?.id ?? null;
+
+  if (priceId) {
+    const plan = await findPlanByPriceId(priceId);
+    if (!plan) {
+      throw new StripeWebhookProcessingError(`Unknown Stripe price ID: ${priceId}`);
+    }
+  }
+
   const plan = priceId ? await findPlanByPriceId(priceId) : null;
   const status = mapStripeStatus(stripeSubscription.status);
-  // Stripe moved billing period fields onto subscription items in recent API versions.
   const periodStartUnix = item?.current_period_start ?? stripeSubscription.start_date;
   const periodEndUnix = item?.current_period_end ?? null;
   const periodStart = periodStartUnix ? new Date(periodStartUnix * 1000) : null;
@@ -186,11 +213,9 @@ const syncSubscriptionFromStripe = async (stripeSubscription: Stripe.Subscriptio
   const existing = await prisma.subscription.findUnique({ where: { organizationId } });
   const planId = plan?.id ?? existing?.planId;
   if (!planId) {
-    logger.warn("Could not resolve plan for Stripe subscription", {
-      organizationId,
-      priceId
-    });
-    return;
+    throw new StripeWebhookProcessingError(
+      `Could not resolve plan for Stripe subscription ${stripeSubscription.id}`
+    );
   }
 
   await prisma.subscription.upsert({
@@ -252,7 +277,40 @@ export const constructStripeEvent = (rawBody: Buffer, signature: string): Stripe
   return getStripe().webhooks.constructEvent(rawBody, signature, secret);
 };
 
-export const handleStripeEvent = async (event: Stripe.Event): Promise<void> => {
+const beginWebhookEvent = async (event: Stripe.Event): Promise<{ duplicate: boolean; recordId: string }> => {
+  const existing = await prisma.stripeWebhookEvent.findUnique({
+    where: { stripeEventId: event.id }
+  });
+  if (existing?.status === "PROCESSED") {
+    return { duplicate: true, recordId: existing.id };
+  }
+  if (existing) {
+    return { duplicate: false, recordId: existing.id };
+  }
+
+  const record = await prisma.stripeWebhookEvent.create({
+    data: {
+      id: randomUUID(),
+      stripeEventId: event.id,
+      eventType: event.type,
+      status: "PROCESSING"
+    }
+  });
+  return { duplicate: false, recordId: record.id };
+};
+
+const finishWebhookEvent = async (
+  recordId: string,
+  status: "PROCESSED" | "FAILED" | "SKIPPED",
+  error?: string
+): Promise<void> => {
+  await prisma.stripeWebhookEvent.update({
+    where: { id: recordId },
+    data: { status, error: error ?? null, processedAt: new Date() }
+  });
+};
+
+const processStripeEvent = async (event: Stripe.Event): Promise<void> => {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -281,5 +339,22 @@ export const handleStripeEvent = async (event: Stripe.Event): Promise<void> => {
     }
     default:
       logger.info(`Unhandled Stripe event type: ${event.type}`);
+  }
+};
+
+export const handleStripeEvent = async (event: Stripe.Event): Promise<void> => {
+  const { duplicate, recordId } = await beginWebhookEvent(event);
+  if (duplicate) {
+    logger.info(`Skipping duplicate Stripe webhook ${event.id} (${event.type})`);
+    return;
+  }
+
+  try {
+    await processStripeEvent(event);
+    await finishWebhookEvent(recordId, "PROCESSED");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await finishWebhookEvent(recordId, error instanceof StripeWebhookProcessingError ? "SKIPPED" : "FAILED", message);
+    throw error;
   }
 };

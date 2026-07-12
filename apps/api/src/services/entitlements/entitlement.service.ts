@@ -4,7 +4,7 @@ import {
   EntitlementError,
   entitlementFeatureDisabled,
   entitlementLimitExceeded,
-  subscriptionInactive
+  subscriptionReadOnly
 } from "../../lib/entitlement-errors";
 import {
   ENTITLEMENT_KEYS,
@@ -14,6 +14,11 @@ import {
   type LimitEntitlementKey
 } from "./entitlement-keys";
 import { DEFAULT_LAUNCH_PLAN_CODE, type PlanCode } from "./plan-definitions";
+import {
+  applySubscriptionAccessToEntitlements,
+  resolveSubscriptionAccess,
+  type SubscriptionAccessMode
+} from "./subscription-access.service";
 
 export type ResolvedEntitlement = {
   featureKey: EntitlementKey;
@@ -28,6 +33,10 @@ export type OrganizationEntitlements = {
   planCode: string;
   planName: string;
   subscriptionStatus: string;
+  accessMode: SubscriptionAccessMode;
+  billingWarning: string | null;
+  allowMutations: boolean;
+  allowMonitoringExecution: boolean;
   entitlements: Record<string, ResolvedEntitlement>;
 };
 
@@ -96,20 +105,52 @@ export const getOrganizationEntitlements = async (
   if (!subscription) {
     const { ensureDefaultSubscription } = await import("./subscription.service");
     const created = await ensureDefaultSubscription(organizationId);
-    return created;
+    return {
+      ...created,
+      accessMode: "DEFAULT",
+      billingWarning: null,
+      allowMutations: true,
+      allowMonitoringExecution: true
+    };
   }
 
-  if (!["ACTIVE", "TRIAL"].includes(subscription.status)) {
-    throw subscriptionInactive(subscription.status);
+  const access = resolveSubscriptionAccess({
+    subscription,
+    planCode: subscription.Plan.code as PlanCode
+  });
+
+  let plan = subscription.Plan;
+  if (access.effectivePlanCode !== subscription.Plan.code) {
+    plan = await prisma.plan.findUniqueOrThrow({
+      where: { code: access.effectivePlanCode },
+      include: { PlanEntitlement: true }
+    });
   }
+
+  const entitlements = applySubscriptionAccessToEntitlements(
+    mapSubscriptionEntitlements(plan.PlanEntitlement),
+    access
+  );
 
   return {
     organizationId,
-    planCode: subscription.Plan.code,
-    planName: subscription.Plan.name,
+    planCode: access.effectivePlanCode,
+    planName: plan.name,
     subscriptionStatus: subscription.status,
-    entitlements: mapSubscriptionEntitlements(subscription.Plan.PlanEntitlement)
+    accessMode: access.mode,
+    billingWarning: access.billingWarning,
+    allowMutations: access.allowMutations,
+    allowMonitoringExecution: access.allowMonitoringExecution,
+    entitlements
   };
+};
+
+const assertMutationsAllowed = async (organizationId: string, increment: number): Promise<void> => {
+  if (increment <= 0) return;
+  const bundle = await getOrganizationEntitlements(organizationId);
+  if (!bundle.allowMutations) {
+    throw subscriptionReadOnly(bundle.subscriptionStatus);
+  }
 };
 
 export const getEntitlement = async (
@@ -154,6 +195,7 @@ export const assertWithinLimit = async (
   featureKey: LimitEntitlementKey,
   increment = 1
 ): Promise<void> => {
+  await assertMutationsAllowed(organizationId, increment);
   const entitlement = await getEntitlement(organizationId, featureKey);
   if (!entitlement.enabled) {
     throw entitlementFeatureDisabled(featureKey);

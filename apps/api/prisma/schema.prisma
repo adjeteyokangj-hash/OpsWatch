@@ -972,6 +972,7 @@ enum SubscriptionStatus {
   ACTIVE
   TRIAL
   PAST_DUE
+  UNPAID
   CANCELLED
   SUSPENDED
 }
@@ -1061,4 +1062,15 @@ model IncidentMemoryEntry {
   Organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, resolvedAt])
+}
+
+model StripeWebhookEvent {
+  id            String   @id
+  stripeEventId String   @unique
+  eventType     String
+  status        String
+  error         String?
+  processedAt   DateTime @default(now())
+
+  @@index([eventType, processedAt])
 }

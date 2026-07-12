@@ -29,8 +29,11 @@ type SubscriptionSummary = {
     currentPeriodStart: string | null;
     currentPeriodEnd: string | null;
     cancelAtPeriodEnd: boolean;
+    pendingSync?: boolean;
   } | null;
   plan: { code: string; name: string };
+  billingWarning?: string | null;
+  accessMode?: string;
   usage: Record<string, UsageRow>;
   availablePlans: AvailablePlan[];
 };
@@ -157,6 +160,14 @@ function SubscriptionPageContent() {
     <Shell>
       <Header title="Subscription" />
       {notice ? <section className="panel">{notice}</section> : null}
+      {summary?.billingWarning ? (
+        <section className="panel error-panel">{summary.billingWarning}</section>
+      ) : null}
+      {summary?.subscription?.pendingSync ? (
+        <section className="panel">
+          Checkout completed. Your subscription is syncing from Stripe and should update shortly.
+        </section>
+      ) : null}
       {error ? <section className="panel error-panel">{error}</section> : null}
 
       {loading ? (

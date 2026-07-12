@@ -37,6 +37,14 @@ export const entitlementFeatureDisabled = (featureKey: string): EntitlementError
     { featureKey }
   );
 
+export const subscriptionReadOnly = (status: string): EntitlementError =>
+  new EntitlementError(
+    "SUBSCRIPTION_READ_ONLY",
+    "Subscription is in read-only mode. Update billing to make changes.",
+    403,
+    { status }
+  );
+
 export const subscriptionInactive = (status: string): EntitlementError =>
   new EntitlementError(
     "SUBSCRIPTION_INACTIVE",

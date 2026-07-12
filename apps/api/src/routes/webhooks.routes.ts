@@ -37,7 +37,9 @@ webhooksRouter.post("/stripe", async (req: Request, res: Response): Promise<void
     await handleStripeEvent(event);
   } catch (error) {
     logger.error("Stripe webhook handling failed", { error: String(error), type: event.type });
-    res.status(500).json({ error: "Webhook handling failed" });
+    const status =
+      error instanceof Error && error.name === "StripeWebhookProcessingError" ? 400 : 500;
+    res.status(status).json({ error: "Webhook handling failed" });
     return;
   }
 
