@@ -36,8 +36,8 @@ jobs:
       RUN_DATABASE_E2E: "true"
       RUN_BROWSER_E2E: "true"
       OPSWATCH_WEB_URL: http://localhost:3000
-      NEXT_PUBLIC_OPSWATCH_API_URL: http://127.0.0.1:4000/api
-      PLAYWRIGHT_API_URL: http://127.0.0.1:4000/api
+      NEXT_PUBLIC_OPSWATCH_API_URL: http://localhost:4000/api
+      PLAYWRIGHT_API_URL: http://localhost:4000/api
       PLAYWRIGHT_LOGIN_EMAIL: ci-admin@opswatch.test
       PLAYWRIGHT_LOGIN_PASSWORD: OpsWatch!CI2026#Admin
       SEED_ADMIN_EMAIL: ci-admin@opswatch.test
@@ -102,7 +102,7 @@ jobs:
           pnpm --filter @opswatch/api start > /tmp/opswatch-api.log 2>&1 &
           echo $! > /tmp/opswatch-api.pid
           for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:4000/api/health/live >/dev/null; then
+            if curl -fsS http://localhost:4000/api/health/live >/dev/null; then
               echo "API is ready"
               exit 0
             fi
