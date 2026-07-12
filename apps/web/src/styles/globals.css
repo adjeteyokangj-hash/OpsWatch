@@ -1462,10 +1462,35 @@ h1 {
 }
 
 .register-wizard-modal {
-  max-width: 720px;
-  width: min(720px, 100%);
+  max-width: 800px;
+  width: min(800px, 100%);
   max-height: 90vh;
   overflow-y: auto;
+}
+
+.register-wizard-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.register-wizard-form-actions .primary-button {
+  min-width: 260px;
+  justify-content: center;
+}
+
+.register-wizard-success-banner {
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--healthy) 35%, var(--border));
+  background: color-mix(in srgb, var(--healthy) 8%, transparent);
+  color: var(--text);
+}
+
+.register-wizard-form .form-row {
+  grid-template-columns: 1fr;
 }
 
 .application-health-cell {

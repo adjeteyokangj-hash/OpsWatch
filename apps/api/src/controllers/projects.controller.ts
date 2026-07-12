@@ -154,7 +154,10 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 			projectName: row.name,
 			projectSlug: row.slug,
 			signingSecret: row.signingSecret,
-			environment: row.environment === "development" || row.environment === "staging" ? "test" : "live"
+			environment:
+				row.environment === "development" || row.environment === "staging" || row.environment === "testing"
+					? "test"
+					: "live"
 		});
 	} catch (error) {
 		console.error("INGEST_KEY_PROVISION_ERROR", error instanceof Error ? error.message : error);
@@ -271,7 +274,10 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 			projectName: row.name,
 			projectSlug: row.slug,
 			signingSecret: row.signingSecret,
-			environment: row.environment === "development" || row.environment === "staging" ? "test" : "live"
+			environment:
+				row.environment === "development" || row.environment === "staging" || row.environment === "testing"
+					? "test"
+					: "live"
 		});
 	} catch (error) {
 		console.error("INGEST_KEY_PROVISION_ERROR", error instanceof Error ? error.message : error);

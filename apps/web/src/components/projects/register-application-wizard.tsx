@@ -4,8 +4,9 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../lib/api";
 import { API_BASE_URL } from "../../lib/constants";
+import { formatApplicationId, maskSecret } from "../../lib/application-id";
 
-type WizardStep = "register" | "credentials" | "verification" | "finish";
+type WizardStep = "register" | "success" | "credentials" | "verification" | "finish";
 
 type IngestCredentials = {
   apiKey?: string;
@@ -58,15 +59,16 @@ const SDK_PACKAGE = "@opswatch/client";
 
 const STEP_LABELS: Record<WizardStep, string> = {
   register: "Register",
-  credentials: "API connection",
-  verification: "Verify connection",
+  success: "Registered",
+  credentials: "Connect",
+  verification: "Verify",
   finish: "Finish"
 };
 
 const EMPTY_FORM: RegisterForm = {
   name: "",
   clientName: "",
-  environment: "production",
+  environment: "development",
   publicUrl: ""
 };
 
@@ -116,6 +118,7 @@ export function RegisterApplicationWizard({
   const hasCredentials = Boolean(credentials && !credentials.error && credentials.apiKey);
   const latestHeartbeat = connection?.heartbeats?.[0] ?? null;
   const isConnected = Boolean(latestHeartbeat);
+  const applicationId = created ? formatApplicationId(created.id) : "";
 
   const clientSuggestions = useMemo(
     () => [...new Set(knownClients.map((value) => value.trim()).filter(Boolean))].sort(),
@@ -210,22 +213,27 @@ export function RegisterApplicationWizard({
 
       if (response.ingestCredentials?.error) {
         setError(response.ingestCredentials.error);
-        setStep("credentials");
+        setStep("success");
         await onCreated();
         return;
       }
 
       if (!response.ingestCredentials?.apiKey && !response.ingestCredentials?.reused) {
-        setError("Application created but ingest credentials were not returned. Check API logs and retry from application settings.");
+        setError("Application registered but ingest credentials were not returned. Continue to connection settings.");
       }
 
-      setStep("credentials");
+      setStep("success");
       await onCreated();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to register application");
     } finally {
       setSaving(false);
     }
+  };
+
+  const copyApiKey = async () => {
+    if (!credentials?.apiKey) return;
+    await navigator.clipboard.writeText(credentials.apiKey);
   };
 
   const copyCredentials = async () => {
@@ -249,32 +257,38 @@ export function RegisterApplicationWizard({
     onClose();
   };
 
-  const stepOrder: WizardStep[] = ["register", "credentials", "verification", "finish"];
+  const stepOrder: WizardStep[] = ["register", "success", "credentials", "verification", "finish"];
   const stepIndex = stepOrder.indexOf(step);
   const visibleSteps = step === "register" ? [] : stepOrder.slice(0, stepIndex + 1);
+
+  const stepTitle =
+    step === "register"
+      ? "Register application"
+      : step === "success"
+        ? "Application registered"
+        : step === "credentials"
+          ? "Connect application"
+          : step === "verification"
+            ? "Connection verification"
+            : "Application connected";
+
+  const stepDescription =
+    step === "register"
+      ? "Connect a new application to OpsWatch. Only the essentials are required — everything else is configured after the first heartbeat."
+      : step === "success"
+        ? "Your application is ready. Copy the API key when you are ready to connect."
+        : step === "credentials"
+          ? "Use these credentials to wire up the SDK and start sending heartbeats."
+          : step === "verification"
+            ? "Install the SDK and send a heartbeat. OpsWatch will detect your application automatically."
+            : "Secure connection established. Topology, health collection, and automation can be configured in application settings.";
 
   return (
     <div className="register-wizard">
       <div className="section-head">
         <div>
-          <h2>
-            {step === "register"
-              ? "Register application"
-              : step === "credentials"
-                ? "Application created"
-                : step === "verification"
-                  ? "Connection verification"
-                  : "Application connected"}
-          </h2>
-          <p>
-            {step === "register"
-              ? "Connect a new application to OpsWatch. Only the essentials are required — everything else is configured after the first heartbeat."
-              : step === "credentials"
-                ? "Copy these credentials into your application. They are shown only once."
-                : step === "verification"
-                  ? "Install the SDK and send a heartbeat. OpsWatch will detect your application automatically."
-                  : "Secure connection established. Topology, health collection, and automation can be configured in application settings."}
-          </p>
+          <h2>{stepTitle}</h2>
+          <p>{stepDescription}</p>
         </div>
         <button type="button" className="secondary-button" onClick={closeWizard} data-action="local-ui">
           Cancel
@@ -302,13 +316,13 @@ export function RegisterApplicationWizard({
       {error ? <div className="error-panel" style={{ marginBottom: "1rem" }}>{error}</div> : null}
 
       {step === "register" ? (
-        <form className="stack-form" onSubmit={(event) => void registerApplication(event)}>
+        <form className="stack-form register-wizard-form" onSubmit={(event) => void registerApplication(event)}>
           <label>
             Application name *
             <input
               value={form.name}
               onChange={(event) => updateName(event.target.value)}
-              placeholder="Sparkle"
+              placeholder="e.g. Noble Express, TrueNumeris, Sparkle, GlowLive Engine"
               required
               autoFocus
             />
@@ -321,7 +335,7 @@ export function RegisterApplicationWizard({
           </label>
 
           <label>
-            Client (optional)
+            Client / business unit (optional)
             <select
               value={clientMode}
               onChange={(event) => {
@@ -339,13 +353,13 @@ export function RegisterApplicationWizard({
               <option value="existing" disabled={clientSuggestions.length === 0}>
                 Select existing…
               </option>
-              <option value="new">+ New client</option>
+              <option value="new">+ New client / business unit</option>
             </select>
           </label>
 
           {clientMode === "existing" ? (
             <label>
-              Existing client
+              Existing client / business unit
               <select value={selectedClient} onChange={(event) => setSelectedClient(event.target.value)}>
                 {clientSuggestions.map((client) => (
                   <option key={client} value={client}>
@@ -358,7 +372,7 @@ export function RegisterApplicationWizard({
 
           {clientMode === "new" ? (
             <label>
-              New client name
+              New client / business unit
               <input
                 value={form.clientName}
                 onChange={(event) => setForm((current) => ({ ...current, clientName: event.target.value }))}
@@ -367,41 +381,83 @@ export function RegisterApplicationWizard({
             </label>
           ) : null}
 
-          <div className="form-row">
-            <label>
-              Environment *
-              <select
-                value={form.environment}
-                onChange={(event) => setForm((current) => ({ ...current, environment: event.target.value }))}
-              >
-                <option value="production">Production</option>
-                <option value="staging">Staging</option>
-                <option value="development">Development</option>
-              </select>
-            </label>
-            <label>
-              Public application URL (optional)
-              <input
-                value={form.publicUrl}
-                onChange={(event) => setForm((current) => ({ ...current, publicUrl: event.target.value }))}
-                placeholder="https://your-domain.com"
-                type="url"
-              />
-              <span className="field-hint">The public URL where users access this application.</span>
-            </label>
+          <label>
+            Environment *
+            <select
+              value={form.environment}
+              onChange={(event) => setForm((current) => ({ ...current, environment: event.target.value }))}
+            >
+              <option value="development">Development</option>
+              <option value="testing">Testing</option>
+              <option value="staging">Staging</option>
+              <option value="production">Production</option>
+            </select>
+          </label>
+
+          <label>
+            Public application URL (optional)
+            <input
+              value={form.publicUrl}
+              onChange={(event) => setForm((current) => ({ ...current, publicUrl: event.target.value }))}
+              placeholder="https://your-domain.com"
+              type="url"
+            />
+            <span className="field-hint">Leave blank for internal services.</span>
+          </label>
+
+          <div className="register-wizard-form-actions">
+            <button className="primary-button" type="submit" disabled={saving || !org} data-action="api" data-endpoint="/projects">
+              {saving ? "Registering…" : "Register application"}
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {step === "success" && created ? (
+        <div className="stack-form">
+          <div className="register-wizard-success-banner">
+            <strong>✓ {created.name} has been registered</strong>
           </div>
 
-          <button className="primary-button" type="submit" disabled={saving || !org} data-action="api" data-endpoint="/projects">
-            {saving ? "Registering…" : "Register application"}
-          </button>
-        </form>
+          <label>
+            Application ID
+            <input value={applicationId} readOnly />
+          </label>
+
+          {hasCredentials && credentials?.apiKey ? (
+            <>
+              <label>
+                API key
+                <input value={maskSecret(credentials.apiKey)} readOnly />
+              </label>
+              <div className="register-wizard-form-actions">
+                <button type="button" className="secondary-button" onClick={() => void copyApiKey()} data-action="local-ui">
+                  Copy API key
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="warn-text">No new API key was issued. You can create one under Organization settings.</p>
+          )}
+
+          <div className="hint-panel">
+            <strong>Next step</strong>
+            <p>Connect your application to OpsWatch to begin sending heartbeats.</p>
+          </div>
+
+          <div className="register-wizard-form-actions">
+            <button type="button" className="primary-button" onClick={() => setStep("credentials")} data-action="local-ui">
+              Continue
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {step === "credentials" && created ? (
         <div className="stack-form">
           <label>
             Application ID
-            <input value={created.id} readOnly />
+            <input value={applicationId} readOnly />
           </label>
 
           {hasCredentials && credentials?.apiKey ? (
@@ -409,9 +465,7 @@ export function RegisterApplicationWizard({
               API key
               <input value={credentials.apiKey} readOnly />
             </label>
-          ) : (
-            <p className="warn-text">No new API key was issued. Use an existing org key or create one under Organization settings.</p>
-          )}
+          ) : null}
 
           {credentials?.signingSecret ? (
             <label>
@@ -444,7 +498,7 @@ export function RegisterApplicationWizard({
             </label>
           ) : null}
 
-          <div className="register-wizard-actions">
+          <div className="register-wizard-form-actions">
             {setupEnv ? (
               <>
                 <button type="button" className="secondary-button" onClick={() => void copyCredentials()} data-action="local-ui">
@@ -455,13 +509,8 @@ export function RegisterApplicationWizard({
                 </button>
               </>
             ) : null}
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => setStep("verification")}
-              data-action="local-ui"
-            >
-              Continue to verification
+            <button type="button" className="primary-button" onClick={() => setStep("verification")} data-action="local-ui">
+              Continue
             </button>
           </div>
 
@@ -509,7 +558,7 @@ export function RegisterApplicationWizard({
             </ol>
           </div>
 
-          <div className="register-wizard-actions">
+          <div className="register-wizard-form-actions">
             <button type="button" className="secondary-button" onClick={() => setStep("credentials")} data-action="local-ui">
               Back
             </button>
@@ -538,24 +587,14 @@ export function RegisterApplicationWizard({
             <li>Health collection, incident policy, automation, notifications, AI — configure in settings</li>
           </ul>
 
-          <div className="register-wizard-actions">
+          <div className="register-wizard-form-actions">
             <button type="button" className="secondary-button" onClick={closeWizard} data-action="local-ui">
               Close
             </button>
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => router.push(`/projects/${created.id}`)}
-              data-action="local-ui"
-            >
+            <button type="button" className="primary-button" onClick={() => router.push(`/projects/${created.id}`)} data-action="local-ui">
               Open application
             </button>
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => router.push("/dashboard")}
-              data-action="local-ui"
-            >
+            <button type="button" className="primary-button" onClick={() => router.push("/dashboard")} data-action="local-ui">
               Open command center
             </button>
           </div>
