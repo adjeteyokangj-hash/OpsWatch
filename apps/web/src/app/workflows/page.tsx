@@ -70,11 +70,11 @@ function WorkflowsPageContent() {
               <tbody>
                 {filtered.map((row) => (
                   <tr key={row.id}>
-                    <td>{row.name}</td>
-                    <td>
+                    <td data-label="Workflow">{row.name}</td>
+                    <td data-label="Application">
                       <Link href={`/projects/${row.Project.id}/workflows`}>{row.Project.name}</Link>
                     </td>
-                    <td>
+                    <td data-label="Health">
                       <HealthBadge status={row.status} />
                     </td>
                   </tr>

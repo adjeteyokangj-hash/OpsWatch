@@ -58,15 +58,15 @@ export function DashboardAppStatusTable({ rows, loading }: { rows: AppRow[]; loa
             <tbody>
               {rows.slice(0, 12).map((row) => (
                 <tr key={row.id}>
-                  <td>
+                  <td data-label="Application">
                     <Link href={`/projects/${row.id}`}>{row.name}</Link>
                   </td>
-                  <td>{row.environment}</td>
-                  <td>
+                  <td data-label="Environment">{row.environment}</td>
+                  <td data-label="Health">
                     <HealthBadge status={row.status} displayLabel={row.healthDisplayLabel} />
                   </td>
-                  <td>{signalAt(row)}</td>
-                  <td>{row.alerts?.length ?? 0}</td>
+                  <td data-label="Last signal">{signalAt(row)}</td>
+                  <td data-label="Open alerts">{row.alerts?.length ?? 0}</td>
                 </tr>
               ))}
             </tbody>

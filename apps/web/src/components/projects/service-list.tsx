@@ -33,17 +33,17 @@ export function ServiceList({ rows, projectId }: { rows: Array<any>; projectId?:
         <tbody>
           {rows.map((row) => (
             <tr key={row.id}>
-              <td>
+              <td data-label="Name">
                 <strong>{row.name}</strong>
               </td>
-              <td>
+              <td data-label="Layer">
                 <span className={`layer-tag ${layerTone(row.type)}`}>{row.type}</span>
               </td>
-              <td>
+              <td data-label="Health">
                 <HealthBadge status={row.status} />
               </td>
-              <td>{row.isCritical ? <span className="criticality-tag">Critical</span> : <span className="dashboard-subtle">Standard</span>}</td>
-              <td>
+              <td data-label="Criticality">{row.isCritical ? <span className="criticality-tag">Critical</span> : <span className="dashboard-subtle">Standard</span>}</td>
+              <td data-label="Actions">
                 {projectId ? (
                   <Link className="text-link" href={`/checks?projectId=${projectId}&serviceId=${row.id}`}>
                     View checks

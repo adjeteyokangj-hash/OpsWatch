@@ -70,14 +70,14 @@ export function CheckResultsTable({ rows }: { rows: CheckRow[] }) {
                 const status = check.latestResult?.status || "PENDING";
                 return (
                   <tr key={check.id}>
-                    <td>
+                    <td data-label="Check">
                       <strong>{check.name}</strong>
                     </td>
-                    <td>
+                    <td data-label="Status">
                       <HealthBadge status={checkStatusTone(status)} displayLabel={status} />
                     </td>
-                    <td>{check.latestResult?.checkedAt ? new Date(check.latestResult.checkedAt).toLocaleString() : "—"}</td>
-                    <td>
+                    <td data-label="Last run">{check.latestResult?.checkedAt ? new Date(check.latestResult.checkedAt).toLocaleString() : "—"}</td>
+                    <td data-label="Actions">
                       <Link className="text-link" href={`/checks/${check.id}`}>
                         View details
                       </Link>

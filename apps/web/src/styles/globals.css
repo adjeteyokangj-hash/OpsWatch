@@ -2845,7 +2845,7 @@ button {
   }
 }
 
-@media (max-width: 800px) {
+@media (max-width: 980px) {
   html,
   body {
     width: 100%;
@@ -2864,12 +2864,54 @@ button {
   .sidebar {
     position: sticky;
     top: 0;
-    z-index: 2;
+    z-index: 12;
+    height: auto;
     padding: 12px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    border-right: 0;
     width: 100%;
     max-width: 100vw;
     min-width: 0;
+  }
+
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-hero {
+    min-height: auto;
+  }
+
+  .health-pill-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+    align-items: flex-end;
+  }
+
+  .modal-panel,
+  .register-wizard-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 24px);
+    border-radius: 16px 16px 10px 10px;
+  }
+
+  .page-header h1 {
+    font-size: 1.65rem;
+    line-height: 1.2;
+  }
+
+  .panel-heading-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .table-scroll .data-table {
+    min-width: 720px;
   }
 
   .sidebar-brand {
@@ -2987,8 +3029,11 @@ button {
   }
 
   .panel:has(> .data-table),
+  .panel:has(> .table-cards-wrap),
   .table-scroll,
-  .projects-table-wrap {
+  .projects-table-wrap,
+  .table-cards-wrap,
+  .layer-health-table-wrap {
     max-width: 100%;
     overflow-x: auto;
     overscroll-behavior-x: contain;
@@ -3025,10 +3070,14 @@ button {
     min-height: 44px;
   }
 
-  .pill-row {
+  .pill-row,
+  .project-workspace-nav {
     overflow-x: auto;
     flex-wrap: nowrap;
     padding-bottom: 4px;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
   }
 
   .pill-row > * {
@@ -3080,18 +3129,24 @@ button {
     min-width: 760px;
   }
 
-  .projects-table-wrap {
+  .projects-table-wrap,
+  .table-cards-wrap,
+  .layer-health-table-wrap {
     overflow: visible;
   }
 
-  .projects-table {
+  .projects-table,
+  .table-cards,
+  .layer-health-table-wrap > .data-table {
     display: block;
     min-width: 0 !important;
     border: 0;
     background: transparent;
   }
 
-  .projects-table thead {
+  .projects-table thead,
+  .table-cards thead,
+  .layer-health-table-wrap > .data-table thead {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -3105,18 +3160,30 @@ button {
 
   .projects-table tbody,
   .projects-table tr,
-  .projects-table td {
+  .projects-table td,
+  .table-cards tbody,
+  .table-cards tr,
+  .table-cards td,
+  .layer-health-table-wrap > .data-table tbody,
+  .layer-health-table-wrap > .data-table tr,
+  .layer-health-table-wrap > .data-table td {
     display: block;
     width: 100%;
   }
 
-  .projects-table tbody {
+  .projects-table tbody,
+  .table-cards tbody,
+  .layer-health-table-wrap > .data-table tbody {
     display: grid;
     gap: 12px;
   }
 
   .projects-table tbody tr,
-  .projects-table tbody tr:hover {
+  .projects-table tbody tr:hover,
+  .table-cards tbody tr,
+  .table-cards tbody tr:hover,
+  .layer-health-table-wrap > .data-table tbody tr,
+  .layer-health-table-wrap > .data-table tbody tr:hover {
     border: 1px solid var(--line);
     border-left: 4px solid var(--line);
     border-radius: 12px;
@@ -3125,15 +3192,21 @@ button {
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
   }
 
-  .projects-table tbody tr:has(.pill.degraded) {
+  .projects-table tbody tr:has(.pill.degraded),
+  .table-cards tbody tr:has(.pill.degraded),
+  .layer-health-table-wrap > .data-table tbody tr:has(.pill.degraded) {
     border-left-color: #f59e0b;
   }
 
-  .projects-table tbody tr:has(.pill.down) {
+  .projects-table tbody tr:has(.pill.down),
+  .table-cards tbody tr:has(.pill.down),
+  .layer-health-table-wrap > .data-table tbody tr:has(.pill.down) {
     border-left-color: #dc2626;
   }
 
-  .projects-table td {
+  .projects-table td,
+  .table-cards td,
+  .layer-health-table-wrap > .data-table td {
     display: grid;
     grid-template-columns: minmax(104px, 38%) minmax(0, 1fr);
     gap: 10px;
@@ -3143,11 +3216,15 @@ button {
     overflow-wrap: anywhere;
   }
 
-  .projects-table td:last-child {
+  .projects-table td:last-child,
+  .table-cards td:last-child,
+  .layer-health-table-wrap > .data-table td:last-child {
     border-bottom: 0;
   }
 
-  .projects-table td::before {
+  .projects-table td::before,
+  .table-cards td::before,
+  .layer-health-table-wrap > .data-table td::before {
     content: attr(data-label);
     color: var(--ink-soft);
     font-size: 0.78rem;
@@ -3156,15 +3233,95 @@ button {
     text-transform: uppercase;
   }
 
-  .projects-table td[data-label="Project"] {
+  .projects-table td[data-label="Application"],
+  .projects-table td[data-label="Project"],
+  .table-cards td[data-label="Application"],
+  .table-cards td[data-label="Title"],
+  .layer-health-table-wrap > .data-table td[data-label="Application"],
+  .layer-health-table-wrap > .data-table td[data-label="Layer"],
+  .layer-health-table-wrap > .data-table td[data-label="Check"],
+  .layer-health-table-wrap > .data-table td[data-label="Name"] {
     grid-template-columns: 1fr;
     font-size: 1.05rem;
     font-weight: 700;
     background: rgba(37, 99, 235, 0.04);
   }
 
-  .projects-table td[data-label="Project"]::before {
+  .projects-table td[data-label="Application"]::before,
+  .projects-table td[data-label="Project"]::before,
+  .table-cards td[data-label="Application"]::before,
+  .table-cards td[data-label="Title"]::before,
+  .layer-health-table-wrap > .data-table td[data-label="Application"]::before,
+  .layer-health-table-wrap > .data-table td[data-label="Layer"]::before,
+  .layer-health-table-wrap > .data-table td[data-label="Check"]::before,
+  .layer-health-table-wrap > .data-table td[data-label="Name"]::before {
     display: none;
+  }
+
+  .api-key-copy-row {
+    grid-template-columns: 1fr;
+  }
+
+  .api-key-copy-button,
+  .copy-feedback-button {
+    width: 100%;
+  }
+
+  .register-wizard-form-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .register-wizard-form-actions .primary-button,
+  .register-wizard-form-actions .secondary-button {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .register-wizard-journey {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    margin-bottom: 14px;
+  }
+
+  .register-wizard-journey > * {
+    flex: 0 0 auto;
+    font-size: 0.78rem;
+  }
+
+  .layer-health-table-wrap > .data-table td[data-label="Workflow"],
+  .layer-health-table-wrap > .data-table td[data-label="Service"] {
+    grid-template-columns: 1fr;
+    font-size: 1.05rem;
+    font-weight: 700;
+    background: rgba(37, 99, 235, 0.04);
+  }
+
+  .layer-health-table-wrap > .data-table td[data-label="Workflow"]::before,
+  .layer-health-table-wrap > .data-table td[data-label="Service"]::before {
+    display: none;
+  }
+
+  .password-field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .password-field-row .secondary-button {
+    width: 100%;
+  }
+
+  .table-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .table-actions .secondary-button,
+  .table-actions .danger-button {
+    width: 100%;
   }
 
   .modal-overlay {
@@ -5122,7 +5279,9 @@ button {
 /* ── Platform UI system ── */
 
 .content-inner {
+  width: 100%;
   max-width: 1440px;
+  min-width: 0;
   margin: 0 auto;
 }
 
@@ -5448,26 +5607,4 @@ label {
   color: #166534;
 }
 
-@media (max-width: 980px) {
-  .shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    position: static;
-    height: auto;
-  }
-
-  .auth-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .auth-hero {
-    min-height: auto;
-  }
-
-  .health-pill-grid {
-    grid-template-columns: 1fr;
-  }
-}
 

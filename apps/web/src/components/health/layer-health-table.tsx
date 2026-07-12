@@ -54,20 +54,20 @@ export function LayerHealthTable({ rows, loading }: Props) {
           <tbody>
             {rows.map((row) => (
               <tr key={row.layer}>
-                <td>
+                <td data-label="Layer">
                   <strong>{row.label || layerLabel(row.layer)}</strong>
                 </td>
-                <td>{row.total}</td>
-                <td>
+                <td data-label="Total">{row.total}</td>
+                <td data-label="Healthy">
                   <Link href={filterHref(row.layer, "healthy")}>{row.healthy}</Link>
                 </td>
-                <td>
+                <td data-label="Warning">
                   <Link href={filterHref(row.layer, "warning")}>{row.warning}</Link>
                 </td>
-                <td>
+                <td data-label="Critical">
                   <Link href={filterHref(row.layer, "critical")}>{row.critical}</Link>
                 </td>
-                <td>
+                <td data-label="Awaiting">
                   <Link href={filterHref(row.layer, "unknown")}>{row.unknown}</Link>
                 </td>
               </tr>

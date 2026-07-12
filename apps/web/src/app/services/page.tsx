@@ -96,15 +96,15 @@ function ServicesPageContent() {
               <tbody>
                 {filtered.map((row) => (
                   <tr key={row.id}>
-                    <td>{row.name}</td>
-                    <td>{row.type}</td>
-                    <td>
+                    <td data-label="Service">{row.name}</td>
+                    <td data-label="Type">{row.type}</td>
+                    <td data-label="Application">
                       <Link href={`/projects/${row.Project.id}`}>{row.Project.name}</Link>
                     </td>
-                    <td>
+                    <td data-label="Health">
                       <HealthBadge status={row.status} />
                     </td>
-                    <td>{row.isCritical ? "Yes" : "—"}</td>
+                    <td data-label="Critical">{row.isCritical ? "Yes" : "—"}</td>
                   </tr>
                 ))}
               </tbody>
