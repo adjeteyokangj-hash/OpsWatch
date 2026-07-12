@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { TopologyNodeDrawer } from "./topology-node-drawer";
 import type { ProjectTopologyResponse } from "./topology-types";
 
@@ -42,6 +42,8 @@ const topology: ProjectTopologyResponse = {
 };
 
 describe("TopologyNodeDrawer", () => {
+  afterEach(() => cleanup());
+
   it("shows unknown monitoring state and drill-down links", () => {
     render(
       <TopologyNodeDrawer
