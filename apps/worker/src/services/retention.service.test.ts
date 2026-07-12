@@ -31,7 +31,7 @@ describe("retention.service", () => {
         { featureKey: "retention.telemetry.days", retentionDays: 30, enabled: true },
         { featureKey: "retention.incidents.days", retentionDays: 90, enabled: true }
       ]);
-      expect(resolved).toEqual({ telemetryDays: 30, incidentDays: 90 });
+      expect(resolved).toEqual({ telemetryDays: 30, incidentDays: 90, incidentMemoryDays: null });
     });
 
     it("falls back to legacy flat keys", () => {
@@ -39,7 +39,7 @@ describe("retention.service", () => {
         { featureKey: "telemetry.retention_days", retentionDays: 14, enabled: true },
         { featureKey: "incidents.retention_days", retentionDays: 30, enabled: true }
       ]);
-      expect(resolved).toEqual({ telemetryDays: 14, incidentDays: 30 });
+      expect(resolved).toEqual({ telemetryDays: 14, incidentDays: 30, incidentMemoryDays: null });
     });
 
     it("ignores disabled entitlements", () => {
@@ -49,11 +49,18 @@ describe("retention.service", () => {
       expect(resolved.telemetryDays).toBeNull();
     });
 
+    it("reads incident memory retention keys separately", () => {
+      const resolved = resolveRetentionFromEntitlements([
+        { featureKey: "retention.incident_memory.days", retentionDays: 180, enabled: true }
+      ]);
+      expect(resolved.incidentMemoryDays).toBe(180);
+    });
+
     it("returns null when no retention entitlement is present", () => {
       const resolved = resolveRetentionFromEntitlements([
         { featureKey: "monitoring.monitors.max", retentionDays: null, enabled: true }
       ]);
-      expect(resolved).toEqual({ telemetryDays: null, incidentDays: null });
+      expect(resolved).toEqual({ telemetryDays: null, incidentDays: null, incidentMemoryDays: null });
     });
   });
 });
