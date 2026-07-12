@@ -210,7 +210,7 @@ export default function DashboardPage() {
                   ? "Monitoring data could not be loaded for your organization. Check the error below and verify API access."
                   : "No projects, alerts, or incidents exist for your organization yet. Create a project to start monitoring."
             }
-            action={<a className="primary-button" href="/projects">Open projects</a>}
+            action={<Link className="primary-button" href="/projects">Open projects</Link>}
           />
         </section>
       ) : null}
