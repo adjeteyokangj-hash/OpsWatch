@@ -7,18 +7,25 @@ import { hasPermission } from "../auth/permissions";
 import { requireOrg } from "../lib/require-org";
 import { enrichProjectRow, projectInclude } from "../services/project-loader.service";
 import { createDefaultProjectBilling, updateProjectBilling } from "../services/project-billing.service";
+import {
+	projectHasProductInfo,
+	provisionProjectIngestCredentials
+} from "../services/project-ingest-credentials.service";
 
-const normalizeProjectRow = (row: any) => ({
-	...row,
-	services: row.services ?? row.Service ?? [],
-	alerts: row.alerts ?? row.Alert ?? [],
-	incidents: row.incidents ?? row.Incident ?? [],
-	heartbeats: row.heartbeats ?? row.Heartbeat ?? [],
-	events: row.events ?? row.Event ?? [],
-	integrations: row.integrations ?? row.ProjectIntegration ?? [],
-	notificationChannels: row.notificationChannels ?? row.NotificationChannel ?? [],
-	billing: row.billing ?? row.ProjectBilling ?? null
-});
+const normalizeProjectRow = (row: any) => {
+	const { signingSecret: _signingSecret, apiKey: _apiKey, ...safeRow } = row;
+	return {
+		...safeRow,
+		services: row.services ?? row.Service ?? [],
+		alerts: row.alerts ?? row.Alert ?? [],
+		incidents: row.incidents ?? row.Incident ?? [],
+		heartbeats: row.heartbeats ?? row.Heartbeat ?? [],
+		events: row.events ?? row.Event ?? [],
+		integrations: row.integrations ?? row.ProjectIntegration ?? [],
+		notificationChannels: row.notificationChannels ?? row.NotificationChannel ?? [],
+		billing: row.billing ?? row.ProjectBilling ?? null
+	};
+};
 
 export const listProjects = async (req: AuthRequest, res: Response) => {
 	const orgId = requireOrg(req, res);
@@ -110,7 +117,20 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 		include: projectInclude
 	});
 
-	res.status(201).json(normalizeProjectRow(await enrichProjectRow((enriched ?? row) as any)));
+	const normalized = normalizeProjectRow(await enrichProjectRow((enriched ?? row) as any));
+	const ingestCredentials = await provisionProjectIngestCredentials({
+		organizationId: orgId,
+		projectId: row.id,
+		projectName: row.name,
+		projectSlug: row.slug,
+		signingSecret: row.signingSecret,
+		environment: row.environment === "development" || row.environment === "staging" ? "test" : "live"
+	});
+
+	res.status(201).json({
+		...normalized,
+		ingestCredentials
+	});
 };
 
 export const getProjectById = async (req: AuthRequest, res: Response) => {
@@ -172,7 +192,29 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 		}
 	});
 
-	res.json(row);
+	let ingestCredentials;
+	if (
+		projectHasProductInfo({
+			name: row.name,
+			clientName: row.clientName,
+			frontendUrl: row.frontendUrl,
+			backendUrl: row.backendUrl
+		})
+	) {
+		ingestCredentials = await provisionProjectIngestCredentials({
+			organizationId: orgId,
+			projectId: row.id,
+			projectName: row.name,
+			projectSlug: row.slug,
+			signingSecret: row.signingSecret,
+			environment: row.environment === "development" || row.environment === "staging" ? "test" : "live"
+		});
+	}
+
+	res.json({
+		...normalizeProjectRow(row),
+		...(ingestCredentials ? { ingestCredentials } : {})
+	});
 };
 
 export const deleteProject = async (req: AuthRequest, res: Response) => {

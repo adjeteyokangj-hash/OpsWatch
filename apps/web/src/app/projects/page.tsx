@@ -7,6 +7,22 @@ import { Header } from "../../components/layout/header";
 import { apiFetch } from "../../lib/api";
 import { ProjectsTable } from "../../components/projects/projects-table";
 import { StatCard } from "../../components/dashboard/stat-card";
+import { API_BASE_URL } from "../../lib/constants";
+
+type IngestCredentials = {
+  apiKey: string;
+  signingSecret: string;
+  projectSlug: string;
+  scopes: string[];
+  reused: boolean;
+};
+
+type CreateProjectResponse = {
+  id: string;
+  name: string;
+  slug: string;
+  ingestCredentials?: IngestCredentials;
+};
 
 const EMPTY_FORM = {
   name: "",
@@ -34,6 +50,10 @@ function ProjectsPageContent() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
+  const [createdCredentials, setCreatedCredentials] = useState<{
+    projectName: string;
+    credentials: IngestCredentials;
+  } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -62,7 +82,7 @@ function ProjectsPageContent() {
     setSaving(true);
     setError(null);
     try {
-      await apiFetch("/projects", {
+      const created = await apiFetch<CreateProjectResponse>("/projects", {
         method: "POST",
         body: JSON.stringify({
           name: form.name,
@@ -84,6 +104,12 @@ function ProjectsPageContent() {
           }
         })
       });
+      if (created.ingestCredentials) {
+        setCreatedCredentials({
+          projectName: created.name,
+          credentials: created.ingestCredentials
+        });
+      }
       setForm(EMPTY_FORM);
       setShowForm(false);
       await load();
@@ -230,6 +256,65 @@ function ProjectsPageContent() {
       ) : (
         <ProjectsTable rows={filtered} />
       )}
+      {createdCredentials ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Project ingest credentials">
+          <section className="modal-panel" style={{ maxWidth: "640px" }}>
+            <div className="section-head">
+              <div>
+                <h2>Ingest credentials ready</h2>
+                <p>
+                  {createdCredentials.credentials.reused
+                    ? `${createdCredentials.projectName} already has an active ingest key. Use the signing secret below with your existing API key.`
+                    : `${createdCredentials.projectName} is ready for live heartbeats and events.`}
+                </p>
+              </div>
+              <button type="button" className="secondary-button" onClick={() => setCreatedCredentials(null)} data-action="local-ui">
+                Close
+              </button>
+            </div>
+            <div className="stack-form">
+              {!createdCredentials.credentials.reused ? (
+                <label>
+                  API key
+                  <input value={createdCredentials.credentials.apiKey} readOnly />
+                </label>
+              ) : null}
+              <label>
+                Signing secret
+                <input value={createdCredentials.credentials.signingSecret} readOnly />
+              </label>
+              <label>
+                Project slug
+                <input value={createdCredentials.credentials.projectSlug} readOnly />
+              </label>
+              <label>
+                Noble / client env snippet
+                <textarea
+                  readOnly
+                  rows={7}
+                  value={`OPSWATCH_API_URL=${API_BASE_URL}
+NOBLE_API_KEY=${createdCredentials.credentials.apiKey || "<existing-org-api-key>"}
+NOBLE_SIGNING_SECRET=${createdCredentials.credentials.signingSecret}
+NOBLE_EXPRESS_PROJECT_SLUG=${createdCredentials.credentials.projectSlug}`}
+                />
+              </label>
+              {!createdCredentials.credentials.reused ? (
+                <button
+                  type="button"
+                  className="primary-button"
+                  data-action="local-ui"
+                  onClick={() =>
+                    void navigator.clipboard.writeText(createdCredentials.credentials.apiKey)
+                  }
+                >
+                  Copy API key
+                </button>
+              ) : null}
+              <p className="warn-text">Store these credentials securely. The API key is shown only once.</p>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </Shell>
   );
 }

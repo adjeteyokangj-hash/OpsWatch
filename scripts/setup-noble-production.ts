@@ -1,6 +1,7 @@
-import { randomBytes, randomUUID } from "crypto";
+import { randomUUID } from "crypto";
 import { PrismaClient } from "@prisma/client";
-import { generateApiKey, generateSigningSecret, sha256 } from "../apps/api/src/utils/crypto";
+import { generateApiKey, generateSigningSecret } from "../apps/api/src/utils/crypto";
+import { provisionProjectIngestCredentials } from "../apps/api/src/services/project-ingest-credentials.service";
 import { seedNobleExpressGraph } from "./lib/noble-express-graph.seed";
 
 const prisma = new PrismaClient();
@@ -69,35 +70,15 @@ async function ensureNobleProject(orgId: string) {
   });
 }
 
-async function createNobleApiKey(orgId: string, projectId: string) {
-  const existing = await prisma.orgApiKey.findFirst({
-    where: {
-      organizationId: orgId,
-      projectId,
-      revokedAt: null,
-      name: "Noble Express live ingest"
-    }
+async function createNobleApiKey(orgId: string, projectId: string, projectName: string, projectSlug: string, signingSecret: string) {
+  return provisionProjectIngestCredentials({
+    organizationId: orgId,
+    projectId,
+    projectName,
+    projectSlug,
+    signingSecret,
+    environment: "live"
   });
-  if (existing) {
-    return { reused: true as const, keyId: existing.keyId };
-  }
-
-  const keyId = `ow_${randomBytes(6).toString("hex")}`;
-  const secret = randomBytes(24).toString("base64url");
-  await prisma.orgApiKey.create({
-    data: {
-      id: randomUUID(),
-      organizationId: orgId,
-      projectId,
-      name: "Noble Express live ingest",
-      keyId,
-      secretHash: sha256(secret),
-      scopes: ["events:write", "heartbeats:write"],
-      environment: "live"
-    }
-  });
-
-  return { reused: false as const, keyId, key: `${keyId}.${secret}` };
 }
 
 async function main(): Promise<void> {
@@ -125,7 +106,7 @@ async function main(): Promise<void> {
 
   const project = await ensureNobleProject(org.id);
   const graph = await seedNobleExpressGraph(prisma);
-  const apiKey = await createNobleApiKey(org.id, project.id);
+  const apiKey = await createNobleApiKey(org.id, project.id, project.name, project.slug, project.signingSecret);
 
   console.log("NOBLE_SETUP_COMPLETE");
   console.log("ORG", org.slug, org.id);
@@ -137,7 +118,7 @@ async function main(): Promise<void> {
   if (apiKey.reused) {
     console.log("API_KEY", `Reusing existing key ${apiKey.keyId}. Create a new key in /org if you need the secret.`);
   } else {
-    console.log("API_KEY", apiKey.key);
+    console.log("API_KEY", apiKey.apiKey);
   }
 
   if (process.env.NOBLE_SEND_BOOT_HEARTBEAT === "true") {
