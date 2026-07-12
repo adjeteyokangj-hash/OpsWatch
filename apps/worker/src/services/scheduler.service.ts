@@ -8,6 +8,7 @@ import { evaluateSloBurnRateJob } from "../jobs/evaluate-slo-burn-rate.job";
 import { runIncidentAutoHealJob } from "../jobs/run-incident-auto-heal.job";
 import { runAutomationAutonomousJob } from "../jobs/run-automation-autonomous.job";
 import { runMaintenanceWindowTransitionsJob } from "../jobs/transition-maintenance-windows.job";
+import { pruneRetentionJob } from "../jobs/prune-retention.job";
 import { createExclusiveRunner } from "../lib/exclusive-job";
 import { markSchedulerSuccess } from "./worker-heartbeat.service";
 
@@ -34,6 +35,7 @@ type SchedulerOptions = {
   autoHealMs?: number;
   automationAutonomousMs?: number;
   maintenanceWindowsMs?: number;
+  retentionMs?: number;
 };
 
 const readInterval = (key: string, fallback: number): number => {
@@ -64,7 +66,9 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
       options.automationAutonomousMs ??
       readInterval("WORKER_AUTOMATION_AUTONOMOUS_INTERVAL_MS", 5 * 60_000),
     maintenanceWindowsMs:
-      options.maintenanceWindowsMs ?? readInterval("WORKER_MAINTENANCE_WINDOWS_INTERVAL_MS", 60_000)
+      options.maintenanceWindowsMs ?? readInterval("WORKER_MAINTENANCE_WINDOWS_INTERVAL_MS", 60_000),
+    retentionMs:
+      options.retentionMs ?? readInterval("WORKER_RETENTION_INTERVAL_MS", 6 * 60 * 60_000)
   };
 
   const timers: NodeJS.Timeout[] = [];
@@ -86,6 +90,7 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
       markSchedulerSuccess("runAutomationAutonomousJob");
     });
     void runSafely("runMaintenanceWindowTransitionsJob", runMaintenanceWindowTransitionsJob);
+    void runSafely("pruneRetentionJob", pruneRetentionJob);
   }
 
   timers.push(
@@ -152,6 +157,12 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
     setInterval(() => {
       void runSafely("runMaintenanceWindowTransitionsJob", runMaintenanceWindowTransitionsJob);
     }, intervals.maintenanceWindowsMs)
+  );
+
+  timers.push(
+    setInterval(() => {
+      void runSafely("pruneRetentionJob", pruneRetentionJob);
+    }, intervals.retentionMs)
   );
 
   return () => {
