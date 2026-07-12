@@ -1420,6 +1420,188 @@ h1 {
   color: var(--healthy);
 }
 
+.copy-feedback-button {
+  width: auto;
+  white-space: nowrap;
+}
+
+.copy-feedback-button--success {
+  border-color: color-mix(in srgb, var(--healthy) 45%, var(--line));
+  color: var(--healthy);
+}
+
+.env-snippet-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.env-snippet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.env-snippet-block {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.env-snippet-line {
+  display: block;
+}
+
+.env-snippet-key {
+  color: #7dd3fc;
+}
+
+.env-snippet-eq {
+  color: #94a3b8;
+}
+
+.env-snippet-value {
+  color: #86efac;
+}
+
+.register-auth-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+}
+
+.register-auth-option {
+  margin: 0;
+}
+
+.register-auth-option--active {
+  color: var(--text);
+}
+
+.register-auth-option span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.register-auth-enterprise {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.register-auth-enterprise-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.register-auth-enterprise p {
+  margin: 4px 0 0;
+}
+
+.register-heartbeat-waiting,
+.register-heartbeat-connected,
+.register-discovery-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-2) 65%, transparent);
+}
+
+.register-heartbeat-connected {
+  border-color: color-mix(in srgb, var(--healthy) 35%, var(--line));
+  background: color-mix(in srgb, var(--healthy) 8%, transparent);
+}
+
+.register-heartbeat-waiting p,
+.register-heartbeat-connected p,
+.register-discovery-banner p {
+  margin: 4px 0 0;
+}
+
+.register-heartbeat-pulse {
+  color: #3b82f6;
+  font-size: 1.1rem;
+  line-height: 1;
+  animation: register-heartbeat-pulse 1.4s ease-in-out infinite;
+}
+
+.register-heartbeat-pulse--idle {
+  animation: none;
+  opacity: 0.45;
+}
+
+@keyframes register-heartbeat-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+.register-discovery-list li.pending {
+  color: var(--muted);
+  animation: register-discovery-pending 1.6s ease-in-out infinite;
+}
+
+@keyframes register-discovery-pending {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.register-wizard-success-banner--celebrate p {
+  margin: 8px 0 0;
+  font-weight: 400;
+}
+
+.register-wizard-inline-list {
+  margin: 8px 0;
+  padding-left: 1.1rem;
+}
+
+.register-monitoring-preview {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--brand) 4%, transparent);
+}
+
+.register-monitoring-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.register-monitoring-row span {
+  color: var(--muted);
+}
+
 .api-key-once-warning {
   display: block;
   margin-top: 8px;

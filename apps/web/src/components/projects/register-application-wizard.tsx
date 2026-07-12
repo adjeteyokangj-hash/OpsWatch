@@ -5,8 +5,15 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "../../lib/api";
 import { API_BASE_URL } from "../../lib/constants";
 import { formatApplicationId } from "../../lib/application-id";
+import type { ProjectTopologyResponse } from "../topology/topology-types";
+import {
+  AuthenticationPanel,
+  CopyFeedbackButton,
+  CredentialCopyField,
+  EnvSnippetBlock
+} from "./register-wizard-ui";
 
-type WizardStep = "register" | "success" | "credentials" | "verification" | "finish";
+type WizardStep = "register" | "success" | "credentials" | "verification" | "discover" | "monitoring";
 
 type IngestCredentials = {
   apiKey?: string;
@@ -22,6 +29,7 @@ type CreateApplicationResponse = {
   name: string;
   slug: string;
   environment?: string;
+  status?: string;
   ingestCredentials?: IngestCredentials;
 };
 
@@ -43,7 +51,23 @@ type ProjectConnection = {
   name: string;
   slug: string;
   environment?: string;
+  status?: string;
   heartbeats?: HeartbeatRow[];
+};
+
+type ServiceRow = {
+  id: string;
+  name: string;
+  type: string;
+};
+
+type DiscoverySnapshot = {
+  modules: number;
+  workflows: number;
+  components: number;
+  services: number;
+  dependencies: number;
+  discoveredLabels: string[];
 };
 
 type RegisterForm = {
@@ -62,8 +86,12 @@ type JourneyStep = {
 };
 
 const SDK_PACKAGE = "@opswatch/client";
+const HEARTBEAT_POLL_MS = 5000;
+const DISCOVERY_POLL_MS = 3000;
 
 const JOURNEY_LABELS = ["Register", "Connect", "Heartbeat", "Discover", "Configure", "Monitoring"] as const;
+
+const DISCOVERY_TARGETS = ["API", "Database", "Redis", "Queue", "Background workers", "Modules", "Workflows"] as const;
 
 const EMPTY_FORM: RegisterForm = {
   name: "",
@@ -90,12 +118,24 @@ const buildSetupEnv = (input: {
   return `${lines.join("\n")}\n`;
 };
 
-const getJourneySteps = (step: WizardStep, isConnected: boolean): JourneyStep[] => {
-  let activeIndex = 0;
-  if (step === "success" || step === "credentials") activeIndex = 1;
-  else if (step === "verification") activeIndex = 2;
-  else if (step === "finish") activeIndex = isConnected ? 3 : 2;
+const journeyIndexForStep = (step: WizardStep): number => {
+  switch (step) {
+    case "success":
+    case "credentials":
+      return 1;
+    case "verification":
+      return 2;
+    case "discover":
+      return 3;
+    case "monitoring":
+      return 5;
+    default:
+      return 0;
+  }
+};
 
+const getJourneySteps = (step: WizardStep): JourneyStep[] => {
+  const activeIndex = journeyIndexForStep(step);
   return JOURNEY_LABELS.map((label, index) => ({
     id: label.toLowerCase(),
     label,
@@ -103,46 +143,51 @@ const getJourneySteps = (step: WizardStep, isConnected: boolean): JourneyStep[] 
   }));
 };
 
-function ApiKeyCopyField({ apiKey, onCopy }: { apiKey: string; onCopy: () => void | Promise<void> }) {
-  const [copied, setCopied] = useState(false);
-  const resetCopiedRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+const buildDiscoverySnapshot = (topology: ProjectTopologyResponse | null, services: ServiceRow[]): DiscoverySnapshot => {
+  const nodes = topology?.nodes ?? [];
+  const modules = nodes.filter((node) => node.type === "MODULE").length;
+  const workflows = nodes.filter((node) => node.type === "WORKFLOW").length;
+  const components = nodes.filter((node) => node.type === "COMPONENT").length;
+  const dependencies = topology?.edges.filter((edge) => edge.type === "DEPENDENCY").length ?? 0;
 
-  useEffect(() => {
-    return () => {
-      if (resetCopiedRef.current) clearTimeout(resetCopiedRef.current);
-    };
-  }, []);
+  const serviceLabels = services.map((service) => service.name);
+  const typeLabels = [...new Set(services.map((service) => service.type))];
 
-  const handleCopy = async () => {
-    await onCopy();
-    setCopied(true);
-    if (resetCopiedRef.current) clearTimeout(resetCopiedRef.current);
-    resetCopiedRef.current = setTimeout(() => {
-      setCopied(false);
-      resetCopiedRef.current = null;
-    }, 2000);
+  const discoveredLabels = [
+    ...serviceLabels.slice(0, 5),
+    ...(modules > 0 ? [`${modules} module${modules === 1 ? "" : "s"}`] : []),
+    ...(workflows > 0 ? [`${workflows} workflow${workflows === 1 ? "" : "s"}`] : []),
+    ...typeLabels.filter((type) => !serviceLabels.includes(type))
+  ];
+
+  return {
+    modules,
+    workflows,
+    components,
+    services: services.length,
+    dependencies,
+    discoveredLabels: [...new Set(discoveredLabels)].slice(0, 8)
   };
+};
 
-  return (
-    <label>
-      API key
-      <div className="api-key-copy-row">
-        <input value={apiKey} readOnly className="api-key-copy-input" />
-        <button
-          type="button"
-          className={`secondary-button api-key-copy-button${copied ? " api-key-copy-button--copied" : ""}`}
-          onClick={() => void handleCopy()}
-          data-action="local-ui"
-        >
-          {copied ? "✓ Copied" : "Copy"}
-        </button>
-      </div>
-      <span className="warn-text api-key-once-warning">
-        This API key is shown only once. Copy it now. You won&apos;t be able to view it again.
-      </span>
-    </label>
-  );
-}
+const matchDiscoveryTarget = (target: string, snapshot: DiscoverySnapshot, services: ServiceRow[]): boolean => {
+  const haystack = [
+    ...snapshot.discoveredLabels,
+    ...services.map((service) => `${service.name} ${service.type}`)
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const needle = target.toLowerCase();
+  if (needle === "api") return haystack.includes("api") || snapshot.services > 0;
+  if (needle === "database") return haystack.includes("database") || haystack.includes("db");
+  if (needle === "redis") return haystack.includes("redis");
+  if (needle === "queue") return haystack.includes("queue");
+  if (needle === "background workers") return haystack.includes("worker") || haystack.includes("background");
+  if (needle === "modules") return snapshot.modules > 0;
+  if (needle === "workflows") return snapshot.workflows > 0;
+  return false;
+};
 
 type RegisterApplicationWizardProps = {
   onClose: () => void;
@@ -156,7 +201,8 @@ export function RegisterApplicationWizard({
   knownClients = []
 }: RegisterApplicationWizardProps) {
   const router = useRouter();
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const heartbeatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const discoveryPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [step, setStep] = useState<WizardStep>("register");
   const [form, setForm] = useState<RegisterForm>(EMPTY_FORM);
   const [clientMode, setClientMode] = useState<ClientMode>("none");
@@ -166,14 +212,18 @@ export function RegisterApplicationWizard({
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreateApplicationResponse | null>(null);
   const [connection, setConnection] = useState<ProjectConnection | null>(null);
+  const [topology, setTopology] = useState<ProjectTopologyResponse | null>(null);
+  const [services, setServices] = useState<ServiceRow[]>([]);
   const [waitingForHeartbeat, setWaitingForHeartbeat] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
 
   const credentials = created?.ingestCredentials;
   const hasCredentials = Boolean(credentials && !credentials.error && credentials.apiKey);
   const latestHeartbeat = connection?.heartbeats?.[0] ?? null;
   const isConnected = Boolean(latestHeartbeat);
   const applicationId = created ? formatApplicationId(created.id) : "";
-  const journeySteps = getJourneySteps(step, isConnected);
+  const journeySteps = getJourneySteps(step);
+  const discovery = useMemo(() => buildDiscoverySnapshot(topology, services), [topology, services]);
 
   const clientSuggestions = useMemo(
     () => [...new Set(knownClients.map((value) => value.trim()).filter(Boolean))].sort(),
@@ -204,44 +254,86 @@ export function RegisterApplicationWizard({
       .catch(() => setOrg(null));
   }, []);
 
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
+  const stopHeartbeatPolling = useCallback(() => {
+    if (heartbeatPollRef.current) {
+      clearInterval(heartbeatPollRef.current);
+      heartbeatPollRef.current = null;
     }
     setWaitingForHeartbeat(false);
   }, []);
 
-  const pollConnection = useCallback(
+  const stopDiscoveryPolling = useCallback(() => {
+    if (discoveryPollRef.current) {
+      clearInterval(discoveryPollRef.current);
+      discoveryPollRef.current = null;
+    }
+    setDiscovering(false);
+  }, []);
+
+  const loadDiscovery = useCallback(async (projectId: string) => {
+    try {
+      const [topologyResult, servicesResult] = await Promise.allSettled([
+        apiFetch<ProjectTopologyResponse>(`/projects/${projectId}/topology`),
+        apiFetch<ServiceRow[]>(`/projects/${projectId}/services`)
+      ]);
+      if (topologyResult.status === "fulfilled") setTopology(topologyResult.value);
+      if (servicesResult.status === "fulfilled") setServices(servicesResult.value);
+    } catch {
+      // Discovery polling is best-effort during onboarding.
+    }
+  }, []);
+
+  const pollHeartbeat = useCallback(
     async (projectId: string) => {
       try {
         const project = await apiFetch<ProjectConnection>(`/projects/${projectId}`);
         setConnection(project);
         if (project.heartbeats?.length) {
-          stopPolling();
-          setStep("finish");
+          stopHeartbeatPolling();
+          setStep("discover");
         }
       } catch {
         // Keep polling until heartbeat arrives or user skips.
       }
     },
-    [stopPolling]
+    [stopHeartbeatPolling]
   );
 
   useEffect(() => {
     if (step !== "verification" || !created?.id) {
-      stopPolling();
+      stopHeartbeatPolling();
       return;
     }
 
     setWaitingForHeartbeat(true);
-    void pollConnection(created.id);
-    pollRef.current = setInterval(() => {
-      void pollConnection(created.id);
-    }, 3000);
+    void pollHeartbeat(created.id);
+    heartbeatPollRef.current = setInterval(() => {
+      void pollHeartbeat(created.id);
+    }, HEARTBEAT_POLL_MS);
 
-    return () => stopPolling();
-  }, [created?.id, pollConnection, step, stopPolling]);
+    return () => stopHeartbeatPolling();
+  }, [created?.id, pollHeartbeat, step, stopHeartbeatPolling]);
+
+  useEffect(() => {
+    if (step !== "discover" || !created?.id) {
+      stopDiscoveryPolling();
+      return;
+    }
+
+    setDiscovering(true);
+    void loadDiscovery(created.id);
+    discoveryPollRef.current = setInterval(() => {
+      void loadDiscovery(created.id);
+    }, DISCOVERY_POLL_MS);
+
+    return () => stopDiscoveryPolling();
+  }, [created?.id, loadDiscovery, step, stopDiscoveryPolling]);
+
+  useEffect(() => {
+    if (step === "monitoring" && created?.id) {
+      void loadDiscovery(created.id);
+    }
+  }, [created?.id, loadDiscovery, step]);
 
   const updateName = (value: string) => {
     setForm((current) => ({ ...current, name: value }));
@@ -291,12 +383,17 @@ export function RegisterApplicationWizard({
     await navigator.clipboard.writeText(credentials.apiKey);
   };
 
+  const copySigningSecret = async () => {
+    if (!credentials?.signingSecret) return;
+    await navigator.clipboard.writeText(credentials.signingSecret);
+  };
+
   const copyCredentials = async () => {
     if (!setupEnv) return;
     await navigator.clipboard.writeText(setupEnv);
   };
 
-  const downloadSetup = () => {
+  const downloadSetup = async () => {
     if (!setupEnv || !created?.slug) return;
     const blob = new Blob([setupEnv], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -308,7 +405,8 @@ export function RegisterApplicationWizard({
   };
 
   const closeWizard = () => {
-    stopPolling();
+    stopHeartbeatPolling();
+    stopDiscoveryPolling();
     onClose();
   };
 
@@ -320,8 +418,10 @@ export function RegisterApplicationWizard({
         : step === "credentials"
           ? "Connect application"
           : step === "verification"
-            ? "Connection verification"
-            : "Application connected";
+            ? "Waiting for heartbeat"
+            : step === "discover"
+              ? "Discovering your application"
+              : "Application connected successfully";
 
   const stepDescription =
     step === "register"
@@ -331,8 +431,18 @@ export function RegisterApplicationWizard({
         : step === "credentials"
           ? "Use these credentials to wire up the SDK and start sending heartbeats."
           : step === "verification"
-            ? "Install the SDK and send a heartbeat. OpsWatch will detect your application automatically."
-            : "Secure connection established. Topology, health collection, and automation can be configured in application settings.";
+            ? "OpsWatch will detect your application automatically once the SDK starts sending heartbeats."
+            : step === "discover"
+              ? "OpsWatch is mapping modules, workflows, services, and dependencies as telemetry arrives."
+              : "Your application is now securely connected to OpsWatch.";
+
+  const healthStatus = connection?.status ?? created?.status ?? topology?.project.status ?? "UNKNOWN";
+  const healthLabel =
+    healthStatus === "HEALTHY"
+      ? "Healthy"
+      : healthStatus === "UNKNOWN"
+        ? "Waiting for first heartbeat"
+        : healthStatus.charAt(0) + healthStatus.slice(1).toLowerCase();
 
   return (
     <div className="register-wizard">
@@ -483,7 +593,11 @@ export function RegisterApplicationWizard({
           </label>
 
           {hasCredentials && credentials?.apiKey ? (
-            <ApiKeyCopyField apiKey={credentials.apiKey} onCopy={copyApiKey} />
+            <CredentialCopyField
+              label="API key"
+              value={credentials.apiKey}
+              warning="This API key is shown only once. Copy it now. You won&apos;t be able to view it again."
+            />
           ) : (
             <p className="warn-text">No new API key was issued. You can create one under Organization settings.</p>
           )}
@@ -513,14 +627,19 @@ export function RegisterApplicationWizard({
           </label>
 
           {hasCredentials && credentials?.apiKey ? (
-            <ApiKeyCopyField apiKey={credentials.apiKey} onCopy={copyApiKey} />
+            <CredentialCopyField
+              label="API key"
+              value={credentials.apiKey}
+              warning="This API key is shown only once. Copy it now. You won&apos;t be able to view it again."
+            />
           ) : null}
 
           {credentials?.signingSecret ? (
-            <label>
-              Signing secret
-              <input value={credentials.signingSecret} readOnly />
-            </label>
+            <CredentialCopyField
+              label="Signing secret"
+              value={credentials.signingSecret}
+              warning="This signing secret is shown only once. Copy it now. You won&apos;t be able to view it again."
+            />
           ) : null}
 
           <label>
@@ -528,34 +647,15 @@ export function RegisterApplicationWizard({
             <input value={SDK_PACKAGE} readOnly />
           </label>
 
-          <fieldset className="scope-grid">
-            <legend>Authentication method</legend>
-            <label className="checkbox-label">
-              <input type="radio" name="auth-method" checked readOnly />
-              API key
-            </label>
-            <label className="checkbox-label" style={{ opacity: 0.55 }}>
-              <input type="radio" name="auth-method" disabled />
-              mTLS (Enterprise)
-            </label>
-          </fieldset>
+          <AuthenticationPanel />
 
-          {setupEnv ? (
-            <label>
-              Setup snippet
-              <textarea readOnly rows={6} value={setupEnv} />
-            </label>
-          ) : null}
+          {setupEnv ? <EnvSnippetBlock snippet={setupEnv} onCopy={copyCredentials} /> : null}
 
           <div className="register-wizard-form-actions">
             {setupEnv ? (
               <>
-                <button type="button" className="secondary-button" onClick={() => void copyCredentials()} data-action="local-ui">
-                  Copy credentials
-                </button>
-                <button type="button" className="secondary-button" onClick={downloadSetup} data-action="local-ui">
-                  Download setup
-                </button>
+                <CopyFeedbackButton idleLabel="Copy credentials" successLabel="✓ Copied" onAction={copyCredentials} />
+                <CopyFeedbackButton idleLabel="Download setup" successLabel="✓ Downloaded" onAction={downloadSetup} />
               </>
             ) : null}
             <button type="button" className="primary-button" onClick={() => setStep("verification")} data-action="local-ui">
@@ -567,19 +667,23 @@ export function RegisterApplicationWizard({
 
       {step === "verification" && created ? (
         <div className="stack-form">
-          <label>
-            Connection status
-            <input
-              value={
-                isConnected
-                  ? "Connected — first heartbeat received"
-                  : waitingForHeartbeat
-                    ? "Waiting for first heartbeat…"
-                    : "Not connected yet"
-              }
-              readOnly
-            />
-          </label>
+          {isConnected ? (
+            <div className="register-heartbeat-connected">
+              <strong>✓ First heartbeat received</strong>
+              <p>OpsWatch detected your application. Continuing to discovery…</p>
+            </div>
+          ) : (
+            <div className="register-heartbeat-waiting">
+              <span className="register-heartbeat-pulse" aria-hidden="true">
+                ●
+              </span>
+              <div>
+                <strong>Waiting for heartbeat…</strong>
+                <p>We&apos;ll automatically detect your application as soon as the SDK starts sending heartbeats.</p>
+                <p className="field-hint">Checking every 5 seconds…</p>
+              </div>
+            </div>
+          )}
 
           <ul className="register-wizard-checklist">
             <li className={isConnected ? "done" : ""}>Connected</li>
@@ -613,8 +717,8 @@ export function RegisterApplicationWizard({
               type="button"
               className="primary-button"
               onClick={() => {
-                stopPolling();
-                setStep("finish");
+                stopHeartbeatPolling();
+                setStep(isConnected ? "discover" : "monitoring");
               }}
               data-action="local-ui"
             >
@@ -624,25 +728,107 @@ export function RegisterApplicationWizard({
         </div>
       ) : null}
 
-      {step === "finish" && created ? (
+      {step === "discover" && created ? (
         <div className="stack-form">
-          <ul className="register-wizard-checklist">
-            <li className="done">Application registered</li>
-            <li className={hasCredentials ? "done" : ""}>API key generated</li>
-            <li className={isConnected ? "done" : ""}>Heartbeat {isConnected ? "received" : "pending"}</li>
-            <li>Modules, workflows, and dependencies — discovered after ingest</li>
-            <li>Health collection, incident policy, automation, notifications, AI — configure in settings</li>
+          <div className="register-discovery-banner">
+            <span className={`register-heartbeat-pulse${discovering ? "" : " register-heartbeat-pulse--idle"}`} aria-hidden="true">
+              ●
+            </span>
+            <div>
+              <strong>Discovering your application…</strong>
+              <p>OpsWatch is building your service topology as telemetry arrives.</p>
+            </div>
+          </div>
+
+          <ul className="register-wizard-checklist register-discovery-list">
+            {DISCOVERY_TARGETS.map((target) => {
+              const found = matchDiscoveryTarget(target, discovery, services);
+              return (
+                <li key={target} className={found ? "done" : discovering ? "pending" : ""}>
+                  {found ? "✓" : discovering ? "○" : "○"} {target}
+                </li>
+              );
+            })}
+            {discovery.discoveredLabels.map((label) => (
+              <li key={label} className="done">
+                ✓ {label}
+              </li>
+            ))}
           </ul>
+
+          <div className="register-wizard-form-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => {
+                stopDiscoveryPolling();
+                setStep("monitoring");
+              }}
+              data-action="local-ui"
+            >
+              Continue →
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {step === "monitoring" && created ? (
+        <div className="stack-form">
+          <div className="register-wizard-success-banner register-wizard-success-banner--celebrate">
+            <strong>🎉 Application connected successfully</strong>
+            <p>Your application is now securely connected to OpsWatch.</p>
+          </div>
+
+          <div className="hint-panel register-wizard-next-step">
+            <strong>Next</strong>
+            <ul className="register-wizard-inline-list">
+              <li>✓ Health monitoring</li>
+              <li>✓ Module discovery</li>
+              <li>✓ Workflow discovery</li>
+              <li>✓ Service topology</li>
+            </ul>
+            <p>These begin automatically as telemetry arrives.</p>
+          </div>
+
+          <div className="register-monitoring-preview">
+            <div className="register-monitoring-row">
+              <span>Application health</span>
+              <strong>{healthLabel}</strong>
+            </div>
+            <div className="register-monitoring-row">
+              <span>Modules discovered</span>
+              <strong>{discovery.modules}</strong>
+            </div>
+            <div className="register-monitoring-row">
+              <span>Services</span>
+              <strong>{discovery.services}</strong>
+            </div>
+            <div className="register-monitoring-row">
+              <span>Workflows</span>
+              <strong>{discovery.workflows}</strong>
+            </div>
+            <div className="register-monitoring-row">
+              <span>Dependencies</span>
+              <strong>{discovery.dependencies}</strong>
+            </div>
+          </div>
+
+          <p className="field-hint">Everything is now being monitored.</p>
 
           <div className="register-wizard-form-actions">
             <button type="button" className="secondary-button" onClick={closeWizard} data-action="local-ui">
               Close
             </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => router.push("/dashboard")}
+              data-action="local-ui"
+            >
+              Open command center
+            </button>
             <button type="button" className="primary-button" onClick={() => router.push(`/projects/${created.id}`)} data-action="local-ui">
               Open application
-            </button>
-            <button type="button" className="primary-button" onClick={() => router.push("/dashboard")} data-action="local-ui">
-              Open command center
             </button>
           </div>
         </div>
