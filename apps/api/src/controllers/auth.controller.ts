@@ -7,24 +7,29 @@ import {
   login,
   PasswordPolicyError
 } from "../services/auth.service";
+import { logger } from "../config/logger";
 import { clearSessionCookies, readSessionToken, setSessionCookies } from "../lib/session-cookie";
 import { createUserSession, revokeSessionToken, rotateUserSession } from "../services/session.service";
 
 export const loginController = async (req: AuthRequest, res: Response) => {
-  const { email, password } = req.body ?? {};
+  const email = String(req.body?.email ?? "").trim();
+  const password = req.body?.password;
   if (!email || !password) {
     res.status(400).json({ error: "email and password are required" });
     return;
   }
 
   try {
-    const result = await login(String(email), String(password), {
+    const result = await login(email, String(password), {
       ipAddress: req.ip,
       userAgent: req.header("user-agent") || undefined
     });
     setSessionCookies(res, result.session.sessionToken, result.session.csrfToken);
     res.json({ user: result.user });
-  } catch {
+  } catch (error) {
+    console.error("LOGIN ERROR:", error);
+    const message = error instanceof Error ? error.message : "Unknown login error";
+    logger.warn("Login failed", { email, reason: message });
     res.status(401).json({ error: "Invalid credentials" });
   }
 };

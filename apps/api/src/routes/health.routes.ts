@@ -21,25 +21,47 @@ healthRouter.get("/health/live", (_req, res) => {
 
 healthRouter.get("/health/ready", async (_req, res) => {
   const started = Date.now();
+  const checks: Record<string, { status: string; latencyMs?: number; message?: string }> = {};
+
   try {
     await prisma.$queryRaw`SELECT 1`;
-    const latencyMs = Date.now() - started;
-    res.json({
-      service: "opswatch-api",
-      status: "ready",
-      timestamp: new Date().toISOString(),
-      checks: {
-        database: { status: "ok", latencyMs }
-      }
-    });
+    checks.database = { status: "ok", latencyMs: Date.now() - started };
   } catch (error) {
+    checks.database = {
+      status: "fail",
+      message: error instanceof Error ? error.message : "Database unavailable"
+    };
     res.status(503).json({
       service: "opswatch-api",
       status: "not_ready",
       timestamp: new Date().toISOString(),
-      checks: {
-        database: { status: "fail", message: error instanceof Error ? error.message : "Database unavailable" }
-      }
+      checks
     });
+    return;
   }
+
+  try {
+    const sessionCheckStarted = Date.now();
+    await prisma.userSession.count({ take: 1 });
+    checks.sessions = { status: "ok", latencyMs: Date.now() - sessionCheckStarted };
+  } catch (error) {
+    checks.sessions = {
+      status: "fail",
+      message: error instanceof Error ? error.message : "UserSession table unavailable"
+    };
+    res.status(503).json({
+      service: "opswatch-api",
+      status: "not_ready",
+      timestamp: new Date().toISOString(),
+      checks
+    });
+    return;
+  }
+
+  res.json({
+    service: "opswatch-api",
+    status: "ready",
+    timestamp: new Date().toISOString(),
+    checks
+  });
 });

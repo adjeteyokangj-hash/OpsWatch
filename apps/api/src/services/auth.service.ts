@@ -36,7 +36,10 @@ export const login = async (
   password: string,
   context: { ipAddress?: string; userAgent?: string } = {}
 ): Promise<{ user: SessionUser; session: CreatedSession }> => {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await prisma.user.findFirst({
+    where: { email: { equals: normalizedEmail, mode: "insensitive" } }
+  });
   if (!user || !user.isActive) {
     throw new Error("Invalid credentials");
   }
@@ -46,8 +49,10 @@ export const login = async (
     throw new Error("Invalid credentials");
   }
 
+  console.log("Login: password valid, revoking prior sessions for", user.id);
   await revokeAllUserSessions(user.id, "LOGIN_ROTATION");
 
+  console.log("Login: creating session for", user.id);
   const session = await createUserSession({
     userId: user.id,
     ipAddress: context.ipAddress,

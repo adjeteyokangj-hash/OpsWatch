@@ -50,6 +50,17 @@ vi.mock("../lib/prisma", () => ({
         }
         return state.users.get(where.id) ?? null;
       }),
+      findFirst: vi.fn(async ({ where }: any) => {
+        const email = where?.email?.equals?.toLowerCase?.() ?? where?.email;
+        if (typeof email === "string") {
+          return (
+            [...state.users.values()].find(
+              (user) => user.email.toLowerCase() === email.toLowerCase()
+            ) ?? null
+          );
+        }
+        return null;
+      }),
       update: vi.fn()
     },
     userSession: {
