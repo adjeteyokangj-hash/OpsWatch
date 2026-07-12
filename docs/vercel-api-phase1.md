@@ -30,7 +30,7 @@ If Vercel reports **No Output Directory named "public" found**, the project is s
 
 | Variable | Purpose |
 |----------|---------|
-| `DATABASE_URL` | Supabase **transaction pooler** (port **6543**, `?pgbouncer=true`) — runtime |
+| `DATABASE_URL` | Supabase **transaction pooler** (port **6543**) with **`?pgbouncer=true`** — runtime on Vercel |
 | `DIRECT_URL` | Supabase **session pooler** (port **5432** on `*.pooler.supabase.com`) — migrations only |
 | `JWT_SECRET` | Auth signing (≥32 chars, production-only value) |
 | `WORKER_INTERNAL_SECRET` | Secured internal routes (≥16 chars) |
