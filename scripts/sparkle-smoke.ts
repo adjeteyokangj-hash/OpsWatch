@@ -1,17 +1,25 @@
 import { AlertSeverity, EventType, ProjectStatus } from "@opswatch/shared";
 import { createOpsWatchClient } from "@opswatch/client";
 
+const requireEnv = (key: string): string => {
+  const value = process.env[key]?.trim();
+  if (!value) {
+    throw new Error(`${key} is required`);
+  }
+  return value;
+};
+
 const client = createOpsWatchClient({
-  baseUrl: "http://localhost:4000",
-  projectKey: "sparkle",
-  signingSecret: "sparkle-secret",
-  environment: "production",
-  appName: "Sparkle",
-  appVersion: "0.1.0",
-  projectSlug: "sparkle"
+  baseUrl: requireEnv("SPARKLE_BASE_URL"),
+  projectKey: requireEnv("SPARKLE_PROJECT_KEY"),
+  signingSecret: requireEnv("SPARKLE_SIGNING_SECRET"),
+  environment: requireEnv("SPARKLE_ENVIRONMENT"),
+  appName: requireEnv("SPARKLE_APP_NAME"),
+  appVersion: requireEnv("SPARKLE_APP_VERSION"),
+  projectSlug: requireEnv("SPARKLE_PROJECT_SLUG")
 });
 
-const sendFailureEvent = (process.env.SPARKLE_SEND_FAILURE_EVENT || "false").toLowerCase() === "true";
+const sendFailureEvent = requireEnv("SPARKLE_SEND_FAILURE_EVENT").toLowerCase() === "true";
 
 const main = async (): Promise<void> => {
   await client.sendHeartbeat({

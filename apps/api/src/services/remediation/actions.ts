@@ -4,6 +4,7 @@ export type RemediationAction =
   | "RETRY_PAYMENT_VERIFICATION"
   | "REQUEUE_FAILED_JOB"
   | "RERUN_HTTP_CHECK"
+  | "REVIEW_HTTP_EXPECTED_STATUS"
   | "RERUN_SSL_CHECK"
   | "ACKNOWLEDGE_INCIDENT"
   | "ADD_INCIDENT_NOTE"
@@ -121,6 +122,18 @@ export const REMEDIATION_REGISTRY: Record<RemediationAction, ActionDef> = {
     impactTier: "LOW",
     kind: "fix",
     requiredContextFields: ["serviceId"],
+    requiredEnvVars: []
+  },
+  REVIEW_HTTP_EXPECTED_STATUS: {
+    label: "Review expected HTTP status",
+    description:
+      "Review recent check history and update the expected HTTP status with approval, verification, and rollback on failure.",
+    group: "GROUP_B_APPROVAL",
+    requiresApproval: true,
+    policyTier: "APPROVAL_REQUIRED",
+    impactTier: "HIGH",
+    kind: "fix",
+    requiredContextFields: ["incidentId", "serviceId", "checkId"],
     requiredEnvVars: []
   },
   RERUN_SSL_CHECK: {

@@ -3,16 +3,20 @@ import { Response } from "express";
 import { prisma } from "../lib/prisma";
 import { generateApiKey, generateSigningSecret } from "../utils/crypto";
 import type { AuthRequest } from "../middleware/auth";
+import { hasPermission } from "../auth/permissions";
+import { enrichProjectRow, projectInclude } from "../services/project-loader.service";
+import { createDefaultProjectBilling, updateProjectBilling } from "../services/project-billing.service";
 
 const normalizeProjectRow = (row: any) => ({
 	...row,
-	services: row.Service ?? [],
-	alerts: row.Alert ?? [],
-	incidents: row.Incident ?? [],
-	heartbeats: row.Heartbeat ?? [],
-	events: row.Event ?? [],
-	integrations: row.ProjectIntegration ?? [],
-	notificationChannels: row.NotificationChannel ?? []
+	services: row.services ?? row.Service ?? [],
+	alerts: row.alerts ?? row.Alert ?? [],
+	incidents: row.incidents ?? row.Incident ?? [],
+	heartbeats: row.heartbeats ?? row.Heartbeat ?? [],
+	events: row.events ?? row.Event ?? [],
+	integrations: row.integrations ?? row.ProjectIntegration ?? [],
+	notificationChannels: row.notificationChannels ?? row.NotificationChannel ?? [],
+	billing: row.billing ?? row.ProjectBilling ?? null
 });
 
 const requireOrg = (req: AuthRequest, res: Response): string | null => {
@@ -30,24 +34,11 @@ export const listProjects = async (req: AuthRequest, res: Response) => {
 
 	const rows = await prisma.project.findMany({
 		where: { organizationId: orgId },
-		include: {
-			Service: {
-				include: {
-					Check: {
-						include: {
-							CheckResult: { orderBy: { checkedAt: "desc" }, take: 1 }
-						}
-					}
-				}
-			},
-			Alert: { where: { status: { in: ["OPEN", "ACKNOWLEDGED"] } } },
-			Incident: { where: { status: { in: ["OPEN", "INVESTIGATING", "MONITORING"] } } },
-			Heartbeat: { orderBy: { receivedAt: "desc" }, take: 1 }
-		},
+		include: projectInclude,
 		orderBy: { createdAt: "desc" }
 	});
 
-	res.json(rows.map(normalizeProjectRow));
+	res.json(await Promise.all(rows.map((row) => enrichProjectRow(row as any).then(normalizeProjectRow))));
 };
 
 export const createProject = async (req: AuthRequest, res: Response) => {
@@ -57,6 +48,7 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 	const body = req.body ?? {};
 	const name = String(body.name || "Untitled Project").trim();
 	const slug = String(body.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""));
+	const now = new Date();
 
 	const row = await prisma.project.create({
 		data: {
@@ -69,14 +61,50 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 			frontendUrl: body.frontendUrl ? String(body.frontendUrl) : null,
 			backendUrl: body.backendUrl ? String(body.backendUrl) : null,
 			repoUrl: body.repoUrl ? String(body.repoUrl) : null,
+			projectOwner: body.projectOwner ? String(body.projectOwner) : null,
+			operationalContact: body.operationalContact ? String(body.operationalContact) : null,
+			defaultRegion: body.defaultRegion ? String(body.defaultRegion) : null,
+			status: "UNKNOWN",
+			healthReason: "Awaiting first completed check",
+			healthSource: "project-create",
+			monitoringEnabled: body.monitoringEnabled !== false,
+			monitoringStartedAt: body.monitoringEnabled === false ? null : now,
+			automationMode: typeof body.automationMode === "string" ? body.automationMode : "OBSERVE",
 			apiKey: generateApiKey(),
 			signingSecret: generateSigningSecret(),
-			updatedAt: new Date(),
+			updatedAt: now,
 			organizationId: orgId
-		}
+		},
+		include: projectInclude
 	});
 
-	res.status(201).json(row);
+	await createDefaultProjectBilling(row.id, "FREE");
+
+	if (hasPermission(req.user?.role, "policy:manage") && (body.billing || body.plan)) {
+		const billingBody = body.billing ?? {};
+		await updateProjectBilling({
+			projectId: row.id,
+			plan: billingBody.plan ?? body.plan,
+			monthlyPrice: typeof billingBody.monthlyPrice === "number" ? billingBody.monthlyPrice : undefined,
+			currency: typeof billingBody.currency === "string" ? billingBody.currency : undefined,
+			billingStatus: billingBody.billingStatus,
+			checkLimit: typeof billingBody.checkLimit === "number" || billingBody.checkLimit === null ? billingBody.checkLimit : undefined,
+			userLimit: typeof billingBody.userLimit === "number" || billingBody.userLimit === null ? billingBody.userLimit : undefined,
+			automationRunLimit:
+				typeof billingBody.automationRunLimit === "number" || billingBody.automationRunLimit === null
+					? billingBody.automationRunLimit
+					: undefined,
+			internalNotes: typeof billingBody.internalNotes === "string" ? billingBody.internalNotes : undefined,
+			updatedById: typeof req.user?.sub === "string" ? req.user.sub : undefined
+		});
+	}
+
+	const enriched = await prisma.project.findFirst({
+		where: { id: row.id, organizationId: orgId },
+		include: projectInclude
+	});
+
+	res.status(201).json(normalizeProjectRow(await enrichProjectRow((enriched ?? row) as any)));
 };
 
 export const getProjectById = async (req: AuthRequest, res: Response) => {
@@ -86,15 +114,7 @@ export const getProjectById = async (req: AuthRequest, res: Response) => {
 	const row = await prisma.project.findFirst({
 		where: { id: req.params.projectId, organizationId: orgId },
 		include: {
-			Service: {
-				include: {
-					Check: {
-						include: {
-							CheckResult: { orderBy: { checkedAt: "desc" }, take: 1 }
-						}
-					}
-				}
-			},
+			...projectInclude,
 			Alert: { orderBy: { lastSeenAt: "desc" }, take: 100 },
 			Incident: { orderBy: { openedAt: "desc" }, take: 50 },
 			Heartbeat: { orderBy: { receivedAt: "desc" }, take: 50 },
@@ -108,7 +128,7 @@ export const getProjectById = async (req: AuthRequest, res: Response) => {
 		res.status(404).json({ error: "Project not found" });
 		return;
 	}
-	res.json(normalizeProjectRow(row));
+	res.json(normalizeProjectRow(await enrichProjectRow(row as any)));
 };
 
 export const patchProject = async (req: AuthRequest, res: Response) => {
@@ -137,6 +157,10 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 			...(body.frontendUrl !== undefined ? { frontendUrl: body.frontendUrl ? String(body.frontendUrl) : null } : {}),
 			...(body.backendUrl !== undefined ? { backendUrl: body.backendUrl ? String(body.backendUrl) : null } : {}),
 			...(body.repoUrl !== undefined ? { repoUrl: body.repoUrl ? String(body.repoUrl) : null } : {}),
+			...(body.projectOwner !== undefined ? { projectOwner: body.projectOwner ? String(body.projectOwner) : null } : {}),
+			...(body.operationalContact !== undefined
+				? { operationalContact: body.operationalContact ? String(body.operationalContact) : null }
+				: {}),
 			...(body.isActive !== undefined ? { isActive: Boolean(body.isActive) } : {}),
 			updatedAt: new Date()
 		}

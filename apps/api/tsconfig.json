@@ -1,8 +1,7 @@
 {
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
-		"outDir": "dist",
-		"rootDir": "src"
+		"outDir": "dist"
 	},
 	"include": ["src"],
 	"exclude": ["src/**/*.test.ts", "src/**/*.database-e2e.test.ts"]

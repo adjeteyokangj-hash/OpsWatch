@@ -21,7 +21,7 @@ export const env = {
 	smtpPort: Number(process.env.SMTP_PORT || 587),
 	smtpUser: process.env.SMTP_USER,
 	smtpPass: process.env.SMTP_PASS,
-	smtpFrom: process.env.SMTP_FROM || "alerts@opswatch.local",
+	smtpFrom: process.env.SMTP_FROM || "alerts@opswatch.app",
 	workerRestartWebhookUrl: process.env.WORKER_RESTART_WEBHOOK_URL,
 	serviceRestartWebhookUrl: process.env.SERVICE_RESTART_WEBHOOK_URL,
 	deploymentRollbackWebhookUrl: process.env.DEPLOYMENT_ROLLBACK_WEBHOOK_URL,

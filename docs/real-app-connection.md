@@ -11,7 +11,7 @@
 Use the included demo sender:
 
 ```bash
-pnpm demo:real-app
+pnpm quarantine:demo-real-app
 ```
 
 Environment overrides:
@@ -37,7 +37,7 @@ Environment overrides:
 ## 5. Verify Monitoring Loop
 
 ```bash
-pnpm verify:monitoring
+pnpm quarantine:verify-monitoring
 ```
 
 This validates:

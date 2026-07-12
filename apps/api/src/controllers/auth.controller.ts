@@ -4,6 +4,7 @@ import {
   AuthError,
   changePassword,
   login,
+  refreshSession,
   PasswordPolicyError
 } from "../services/auth.service";
 
@@ -26,6 +27,22 @@ export const logoutController = (_req: AuthRequest, res: Response) => {
 	// JWT auth is stateless for now; this endpoint exists so clients can perform
 	// a clean server round-trip when ending a session.
 	res.status(204).send();
+};
+
+export const sessionController = async (req: AuthRequest, res: Response) => {
+	const userId = req.user?.sub;
+	if (!userId) {
+		res.status(401).json({ error: "Unauthorized" });
+		return;
+	}
+
+	const result = await refreshSession(userId);
+	if (!result) {
+		res.status(401).json({ error: "Unauthorized" });
+		return;
+	}
+
+	res.json(result);
 };
 
 export const changePasswordController = async (req: AuthRequest, res: Response) => {

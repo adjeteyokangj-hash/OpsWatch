@@ -1,0 +1,1 @@
+export { seedAutomationPlaybooks } from "../../apps/api/src/services/automation/automation-playbooks.seed";

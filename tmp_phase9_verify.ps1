@@ -1,7 +1,10 @@
 $ErrorActionPreference = "Stop"
 
+$adminEmail = if ($env:OW_ADMIN_EMAIL) { $env:OW_ADMIN_EMAIL } else { "adjeteyokangj@gmail.com" }
+$adminPassword = if ($env:OW_ADMIN_PASSWORD) { $env:OW_ADMIN_PASSWORD } else { "OpsWatch!2026#LiveAdmin" }
+
 $token = (
-  Invoke-RestMethod -Method Post -Uri "http://localhost:4000/api/auth/login" -ContentType "application/json" -Body '{"email":"admin@opswatch.local","password":"ChangeMe123!"}'
+  Invoke-RestMethod -Method Post -Uri "http://localhost:4000/api/auth/login" -ContentType "application/json" -Body (@{ email = $adminEmail; password = $adminPassword } | ConvertTo-Json -Compress)
 ).token
 
 $headers = @{
@@ -52,7 +55,7 @@ $seedJs = @'
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 (async () => {
-  const user = await prisma.user.findUnique({ where: { email: "admin@opswatch.local" }, select: { organizationId: true } });
+  const user = await prisma.user.findUnique({ where: { email: process.argv[3] }, select: { organizationId: true } });
   for (let i = 0; i < 5; i++) {
     await prisma.remediationLog.create({
       data: {
@@ -76,7 +79,7 @@ const prisma = new PrismaClient();
 $seedPath = "c:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\api\tmp-seed-suppression.js"
 Set-Content -Path $seedPath -Value $seedJs -Encoding UTF8
 Push-Location "c:\Users\edwar\OneDrive\My Project\OpsWatch\opswatch\apps\api"
-node $seedPath $serviceId
+node $seedPath $serviceId $adminEmail
 Pop-Location
 Remove-Item $seedPath -Force
 

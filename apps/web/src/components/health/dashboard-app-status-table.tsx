@@ -1,0 +1,78 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { HealthBadge } from "./health-badge";
+
+type AppRow = {
+  id: string;
+  name: string;
+  environment: string;
+  status: string;
+  healthDisplayLabel?: string | null;
+  lastSignalAt?: string | null;
+  lastCompletedCheckAt?: string | null;
+  alerts?: Array<{ id: string }>;
+};
+
+export function DashboardAppStatusTable({ rows, loading }: { rows: AppRow[]; loading?: boolean }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  if (loading) {
+    return (
+      <section className="panel">
+        <h2>Application Status</h2>
+        <p>Loading applications…</p>
+      </section>
+    );
+  }
+
+  const signalAt = (row: AppRow) => {
+    const ts = row.lastSignalAt || row.lastCompletedCheckAt;
+    if (!ts) return "No completed checks";
+    if (!mounted) return "—";
+    return new Date(ts).toLocaleString();
+  };
+
+  return (
+    <section className="panel">
+      <div className="panel-heading-row">
+        <h2>Application Status</h2>
+        <Link href="/apps">View all apps</Link>
+      </div>
+      {rows.length === 0 ? (
+        <p>No applications configured yet.</p>
+      ) : (
+        <div className="layer-health-table-wrap">
+          <table className="data-table layer-health-table">
+            <thead>
+              <tr>
+                <th>Application</th>
+                <th>Environment</th>
+                <th>Health</th>
+                <th>Last signal</th>
+                <th>Open alerts</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.slice(0, 12).map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    <Link href={`/projects/${row.id}`}>{row.name}</Link>
+                  </td>
+                  <td>{row.environment}</td>
+                  <td>
+                    <HealthBadge status={row.status} displayLabel={row.healthDisplayLabel} />
+                  </td>
+                  <td>{signalAt(row)}</td>
+                  <td>{row.alerts?.length ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}

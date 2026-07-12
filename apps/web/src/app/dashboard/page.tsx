@@ -9,8 +9,21 @@ import { StatCard } from "../../components/dashboard/stat-card";
 import { HealthOverview } from "../../components/dashboard/health-overview";
 import { RecentAlerts } from "../../components/dashboard/recent-alerts";
 import { RecentIncidents } from "../../components/dashboard/recent-incidents";
+import { LayerHealthTable, type LayerHealthRow } from "../../components/health/layer-health-table";
+import { DashboardAppStatusTable } from "../../components/health/dashboard-app-status-table";
+import { PageSection } from "../../components/ui/page-section";
+import { EmptyState } from "../../components/ui/empty-state";
 
-type ProjectRow = { id: string; name: string; status: "HEALTHY" | "DEGRADED" | "DOWN" | string };
+type ProjectRow = {
+  id: string;
+  name: string;
+  environment: string;
+  status: "HEALTHY" | "DEGRADED" | "DOWN" | string;
+  healthDisplayLabel?: string | null;
+  lastSignalAt?: string | null;
+  lastCompletedCheckAt?: string | null;
+  alerts?: Array<{ id: string }>;
+};
 type AlertRow = {
   id: string;
   title: string;
@@ -58,6 +71,7 @@ export default function DashboardPage() {
   const [checks, setChecks] = useState<CheckRow[]>([]);
   const [checkSummary, setCheckSummary] = useState<{ total: number; pass: number; fail: number; warn: number; pending: number } | null>(null);
   const [recommendations, setRecommendations] = useState<Array<InsightsRecommendation & { projectName: string }>>([]);
+  const [layerHealth, setLayerHealth] = useState<LayerHealthRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,29 +80,67 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
       try {
-        const [projectsRes, alertsRes, incidentsRes, checksRes, insightsRes] = await Promise.all([
-          apiFetch<ProjectRow[]>('/projects'),
-          apiFetch<AlertRow[]>('/alerts'),
-          apiFetch<IncidentRow[]>('/incidents'),
-          apiFetch<{ items: CheckRow[]; summary: { total: number; pass: number; fail: number; warn: number; pending: number } }>('/checks'),
-          apiFetch<{ projects: InsightsProject[] }>('/insights/product')
-        ]);
-        setProjects(projectsRes);
-        setAlerts(alertsRes);
-        setIncidents(incidentsRes);
-        setChecks(checksRes.items);
-        setCheckSummary(checksRes.summary);
+        const [projectsResult, alertsResult, incidentsResult, checksResult, insightsResult, layerHealthResult] =
+          await Promise.allSettled([
+            apiFetch<ProjectRow[]>('/projects'),
+            apiFetch<AlertRow[]>('/alerts'),
+            apiFetch<IncidentRow[]>('/incidents'),
+            apiFetch<{ items: CheckRow[]; summary: { total: number; pass: number; fail: number; warn: number; pending: number } }>('/checks'),
+            apiFetch<{ projects: InsightsProject[] }>('/insights/product'),
+            apiFetch<LayerHealthRow[]>('/analytics/layer-health')
+          ]);
 
-        const openRecommendations = (insightsRes.projects || [])
-          .flatMap((project) =>
-            (project.recommendations || []).map((recommendation) => ({
-              ...recommendation,
-              projectName: project.name
-            }))
-          )
-          .filter((recommendation) => recommendation.status === 'OPEN')
-          .filter((recommendation) => !/localhost|127\.0\.0\.1|http:\/\//i.test(`${recommendation.title} ${recommendation.description}`));
-        setRecommendations(openRecommendations.slice(0, 4));
+        const failures: string[] = [];
+
+        if (projectsResult.status === 'fulfilled') {
+          setProjects(projectsResult.value);
+        } else {
+          failures.push('projects');
+        }
+
+        if (alertsResult.status === 'fulfilled') {
+          setAlerts(alertsResult.value);
+        } else {
+          failures.push('alerts');
+        }
+
+        if (incidentsResult.status === 'fulfilled') {
+          setIncidents(incidentsResult.value);
+        } else {
+          failures.push('incidents');
+        }
+
+        if (checksResult.status === 'fulfilled') {
+          setChecks(checksResult.value.items);
+          setCheckSummary(checksResult.value.summary);
+        } else {
+          failures.push('checks');
+        }
+
+        if (insightsResult.status === 'fulfilled') {
+          const openRecommendations = (insightsResult.value.projects || [])
+            .flatMap((project) =>
+              (project.recommendations || []).map((recommendation) => ({
+                ...recommendation,
+                projectName: project.name
+              }))
+            )
+            .filter((recommendation) => recommendation.status === 'OPEN')
+            .filter((recommendation) => !/localhost|127\.0\.0\.1|http:\/\//i.test(`${recommendation.title} ${recommendation.description}`));
+          setRecommendations(openRecommendations.slice(0, 4));
+        } else {
+          failures.push('insights');
+        }
+
+        if (layerHealthResult.status === 'fulfilled') {
+          setLayerHealth(layerHealthResult.value);
+        } else {
+          failures.push('layer health');
+        }
+
+        if (failures.length > 0) {
+          setError(`Some dashboard data failed to load: ${failures.join(', ')}. Showing available live data only.`);
+        }
       } catch (err: any) {
         setError(err?.message || "Failed to load dashboard data");
       } finally {
@@ -133,9 +185,18 @@ export default function DashboardPage() {
   return (
     <Shell>
       <Header title="Dashboard" />
-      {loading ? <p>Loading live metrics...</p> : null}
-      {error ? <p>Dashboard load warning: {error}. Showing last successful live data only.</p> : null}
-      <section className="grid-6">
+      {loading ? <section className="panel workspace-loading"><div className="loading-pulse" /><p>Loading live metrics…</p></section> : null}
+      {!loading && projects.length === 0 && alerts.length === 0 && incidents.length === 0 ? (
+        <section className="panel error-panel">
+          <EmptyState
+            title="No monitoring data visible"
+            description="Your login token may be outdated after a database repair. Log out and sign in again to reload organization access."
+            action={<a className="primary-button" href="/login">Go to login</a>}
+          />
+        </section>
+      ) : null}
+      {error ? <section className="panel error-panel">{error}</section> : null}
+      <section className="grid-6 dashboard-metrics">
         <StatCard label="Projects" value={loading ? '-' : projects.length} href="/projects" />
         <StatCard label="Healthy projects" value={loading ? '-' : healthy} href="/projects?health=HEALTHY" />
         <StatCard label="Degraded projects" value={loading ? '-' : degraded} href="/projects?health=DEGRADED" />
@@ -172,30 +233,35 @@ export default function DashboardPage() {
         />
       </section>
 
-      <section className="panel">
-        <h2>Live Signal Credibility</h2>
-        {loading ? <p>Evaluating live signal quality...</p> : null}
-        {!loading ? (
-          <ul className="dashboard-list">
-            <li>
-              <strong>Active operational signals:</strong> {openAlerts.length} open alerts and {unresolvedIncidents.length} unresolved incidents.
-            </li>
-            <li>
-              <strong>Historical/stale kept secondary:</strong> {noisyHistoryCount} resolved or historical alert records are excluded from primary counters.
-            </li>
-            <li>
-              <strong>Current check posture:</strong> {checkSummary?.pass ?? 0} pass, {checkFailures} fail, {checkWarns} warn, {checkSummary?.pending ?? 0} pending.
-            </li>
+      <PageSection title="Live signal credibility" description="How much of the dashboard is driven by active operational signals.">
+        {loading ? <p>Evaluating live signal quality…</p> : (
+          <div className="snapshot-grid">
+            <div className="snapshot-item">
+              <span className="snapshot-label">Active signals</span>
+              <strong>{openAlerts.length} open alerts · {unresolvedIncidents.length} unresolved incidents</strong>
+            </div>
+            <div className="snapshot-item">
+              <span className="snapshot-label">Historical excluded</span>
+              <strong>{noisyHistoryCount} resolved or historical alert records kept secondary</strong>
+            </div>
+            <div className="snapshot-item">
+              <span className="snapshot-label">Check posture</span>
+              <strong>{checkSummary?.pass ?? 0} pass · {checkFailures} fail · {checkWarns} warn · {checkSummary?.pending ?? 0} pending</strong>
+            </div>
             {primaryProject ? (
-              <li>
-                <strong>Fast path:</strong> <Link href={`/projects/${primaryProject.id}`}>Open {primaryProject.name} project control room</Link>.
-              </li>
+              <div className="snapshot-item snapshot-item-wide">
+                <span className="snapshot-label">Fast path</span>
+                <strong><Link href={`/projects/${primaryProject.id}`}>Open {primaryProject.name} control room →</Link></strong>
+              </div>
             ) : null}
-          </ul>
-        ) : null}
-      </section>
+          </div>
+        )}
+      </PageSection>
 
       <HealthOverview healthy={healthy} degraded={degraded} down={down} />
+
+      <LayerHealthTable rows={layerHealth} loading={loading} />
+      <DashboardAppStatusTable rows={projects} loading={loading} />
 
       <section className="two-col">
         <RecentAlerts
@@ -224,52 +290,47 @@ export default function DashboardPage() {
         />
       </section>
 
-      <section className="two-col">
-        <section className="panel">
-          <h2>Check Health Snapshot</h2>
-          {loading ? <p>Loading check health...</p> : null}
-          {!loading ? (
+      <section className="two-col dashboard-secondary">
+        <PageSection title="Check health snapshot" description="Concentrated service failures from active checks.">
+          {loading ? <p>Loading check health…</p> : (
             <>
-              <p>
-                Current checks: {checkSummary?.pass ?? 0} passing, {checkSummary?.fail ?? 0} failing, {checkSummary?.warn ?? 0} warning.
-              </p>
+              <p>Current checks: {checkSummary?.pass ?? 0} passing, {checkSummary?.fail ?? 0} failing, {checkSummary?.warn ?? 0} warning.</p>
               {weakestServices.length === 0 ? (
                 <p>Monitoring healthy. No concentrated service failures.</p>
               ) : (
-                <ul className="dashboard-list">
+                <div className="activity-feed">
                   {weakestServices.map(([serviceName, issueCount]) => (
-                    <li key={serviceName}>
-                      {serviceName}: {issueCount} active check issue{issueCount === 1 ? '' : 's'}
-                    </li>
+                    <article className="activity-feed-item" key={serviceName}>
+                      <div className="activity-feed-title">{serviceName}</div>
+                      <p className="activity-feed-meta">{issueCount} active check issue{issueCount === 1 ? "" : "s"}</p>
+                    </article>
                   ))}
-                </ul>
+                </div>
               )}
-              <p>
-                <Link href="/checks">Open checks page</Link>
-              </p>
+              <p><Link className="text-link" href="/checks">Open checks page →</Link></p>
             </>
-          ) : null}
-        </section>
+          )}
+        </PageSection>
 
-        <section className="panel">
-          <h2>Actionable Recommendations</h2>
-          {loading ? <p>Loading recommendations...</p> : null}
-          {!loading && recommendations.length === 0 ? <p>No active recommendations. Monitoring healthy.</p> : null}
-          {!loading && recommendations.length > 0 ? (
-            <ul className="dashboard-list">
+        <PageSection title="Actionable recommendations" description="Open insights from product monitoring analysis.">
+          {loading ? <p>Loading recommendations…</p> : recommendations.length === 0 ? (
+            <EmptyState title="No active recommendations" description="Monitoring looks healthy across tracked projects." />
+          ) : (
+            <div className="activity-feed">
               {recommendations.map((recommendation) => (
-                <li key={recommendation.id}>
-                  <strong>{recommendation.title}</strong>
-                  <div className="dashboard-subtle">{recommendation.projectName} · {recommendation.level}</div>
-                  <div>{recommendation.description}</div>
-                </li>
+                <article className="activity-feed-item" key={recommendation.id}>
+                  <div className="activity-feed-head">
+                    <span className="meta-chip">{recommendation.level}</span>
+                  </div>
+                  <div className="activity-feed-title">{recommendation.title}</div>
+                  <p className="activity-feed-meta">{recommendation.projectName}</p>
+                  <p>{recommendation.description}</p>
+                </article>
               ))}
-            </ul>
-          ) : null}
-          <p>
-            <Link href="/insights">Open insights page</Link>
-          </p>
-        </section>
+            </div>
+          )}
+          <p><Link className="text-link" href="/insights">Open insights page →</Link></p>
+        </PageSection>
       </section>
     </Shell>
   );

@@ -14,6 +14,50 @@ const assertSeedPasswordStrength = (password: string): void => {
   }
 };
 
+const resolveDevPassword = (adminPassword: string | undefined, existingUser: boolean): string => {
+  if (adminPassword) {
+    return adminPassword;
+  }
+  if (existingUser) {
+    return LOCAL_DEV_DEFAULT_PASSWORD;
+  }
+  return LOCAL_DEV_DEFAULT_PASSWORD;
+};
+
+async function resolveSeedOrganization(isProduction: boolean) {
+  if (isProduction) {
+    return prisma.organization.upsert({
+      where: { slug: "opswatch-default" },
+      update: {},
+      create: {
+        id: randomUUID(),
+        name: "OpsWatch",
+        slug: "opswatch-default",
+        updatedAt: new Date()
+      }
+    });
+  }
+
+  const preferred = await prisma.organization.findFirst({
+    where: { slug: { in: ["okanggroup", "opswatch-default"] } },
+    orderBy: { Project: { _count: "desc" } },
+    include: { _count: { select: { Project: true } } }
+  });
+
+  if (preferred) {
+    return preferred;
+  }
+
+  return prisma.organization.create({
+    data: {
+      id: randomUUID(),
+      name: "OpsWatch",
+      slug: "opswatch-default",
+      updatedAt: new Date()
+    }
+  });
+}
+
 async function main() {
   const isProduction = process.env.NODE_ENV === "production";
   const adminEmail = process.env.SEED_ADMIN_EMAIL ?? (isProduction ? undefined : LOCAL_DEV_DEFAULT_EMAIL);
@@ -36,56 +80,59 @@ async function main() {
     assertSeedPasswordStrength(adminPassword);
   }
 
-  let resolvedCreatePassword = adminPassword;
-  if (!existingUser && !resolvedCreatePassword) {
-    if (isProduction) {
-      throw new Error("SEED_ADMIN_PASSWORD is required when creating the production administrator");
-    }
+  const resolvedPassword = resolveDevPassword(adminPassword, Boolean(existingUser));
+  if (!adminPassword && !existingUser && !isProduction) {
     console.warn(
       "SEED_ADMIN_PASSWORD not set — using local development default. Do not use in production."
     );
-    resolvedCreatePassword = LOCAL_DEV_DEFAULT_PASSWORD;
   }
 
-  const org = await prisma.organization.upsert({
-    where: { slug: "opswatch-default" },
-    update: {},
-    create: {
-      id: randomUUID(),
-      name: "OpsWatch",
-      slug: "opswatch-default",
-      updatedAt: new Date(),
-    },
-  });
-
-  const updateData = {
-    name: "Admin",
-    role: "ADMIN",
-    isActive: true,
-    organizationId: org.id,
-    updatedAt: new Date(),
-    ...(adminPassword
-      ? { passwordHash: await bcrypt.hash(adminPassword, 10) }
-      : {}),
-  };
+  const org = await resolveSeedOrganization(isProduction);
+  const passwordHash = await bcrypt.hash(resolvedPassword, 10);
 
   const user = await prisma.user.upsert({
     where: { email: adminEmail },
-    update: updateData,
-    create: {
-      id: randomUUID(),
+    update: {
       name: "Admin",
-      email: adminEmail,
-      passwordHash: await bcrypt.hash(resolvedCreatePassword!, 10),
       role: "ADMIN",
       isActive: true,
       organizationId: org.id,
       updatedAt: new Date(),
+      ...(adminPassword || !isProduction ? { passwordHash } : {})
     },
+    create: {
+      id: randomUUID(),
+      name: "Admin",
+      email: adminEmail,
+      passwordHash,
+      role: "ADMIN",
+      isActive: true,
+      organizationId: org.id,
+      updatedAt: new Date()
+    }
   });
 
   const action = existingUser ? "Updated" : "Created";
   console.log(`${action} administrator: ${user.email} (${user.id}) in org ${org.slug}`);
+
+  if (!isProduction) {
+    const [movedProjects, movedUsers] = await Promise.all([
+      prisma.project.updateMany({
+        where: { organizationId: { not: org.id } },
+        data: { organizationId: org.id, updatedAt: new Date() }
+      }),
+      prisma.user.updateMany({
+        where: { organizationId: { not: org.id } },
+        data: { organizationId: org.id, updatedAt: new Date() }
+      })
+    ]);
+    if (movedProjects.count > 0) {
+      console.log(`Moved ${movedProjects.count} project(s) into org ${org.slug}`);
+    }
+    if (movedUsers.count > 0) {
+      console.log(`Moved ${movedUsers.count} user(s) into org ${org.slug}`);
+    }
+  }
 }
 
 main()

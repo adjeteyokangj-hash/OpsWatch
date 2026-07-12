@@ -1,7 +1,8 @@
-import { AlertCategory, AlertSeverity, AlertStatus, ProjectStatus } from "@prisma/client";
+import { AlertCategory, AlertSeverity, AlertStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { prisma } from "../lib/prisma";
 import { dispatchAlertNotifications } from "./notifications/notification.service";
+import { findActiveMaintenanceForService } from "./maintenance-window-policy.service";
 
 export const createAlert = async (input: {
   projectId: string;
@@ -15,6 +16,42 @@ export const createAlert = async (input: {
   message: string;
   dedupeBySourceId?: boolean;
 }): Promise<void> => {
+  const project = await prisma.project.findUnique({
+    where: { id: input.projectId },
+    select: { organizationId: true }
+  });
+  if (!project?.organizationId) {
+    return;
+  }
+
+  const maintenance = await findActiveMaintenanceForService({
+    organizationId: project.organizationId,
+    projectId: input.projectId,
+    serviceId: input.serviceId
+  });
+  if (maintenance.inMaintenance && maintenance.suppressAlerts) {
+    const suppressedId = randomUUID();
+    await prisma.alert.create({
+      data: {
+        id: suppressedId,
+        projectId: input.projectId,
+        serviceId: input.serviceId,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+        integrationId: input.integrationId,
+        severity: input.severity,
+        category: input.category,
+        title: input.title,
+        message: `${input.message} [maintenance suppressed: ${maintenance.windowName ?? maintenance.windowId}]`,
+        status: AlertStatus.RESOLVED,
+        maintenanceSuppressed: true,
+        maintenanceWindowId: maintenance.windowId ?? null,
+        resolvedAt: new Date()
+      }
+    });
+    return;
+  }
+
   let alertToDispatchId: string | null = null;
   const dedupeBySourceId = input.dedupeBySourceId ?? true;
 
@@ -60,13 +97,6 @@ export const createAlert = async (input: {
       }
     });
     alertToDispatchId = createdAlert.id;
-  }
-
-  if (input.severity === "CRITICAL" || input.severity === "HIGH") {
-    await prisma.project.update({
-      where: { id: input.projectId },
-      data: { status: ProjectStatus.DEGRADED }
-    });
   }
 
   if (alertToDispatchId) {

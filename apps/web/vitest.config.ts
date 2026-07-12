@@ -8,7 +8,7 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     setupFiles: ["./vitest.setup.ts"],
     testTimeout: 15000,
-    pool: "threads",
+    pool: "forks",
     fileParallelism: false,
     maxWorkers: 1,
     minWorkers: 1,

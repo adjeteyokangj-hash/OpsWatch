@@ -3,7 +3,7 @@
 ## 1. Start Webhook Listener
 
 ```bash
-pnpm notify:webhook-listener
+pnpm quarantine:webhook-listener
 ```
 
 By default it listens on port `4011` and writes to `tmp/notification-events.jsonl`.
@@ -13,7 +13,7 @@ By default it listens on port `4011` and writes to `tmp/notification-events.json
 In another terminal:
 
 ```bash
-pnpm verify:notifications
+pnpm quarantine:verify-notifications
 ```
 
 This script:

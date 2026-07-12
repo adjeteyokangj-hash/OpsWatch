@@ -1,7 +1,13 @@
 import { Response } from "express";
 import { prisma } from "../lib/prisma";
 import type { AuthRequest } from "../middleware/auth";
-import { listIncidents, mapIncidentDetail } from "../services/incidents.service";
+import {
+	listIncidents,
+	listIncidentRootCauseCandidates,
+	listIncidentTimeline,
+	mapIncidentDetail
+} from "../services/incidents.service";
+import { randomUUID } from "crypto";
 
 const parseDateQuery = (value: unknown): Date | undefined => {
 	if (typeof value !== "string" || !value.trim()) return undefined;
@@ -45,6 +51,13 @@ export const getIncidentById = async (req: AuthRequest, res: Response) => {
 		where: { id: req.params.incidentId, Project: { organizationId: orgId } },
 		include: {
 			Project: { select: { id: true, name: true, organizationId: true } },
+			CorrelationGroup: {
+				include: {
+					Incidents: {
+						include: { Project: { select: { id: true, name: true } } }
+					}
+				}
+			},
 			IncidentAlert: {
 				include: {
 					Alert: {
@@ -62,6 +75,131 @@ export const getIncidentById = async (req: AuthRequest, res: Response) => {
 		return;
 	}
 	res.json(mapIncidentDetail(row as any));
+};
+
+export const getIncidentTimeline = async (req: AuthRequest, res: Response) => {
+	const orgId = requireOrg(req, res);
+	if (!orgId) return;
+
+	const take = Math.max(1, Math.min(Number(req.query.take || 200), 500));
+	const rows = await listIncidentTimeline(orgId, String(req.params.incidentId), take);
+	if (!rows) {
+		res.status(404).json({ error: "Incident not found" });
+		return;
+	}
+
+	res.json(rows);
+};
+
+export const getIncidentRootCauseCandidates = async (req: AuthRequest, res: Response) => {
+	const orgId = requireOrg(req, res);
+	if (!orgId) return;
+
+	const rows = await listIncidentRootCauseCandidates(orgId, String(req.params.incidentId));
+	if (!rows) {
+		res.status(404).json({ error: "Incident not found" });
+		return;
+	}
+
+	res.json(rows);
+};
+
+export const listChangeEvents = async (req: AuthRequest, res: Response) => {
+	const orgId = requireOrg(req, res);
+	if (!orgId) return;
+
+	const project = await prisma.project.findFirst({
+		where: { id: req.params.projectId, organizationId: orgId },
+		select: { id: true }
+	});
+	if (!project) {
+		res.status(404).json({ error: "Project not found" });
+		return;
+	}
+
+	const take = Math.max(1, Math.min(Number(req.query.take || 100), 500));
+	const from = parseDateQuery(req.query.from);
+	const to = parseDateQuery(req.query.to);
+
+	const rows = await prisma.changeEvent.findMany({
+		where: {
+			organizationId: orgId,
+			projectId: project.id,
+			...(typeof req.query.serviceId === "string" ? { serviceId: req.query.serviceId } : {}),
+			...(typeof req.query.incidentId === "string" ? { incidentId: req.query.incidentId } : {}),
+			...(from || to
+				? {
+					occurredAt: {
+						...(from ? { gte: from } : {}),
+						...(to ? { lte: to } : {})
+					}
+				}
+				: {})
+		},
+		orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
+		take
+	});
+
+	res.json(rows);
+};
+
+export const createChangeEvent = async (req: AuthRequest, res: Response) => {
+	const orgId = requireOrg(req, res);
+	if (!orgId) return;
+
+	const project = await prisma.project.findFirst({
+		where: { id: req.params.projectId, organizationId: orgId },
+		select: { id: true }
+	});
+	if (!project) {
+		res.status(404).json({ error: "Project not found" });
+		return;
+	}
+
+	const body = req.body ?? {};
+	if (!body.eventType || !body.summary) {
+		res.status(400).json({ error: "eventType and summary are required" });
+		return;
+	}
+
+	if (body.serviceId) {
+		const serviceExists = await prisma.service.findFirst({
+			where: { id: String(body.serviceId), projectId: project.id },
+			select: { id: true }
+		});
+		if (!serviceExists) {
+			res.status(400).json({ error: "serviceId is not part of this project" });
+			return;
+		}
+	}
+
+	if (body.incidentId) {
+		const incidentExists = await prisma.incident.findFirst({
+			where: { id: String(body.incidentId), projectId: project.id },
+			select: { id: true }
+		});
+		if (!incidentExists) {
+			res.status(400).json({ error: "incidentId is not part of this project" });
+			return;
+		}
+	}
+
+	const created = await prisma.changeEvent.create({
+		data: {
+			id: randomUUID(),
+			organizationId: orgId,
+			projectId: project.id,
+			serviceId: body.serviceId ? String(body.serviceId) : null,
+			incidentId: body.incidentId ? String(body.incidentId) : null,
+			eventType: String(body.eventType),
+			actor: body.actor ? String(body.actor) : null,
+			summary: String(body.summary),
+			detailsJson: body.detailsJson ?? null,
+			occurredAt: body.occurredAt ? new Date(String(body.occurredAt)) : new Date()
+		}
+	});
+
+	res.status(201).json(created);
 };
 
 export const patchIncident = async (req: AuthRequest, res: Response) => {

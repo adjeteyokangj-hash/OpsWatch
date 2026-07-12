@@ -1,0 +1,58 @@
+# Migration reconciliation — working-tree containment (2026-07-12)
+# DO NOT rename, squash, or delete migrations until Supabase _prisma_migrations is compared.
+
+## Local disk: 26 migration folders (+ migration_lock.toml)
+
+## Local _prisma_migrations: 28 rows (includes duplicate + failed attempt)
+
+### Applied successfully (27 unique names with finished_at)
+- 20260420204102_init
+- 20260421152742_notifications_mvp
+- 20260421155750_multitenant_billing_onboarding
+- 20260421161535_remediation_ai_categories
+- 20260421173833_remediation_log_enrichment
+- 20260421180825_project_integration_config
+- 20260421202704_phase7_prediction_tracking
+- 20260421222358_phase9_auto_remediation_policy
+- 20260422132000_api_keys_access
+- 20260422190000_api_key_audit_fields
+- 20260423000000_insights_coverage_models
+- 20260708090000_okanggroup_health_hierarchy  ** DRIFT: applied in DB, folder MISSING on disk **
+- 20260705090000_epic_a_p1_foundations
+- 20260710120000_slo_management_stabilisation
+- 20260710183000_four_layer_service_types
+- 20260711010000_remediation_locks_idempotency
+- 20260711060000_automation_ai_foundations
+- 20260711070000_automation_approval_execution
+- 20260711080000_org_correlation_and_safeguards
+- 20260711090000_maintenance_and_playbook_governance
+- 20260711120000_project_health_and_billing (finished — no-op SELECT 1)
+- 20260711120000_project_health_enum_values
+- 20260711120100_project_health_and_billing ** AUTHORITATIVE DDL **
+- 20260711130000_backfill_project_billing
+- 20260711183000_fix_free_billing_backfill
+- 20260711190000_billing_null_unlimited_limits
+- 20260711190000_billing_unlimited_null_limits
+
+### Failed / pending row
+- 20260711120000_project_health_and_billing — second row, finished_at NULL (failed re-apply attempt)
+
+## Duplicate migration pairs (authoritative file)
+
+| Name | Authoritative? | SQL intent |
+|------|----------------|------------|
+| 20260711120000_project_health_and_billing | Keep (no-op) | `SELECT 1` placeholder; already applied; must remain if DB has record |
+| 20260711120000_project_health_enum_values | Authoritative for enums | Adds UNKNOWN, MAINTENANCE, RECOVERING to ProjectStatus |
+| 20260711120100_project_health_and_billing | Authoritative for schema | Project health columns, Service.criticality, ProjectBilling tables |
+| 20260711190000_billing_null_unlimited_limits | Both applied | Drops NOT NULL + updates >= 9999 + ENTERPRISE nulling |
+| 20260711190000_billing_unlimited_null_limits | Both applied | Drops NOT NULL + ENTERPRISE nulling + >= 9999 updates (slightly different guards) |
+
+Neither billing_null pair should be deleted — both are recorded as applied locally.
+
+## Supabase
+- Not queried: apps/api/.env DATABASE_URL and DIRECT_URL both point to localhost.
+- Action required before migration cleanup: set DIRECT_URL to Supabase session pooler and re-run `scripts/inventory-migrations.ts`.
+
+## prisma migrate status
+- Reports: "26 migrations found" / "Database schema is up to date"
+- Note: status counts disk folders (26), not DB rows (28) or missing okanggroup folder drift.

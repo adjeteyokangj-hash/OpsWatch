@@ -1,17 +1,30 @@
 import { AlertSeverity, EventType, ProjectStatus } from "@opswatch/shared";
 import { createOpsWatchClient } from "@opswatch/client";
 
-const heartbeatIntervalMs = Number(process.env.DEMO_HEARTBEAT_INTERVAL_MS || 300000);
-const sendBootEvent = (process.env.DEMO_SEND_BOOT_EVENT || "true").toLowerCase() !== "false";
+const requireEnv = (key: string): string => {
+  const value = process.env[key]?.trim();
+  if (!value) {
+    throw new Error(`${key} is required`);
+  }
+  return value;
+};
+
+const heartbeatIntervalRaw = requireEnv("DEMO_HEARTBEAT_INTERVAL_MS");
+const heartbeatIntervalMs = Number(heartbeatIntervalRaw);
+if (!Number.isFinite(heartbeatIntervalMs) || heartbeatIntervalMs <= 0) {
+  throw new Error(`DEMO_HEARTBEAT_INTERVAL_MS must be a positive number; received '${heartbeatIntervalRaw}'`);
+}
+
+const sendBootEvent = requireEnv("DEMO_SEND_BOOT_EVENT").toLowerCase() !== "false";
 
 const client = createOpsWatchClient({
-  baseUrl: process.env.OPSWATCH_BASE_URL || "http://localhost:4000",
-  projectKey: process.env.OPSWATCH_PROJECT_KEY || "sparkle",
-  signingSecret: process.env.OPSWATCH_SIGNING_SECRET || "sparkle-secret",
-  environment: process.env.DEMO_APP_ENV || "production",
-  appName: process.env.DEMO_APP_NAME || "opswatch-demo-app",
-  appVersion: process.env.DEMO_APP_VERSION || "1.0.0",
-  projectSlug: process.env.DEMO_PROJECT_SLUG || "sparkle"
+  baseUrl: requireEnv("OPSWATCH_BASE_URL"),
+  projectKey: requireEnv("OPSWATCH_PROJECT_KEY"),
+  signingSecret: requireEnv("OPSWATCH_SIGNING_SECRET"),
+  environment: requireEnv("DEMO_APP_ENV"),
+  appName: requireEnv("DEMO_APP_NAME"),
+  appVersion: requireEnv("DEMO_APP_VERSION"),
+  projectSlug: requireEnv("DEMO_PROJECT_SLUG")
 });
 
 const sendHeartbeatTick = async (): Promise<void> => {
@@ -32,8 +45,8 @@ const sendStructuredEvent = async (): Promise<void> => {
     source: "demo-real-app",
     message: "Demo app deployment event",
     payload: {
-      release: process.env.DEMO_APP_VERSION || "1.0.0",
-      region: process.env.DEMO_APP_REGION || "local"
+      release: requireEnv("DEMO_APP_VERSION"),
+      region: requireEnv("DEMO_APP_REGION")
     }
   });
 };

@@ -46,7 +46,7 @@ export const sendEmailAlert = async (
   }
 
   await mailer.sendMail({
-    from: process.env.SMTP_FROM || "alerts@opswatch.local",
+    from: process.env.SMTP_FROM || "alerts@opswatch.app",
     to: channel.target,
     subject: `[OpsWatch] ${alert.Project.name} ${alert.severity} ${alert.title}`,
     text: [

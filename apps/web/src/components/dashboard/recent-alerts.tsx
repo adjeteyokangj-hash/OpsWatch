@@ -1,4 +1,8 @@
 import Link from "next/link";
+import { SeverityBadge } from "../alerts/severity-badge";
+import { ActivityList } from "../ui/activity-list";
+import { EmptyState } from "../ui/empty-state";
+import { PageSection } from "../ui/page-section";
 
 export function RecentAlerts({
   items,
@@ -17,34 +21,40 @@ export function RecentAlerts({
 }) {
   if (loading) {
     return (
-      <section className="panel">
-        <h2>Recent Alerts</h2>
-        <p>Loading alerts...</p>
-      </section>
+      <PageSection title="Recent alerts" description="Latest open signals across your estate.">
+        <p>Loading alerts…</p>
+      </PageSection>
     );
   }
 
   return (
-    <section className="panel">
-      <h2>Recent Alerts</h2>
+    <PageSection title="Recent alerts" description="Latest open signals across your estate.">
       {items.length === 0 ? (
-        <p>
-          No open alerts. <Link href="/alerts">View alert history</Link>.
-        </p>
-      ) : null}
-      <ul className="dashboard-list">
-        {items.map((item, idx) => (
-          <li key={`${item.id ?? item.title}-${idx}`}>
-            <div>
-              <span className={`severity ${item.severity.toLowerCase()}`}>{item.severity}</span>{" "}
-              <strong>{item.id ? <Link href={`/alerts/${item.id}`}>{item.title}</Link> : item.title}</strong>
-            </div>
-            <div className="dashboard-subtle">
-              {item.projectName}{item.serviceName ? ` / ${item.serviceName}` : ""} · {item.status} · {new Date(item.timestamp).toLocaleString()}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+        <EmptyState
+          title="No open alerts"
+          description="Monitoring is quiet right now."
+          action={
+            <Link className="secondary-button" href="/alerts">
+              View alert history
+            </Link>
+          }
+        />
+      ) : (
+        <ActivityList
+          items={items.map((item, idx) => ({
+            id: `${item.id ?? item.title}-${idx}`,
+            href: item.id ? `/alerts/${item.id}` : undefined,
+            title: item.title,
+            badges: (
+              <>
+                <SeverityBadge severity={item.severity} />
+                <span className={`result-pill ${item.status === "ACKNOWLEDGED" ? "warn" : "fail"}`}>{item.status}</span>
+              </>
+            ),
+            meta: `${item.projectName}${item.serviceName ? ` / ${item.serviceName}` : ""} · ${new Date(item.timestamp).toLocaleString()}`
+          }))}
+        />
+      )}
+    </PageSection>
   );
 }

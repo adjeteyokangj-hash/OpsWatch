@@ -5,8 +5,17 @@ import { runHttpChecksJob } from "../apps/worker/src/jobs/run-http-checks.job";
 
 const prisma = new PrismaClient();
 
-const webhookTarget = process.env.NOTIFY_WEBHOOK_TARGET || "http://localhost:4011/opswatch-webhook";
-const outputPath = process.env.NOTIFY_WEBHOOK_OUTPUT || path.join(process.cwd(), "tmp", "notification-events.jsonl");
+const requireEnv = (key: string): string => {
+  const value = process.env[key]?.trim();
+  if (!value) {
+    throw new Error(`${key} is required`);
+  }
+  return value;
+};
+
+const webhookTarget = requireEnv("NOTIFY_WEBHOOK_TARGET");
+const outputPath = requireEnv("NOTIFY_WEBHOOK_OUTPUT");
+const notifyProjectSlug = requireEnv("NOTIFY_PROJECT_SLUG");
 
 const ensureWebhookChannel = async (projectId: string): Promise<void> => {
   const existing = await prisma.notificationChannel.findFirst({
@@ -97,9 +106,9 @@ const assertHasReason = (reasons: string[], reason: string): void => {
 };
 
 const main = async (): Promise<void> => {
-  const project = await prisma.project.findUnique({ where: { slug: "sparkle" } });
+  const project = await prisma.project.findUnique({ where: { slug: notifyProjectSlug } });
   if (!project) {
-    throw new Error("Project 'sparkle' not found. Run seed first.");
+    throw new Error(`Project '${notifyProjectSlug}' not found.`);
   }
 
   const service = await prisma.service.findFirst({ where: { projectId: project.id } });

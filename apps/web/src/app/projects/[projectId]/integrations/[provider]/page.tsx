@@ -3,8 +3,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Shell } from "../../../../../components/layout/shell";
-import { Header } from "../../../../../components/layout/header";
+import { ProjectWorkspaceShell } from "../../../../../components/projects/project-workspace-shell";
+import { useProjectWorkspace } from "../../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../../lib/api";
 
 type IntegrationValidationStatus = "UNKNOWN" | "VALID" | "INVALID";
@@ -37,7 +37,7 @@ const PROVIDER_PRESETS: Record<string, Record<string, unknown>> = {
   },
   EMAIL: {
     EMAIL_PROVIDER_HEALTHCHECK_URL: "",
-    EMAIL_FROM: "alerts@example.com",
+    EMAIL_FROM: "alerts@opswatch.app",
     EMAIL_REPLY_TO: ""
   },
   STRIPE: {
@@ -84,6 +84,7 @@ const statusClass = (status?: IntegrationValidationStatus) => {
 
 export default function ProviderIntegrationDetailPage() {
   const params = useParams<{ projectId: string; provider: string }>();
+  const { project, loading: projectLoading, error: projectError } = useProjectWorkspace(params.projectId);
   const providerType = useMemo(() => (params.provider || "webhook").toUpperCase(), [params.provider]);
   const preset = useMemo(() => PROVIDER_PRESETS[providerType] ?? {}, [providerType]);
 
@@ -263,9 +264,14 @@ export default function ProviderIntegrationDetailPage() {
   };
 
   return (
-    <Shell>
-      <Header title={`Integration: ${providerTitle(providerType)}`} />
-
+    <ProjectWorkspaceShell
+      projectId={params.projectId}
+      title={project ? `${project.name} — ${providerTitle(providerType)}` : `Integration: ${providerTitle(providerType)}`}
+      subtitle="Configure provider connectivity and validate integration health."
+      project={project}
+      loading={projectLoading}
+      error={projectError}
+    >
       {error ? <section className="panel error-panel">{error}</section> : null}
       {message ? <section className="panel success-panel">{message}</section> : null}
 
@@ -357,6 +363,6 @@ export default function ProviderIntegrationDetailPage() {
           </Link>
         </aside>
       </section>
-    </Shell>
+    </ProjectWorkspaceShell>
   );
 }

@@ -31,3 +31,33 @@ export const getAuthClaims = (): Record<string, unknown> | null => {
     return null;
   }
 };
+
+export const refreshAuthSession = async (): Promise<boolean> => {
+  const token = getAuthToken();
+  if (!token) return false;
+
+  const { API_BASE_URL } = await import("./constants");
+  const response = await fetch(`${API_BASE_URL}/auth/session`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    clearAuthCookie();
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+      window.location.href = "/login";
+    }
+    return false;
+  }
+
+  const data = (await response.json()) as { token?: string };
+  if (!data.token) {
+    return false;
+  }
+
+  setAuthCookie(data.token);
+  return true;
+};

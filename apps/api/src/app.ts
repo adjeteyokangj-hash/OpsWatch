@@ -27,6 +27,11 @@ import { onboardingRouter } from "./routes/onboarding.routes";
 import { trueNumerisRouter } from "./routes/truenumeris.routes";
 import { eventsRouter } from "./routes/events.routes";
 import { heartbeatsRouter } from "./routes/heartbeats.routes";
+import analyticsRouter from "./routes/analytics.routes";
+import maintenanceWindowsRouter from "./routes/maintenance-windows.routes";
+import automationRouter from "./routes/automation.routes";
+import { internalRouter } from "./routes/internal.routes";
+import { webhooksRouter } from "./routes/webhooks.routes";
 
 export const app = express();
 
@@ -71,6 +76,7 @@ app.use(API_PREFIX, statusRouter);
 app.use(API_PREFIX, trueNumerisRouter);
 app.use(API_PREFIX, eventsRouter);
 app.use(API_PREFIX, heartbeatsRouter);
+app.use(API_PREFIX, webhooksRouter);
 
 app.use(API_PREFIX, requireAuth, projectsRouter);
 app.use(API_PREFIX, requireAuth, servicesRouter);
@@ -83,6 +89,10 @@ app.use(API_PREFIX, requireAuth, usersRouter);
 app.use(API_PREFIX, requireAuth, billingRouter);
 app.use(API_PREFIX, requireAuth, orgRouter);
 app.use(API_PREFIX, requireAuth, onboardingRouter);
+app.use(API_PREFIX, requireAuth, analyticsRouter);
+app.use(API_PREFIX, requireAuth, maintenanceWindowsRouter);
+app.use(API_PREFIX, requireAuth, automationRouter);
+app.use(API_PREFIX, internalRouter);
 app.use(`${API_PREFIX}/remediation`, requireAuth, remediationRouter);
 
 app.use(errorHandler);

@@ -57,10 +57,10 @@ Use a supervisor in production (`systemd`, PM2, Docker restart policy, or Kubern
 ## Post-Deploy Verification
 
 ```bash
-pnpm verify:monitoring
-pnpm notify:webhook-listener
-pnpm verify:notifications
-pnpm dashboard:smoke
+pnpm quarantine:verify-monitoring
+pnpm quarantine:webhook-listener
+pnpm quarantine:verify-notifications
+pnpm quarantine:dashboard-smoke
 ```
 
 ## Domain and HTTPS

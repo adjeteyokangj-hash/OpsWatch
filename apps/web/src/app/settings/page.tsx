@@ -58,7 +58,7 @@ const INTEGRATION_CONFIG_PRESETS: Record<IntegrationType, Record<string, unknown
   },
   EMAIL: {
     EMAIL_PROVIDER_HEALTHCHECK_URL: "",
-    EMAIL_FROM: "alerts@example.com",
+    EMAIL_FROM: "alerts@opswatch.app",
     EMAIL_REPLY_TO: ""
   },
   STRIPE: {
@@ -339,6 +339,11 @@ export default function SettingsPage() {
   return (
     <Shell>
       <Header title="Settings" />
+      <section className="panel">
+        <p className="dashboard-subtle">
+          <Link href="/settings/maintenance">Maintenance windows</Link> — schedule alert and incident suppression with audit metadata.
+        </p>
+      </section>
       {error ? <section className="panel error-panel">{error}</section> : null}
 
       <section className="two-col settings-grid">

@@ -70,8 +70,8 @@ export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> 
     try {
       const contentType = response.headers.get("content-type") || "";
       if (contentType.includes("application/json")) {
-        const payload = (await response.json()) as { error?: string; message?: string };
-        detail = payload?.error || payload?.message || "";
+        const payload = (await response.json()) as { error?: string | { message?: string }; message?: string };
+        detail = typeof payload?.error === "string" ? payload.error : payload?.error?.message || payload?.message || "";
       } else {
         detail = (await response.text()).trim();
       }

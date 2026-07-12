@@ -3,8 +3,16 @@ import { PrismaClient, ProjectStatus } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-const projectSlug = process.env.DEMO_PROJECT_SLUG || "sparkle";
-const publicSiteUrl = process.env.SPARKLE_PUBLIC_URL || "https://sparkle-valeting.vercel.app/";
+const requireEnv = (key: string): string => {
+	const value = process.env[key]?.trim();
+	if (!value) {
+		throw new Error(`${key} is required`);
+	}
+	return value;
+};
+
+const projectSlug = requireEnv("DEMO_PROJECT_SLUG");
+const publicSiteUrl = requireEnv("SPARKLE_PUBLIC_URL");
 const verificationCheckNames = [
 	"Verification HTTP Failure/Recovery",
 	"Verification SSL Check",

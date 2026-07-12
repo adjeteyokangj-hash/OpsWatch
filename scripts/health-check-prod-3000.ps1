@@ -4,8 +4,15 @@ if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction Sile
   $PSNativeCommandUseErrorActionPreference = $false
 }
 
-$baseApi = "http://localhost:4000"
-$baseWeb = "http://localhost:3000"
+$baseApi = $env:OW_BASE_API_URL
+$baseWeb = $env:OW_BASE_WEB_URL
+$adminEmail = $env:OW_ADMIN_EMAIL
+$adminPassword = $env:OW_ADMIN_PASSWORD
+
+if (-not $baseApi) { throw "OW_BASE_API_URL is required" }
+if (-not $baseWeb) { throw "OW_BASE_WEB_URL is required" }
+if (-not $adminEmail) { throw "OW_ADMIN_EMAIL is required" }
+if (-not $adminPassword) { throw "OW_ADMIN_PASSWORD is required" }
 
 $allPass = $true
 
@@ -15,15 +22,15 @@ function Get-StatusCode {
     [hashtable]$Headers
   )
 
-  $args = @("-s", "--connect-timeout", "5", "--max-time", "20", "-o", "NUL", "-w", "%{http_code}")
+  $curlArgs = @("-s", "--connect-timeout", "5", "--max-time", "20", "-o", "NUL", "-w", "%{http_code}")
   if ($Headers) {
     foreach ($key in $Headers.Keys) {
-      $args += "-H"
-      $args += "${key}: $($Headers[$key])"
+      $curlArgs += "-H"
+      $curlArgs += "${key}: $($Headers[$key])"
     }
   }
-  $args += $Url
-  $code = & curl.exe @args
+  $curlArgs += $Url
+  $code = & curl.exe @curlArgs
   return "$code".Trim()
 }
 
@@ -59,7 +66,7 @@ Write-CheckResult -Name "WEB_LOGIN" -Code $webLogin -AllowRedirect
 Write-CheckResult -Name "WEB_DASHBOARD" -Code $webDashboard -AllowRedirect
 
 Write-Output "`n=== Auth login ==="
-$loginBody = '{"email":"admin@opswatch.local","password":"ChangeMe123!"}'
+$loginBody = (@{ email = $adminEmail; password = $adminPassword } | ConvertTo-Json -Compress)
 $login = Invoke-RestMethod -Method Post -Uri "$baseApi/api/auth/login" -ContentType "application/json" -Body $loginBody
 $token = $login.token
 

@@ -15,13 +15,13 @@ type OnboardingState = {
 
 const STEP_META: Record<string, { label: string; description: string; action?: string; href?: string }> = {
   org_created:           { label: "Create your organization",       description: "Set up your OpsWatch workspace with a name and slug.",          href: "/org" },
-  plan_selected:         { label: "Choose a plan",                  description: "Select the plan that fits your team size and usage.",            href: "/billing" },
+  plan_selected:         { label: "Choose a plan",                  description: "Select billing when creating or opening a project.",            href: "/projects" },
   project_created:       { label: "Create your first project",      description: "Add a client project you want to monitor.",                     href: "/projects" },
   service_created:       { label: "Add a service",                  description: "Define a service within your project (API, frontend, DB…).",    href: "/projects" },
   check_created:         { label: "Create a check",                 description: "Set up an HTTP, SSL, keyword, or response-time check.",         href: "/checks" },
   notification_configured: { label: "Configure notifications",     description: "Add an email or webhook channel to receive alerts.",            href: "/settings" },
   status_page_created:   { label: "Publish a status page",         description: "Create a public status page for your clients.",                 href: "/org" },
-  team_invited:          { label: "Invite your team",              description: "Add teammates so your whole team can monitor and respond.",      href: "/users" }
+  team_invited:          { label: "Invite platform members",   description: "Add OpsWatch login accounts so your team can monitor and respond.", href: "/members" }
 };
 
 export default function OnboardingPage() {

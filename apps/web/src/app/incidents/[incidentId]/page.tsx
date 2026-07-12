@@ -1,12 +1,21 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Shell } from "../../../components/layout/shell";
 import { Header } from "../../../components/layout/header";
 import { apiFetch } from "../../../lib/api";
-
+import { IncidentHealthSummary } from "../../../components/incidents/incident-health-summary";
+import { IncidentPropagationChain } from "../../../components/incidents/incident-propagation-chain";
+import { IncidentLayerImpactPanel } from "../../../components/incidents/incident-layer-impact-panel";
+import { IncidentDiagnosisEvidence } from "../../../components/incidents/incident-diagnosis-evidence";
+import { HttpStatusReviewModal } from "../../../components/incidents/http-status-review-modal";
+import { AutomationPlanPanel } from "../../../components/incidents/automation-plan-panel";
+import { IncidentOrgCorrelationPanel } from "../../../components/incidents/incident-org-correlation-panel";
+import { IncidentGraphView } from "../../../components/incidents/incident-graph-view";
+import type { AutomationPlan, AutomationRunDetails } from "../../../components/incidents/automation-plan-types";
+import type { DiagnosisResult, SuggestedAction } from "../../../components/incidents/incident-diagnosis-types";
 type Incident = {
   id: string;
   title: string;
@@ -26,46 +35,19 @@ type Incident = {
     lastSeenAt: string;
     service: { id: string; name: string } | null;
   }>;
-};
-
-type SuggestedAction = {
-  action: string;
-  label: string;
-  description: string;
-  group: "GROUP_A_SAFE" | "GROUP_B_APPROVAL" | "GROUP_C_SUPPORT";
-  requiresApproval: boolean;
-  kind: "fix" | "support";
-  state: "READY" | "APPROVAL_REQUIRED" | "MISSING_CONTEXT" | "MISCONFIGURED_ENV" | "UNSUPPORTED";
-  policyTier: "SAFE_AUTOMATIC" | "APPROVAL_REQUIRED" | "MANUAL_ONLY";
-  confidenceScore: number;
-  confidenceLabel: "HIGH" | "MEDIUM" | "LOW" | "BLOCKED";
-  confidenceFactors: Array<{
-    name: string;
-    impact: number;
-    description: string;
-    status: "pass" | "warn" | "fail";
-  }>;
-  historicalSuccessRate: number | null;
-  autoRunEligible: boolean;
-  impactTier: "LOW" | "MEDIUM" | "HIGH";
-  suppressionInfo: {
-    suppressed: boolean;
-    blocked: boolean;
-    recentFailureRate: number;
-    recentFailed: number;
-    windowSize: number;
-    reason: string;
+  correlationGroup?: {
+    id: string;
+    correlationKey: string;
+    rootCauseSummary: string | null;
+    primaryIncidentId: string | null;
+    relatedIncidents: Array<{
+      id: string;
+      title: string;
+      severity: string;
+      status: string;
+      project: { id: string; name: string };
+    }>;
   } | null;
-  missingFields?: string[];
-  missingEnvVars?: string[];
-  suggestedContext?: Record<string, null>;
-};
-
-type DiagnosisResult = {
-  diagnosis: string;
-  confidence: number;
-  category: string;
-  suggestedActions: SuggestedAction[];
 };
 
 type RemediationResult = {
@@ -79,6 +61,25 @@ type RemediationResult = {
     missingFields?: string[];
     missingEnvVars?: string[];
   };
+};
+
+type IncidentTimelineEvent = {
+  id: string;
+  eventType: string;
+  summary: string;
+  sourceType: string | null;
+  sourceId: string | null;
+  severity: string | null;
+  occurredAt: string;
+};
+
+type RootCauseCandidate = {
+  kind: "CHANGE_EVENT" | "DEPENDENCY" | "ALERT_SIGNAL";
+  referenceId: string;
+  title: string;
+  score: number;
+  rationale: string;
+  metadata: Record<string, unknown>;
 };
 
 const SEVERITY_STYLES: Record<string, string> = {
@@ -120,30 +121,21 @@ export default function IncidentDetailPage() {
   const [rootCause, setRootCause] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [timeline, setTimeline] = useState<IncidentTimelineEvent[]>([]);
+  const [rootCauseCandidates, setRootCauseCandidates] = useState<RootCauseCandidate[]>([]);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [autoHealing, setAutoHealing] = useState(false);
+  const [autoHealMessage, setAutoHealMessage] = useState<string | null>(null);
+  const [httpReviewAction, setHttpReviewAction] = useState<SuggestedAction | null>(null);
+  const [automationPlan, setAutomationPlan] = useState<AutomationPlan | null>(null);
+  const [automationRun, setAutomationRun] = useState<AutomationRunDetails | null>(null);
+  const [canApproveAutomation, setCanApproveAutomation] = useState(false);
+  const [planningAutomation, setPlanningAutomation] = useState(false);
+  const [automationActing, setAutomationActing] = useState(false);
+  const [automationPlanError, setAutomationPlanError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"overview" | "timeline" | "graph" | "automation">("overview");
 
-  useEffect(() => {
-    if (!incidentId) return;
-
-    const load = async () => {
-      setLoading(true);
-      setLoadError(null);
-      try {
-        const inc = await apiFetch<Incident>(`/incidents/${incidentId}`);
-        setIncident(inc);
-        setStatus(inc.status);
-        setRootCause(inc.rootCause ?? "");
-      } catch (err: any) {
-        setLoadError(err?.message || "Failed to load incident");
-        setIncident(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void load();
-  }, [incidentId]);
-
-  const runDiagnosis = async () => {
+  const runDiagnosis = useCallback(async () => {
     if (!incident) return;
     setDiagnosing(true);
     try {
@@ -159,10 +151,168 @@ export default function IncidentDetailPage() {
     } finally {
       setDiagnosing(false);
     }
+  }, [incident]);
+  useEffect(() => {
+    if (!incidentId) return;
+
+    const load = async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const [inc, timelineRows, candidateRows] = await Promise.all([
+          apiFetch<Incident>(`/incidents/${incidentId}`),
+          apiFetch<IncidentTimelineEvent[]>(`/incidents/${incidentId}/timeline`),
+          apiFetch<RootCauseCandidate[]>(`/incidents/${incidentId}/root-cause-candidates`)
+        ]);
+        setIncident(inc);
+        setStatus(inc.status);
+        setRootCause(inc.rootCause ?? "");
+        setTimeline(Array.isArray(timelineRows) ? timelineRows : []);
+        setRootCauseCandidates(Array.isArray(candidateRows) ? candidateRows : []);
+        setAnalysisError(null);
+      } catch (err: any) {
+        setLoadError(err?.message || "Failed to load incident");
+        setAnalysisError(err?.message || "Failed to load timeline and root-cause analysis");
+        setIncident(null);
+        setTimeline([]);
+        setRootCauseCandidates([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+  }, [incidentId]);
+
+  useEffect(() => {
+    if (!incident || diagnosis || diagnosing) return;
+    void runDiagnosis();
+  }, [incident, diagnosis, diagnosing, runDiagnosis]);
+
+  const refreshAutomationRun = useCallback(async (runId: string) => {
+    const run = await apiFetch<AutomationRunDetails & { permissions?: { canApprove: boolean } }>(
+      `/automation/runs/${runId}`
+    );
+    setAutomationRun(run);
+    setCanApproveAutomation(Boolean(run.permissions?.canApprove));
+  }, []);
+
+  const generateAutomationPlan = useCallback(async () => {
+    if (!incident) return;
+    setPlanningAutomation(true);
+    setAutomationPlanError(null);
+    try {
+      const response = await apiFetch<
+        AutomationPlan & { permissions?: { canApprove: boolean }; status?: string }
+      >(`/automation/incidents/${incident.id}/plan`, {
+        method: "POST"
+      });
+      setAutomationPlan(response);
+      setCanApproveAutomation(Boolean(response.permissions?.canApprove));
+      if (response.runId) {
+        await refreshAutomationRun(response.runId);
+      }
+    } catch (err: any) {
+      setAutomationPlanError(err?.message || "Failed to generate automation plan");
+    } finally {
+      setPlanningAutomation(false);
+    }
+  }, [incident, refreshAutomationRun]);
+
+  const approveAutomationPlan = useCallback(
+    async (reason: string) => {
+      if (!automationPlan?.runId) return;
+      setAutomationActing(true);
+      setAutomationPlanError(null);
+      try {
+        await apiFetch(`/automation/runs/${automationPlan.runId}/approve`, {
+          method: "POST",
+          body: JSON.stringify({ approved: true, reason })
+        });
+        await refreshAutomationRun(automationPlan.runId);
+      } catch (err: any) {
+        setAutomationPlanError(err?.message || "Failed to approve automation plan");
+      } finally {
+        setAutomationActing(false);
+      }
+    },
+    [automationPlan?.runId, refreshAutomationRun]
+  );
+
+  const rejectAutomationPlan = useCallback(
+    async (reason: string) => {
+      if (!automationPlan?.runId) return;
+      setAutomationActing(true);
+      setAutomationPlanError(null);
+      try {
+        await apiFetch(`/automation/runs/${automationPlan.runId}/reject`, {
+          method: "POST",
+          body: JSON.stringify({ reason })
+        });
+        await refreshAutomationRun(automationPlan.runId);
+      } catch (err: any) {
+        setAutomationPlanError(err?.message || "Failed to reject automation plan");
+      } finally {
+        setAutomationActing(false);
+      }
+    },
+    [automationPlan?.runId, refreshAutomationRun]
+  );
+
+  const cancelAutomationPlan = useCallback(async () => {
+    if (!automationPlan?.runId) return;
+    setAutomationActing(true);
+    setAutomationPlanError(null);
+    try {
+      await apiFetch(`/automation/runs/${automationPlan.runId}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ reason: "Cancelled from incident page" })
+      });
+      await refreshAutomationRun(automationPlan.runId);
+    } catch (err: any) {
+      setAutomationPlanError(err?.message || "Failed to cancel automation plan");
+    } finally {
+      setAutomationActing(false);
+    }
+  }, [automationPlan?.runId, refreshAutomationRun]);
+
+  useEffect(() => {
+    if (!incident || !diagnosis || automationPlan || planningAutomation) return;
+    void generateAutomationPlan();
+  }, [incident, diagnosis, automationPlan, planningAutomation, generateAutomationPlan]);
+
+  const triggerAutoHeal = async () => {
+    if (!incident) return;
+    setAutoHealing(true);
+    setAutoHealMessage(null);
+    try {
+      const result = await apiFetch<{ attempted: boolean; summary?: string; blockedReason?: string; action?: string }>(
+        `/remediation/${incident.id}/auto-run`,
+        { method: "POST" }
+      );
+      if (result.attempted) {
+        setAutoHealMessage(`Auto-heal ran ${result.action}: ${result.summary ?? "completed"}`);
+      } else {
+        setAutoHealMessage(result.blockedReason ?? "Auto-heal did not run");
+      }
+      await runDiagnosis();
+    } catch (err: any) {
+      setAutoHealMessage(err?.message || "Auto-heal request failed");
+    } finally {
+      setAutoHealing(false);
+    }
   };
 
-  const executeAction = async (action: string, requiresApproval: boolean) => {
+  const executeAction = async (action: string, requiresApproval: boolean, extra?: Record<string, unknown>) => {
     if (!incident) return;
+    if (action === "REVIEW_HTTP_EXPECTED_STATUS") {
+      const selected = diagnosis?.suggestedActions.find((row) => row.action === action);
+      if (selected) {
+        setHttpReviewAction(selected);
+      }
+      return;
+    }
+
     const shouldRequestApproval = requiresApproval
       ? window.confirm(
           "This action requires approval. Confirm you want to submit it for approval?"
@@ -172,12 +322,17 @@ export default function IncidentDetailPage() {
 
     setExecuting(action);
     try {
+      const leadServiceId = incident.alerts?.[0]?.service?.id;
       const result = await apiFetch<RemediationResult>("/remediation/execute", {
         method: "POST",
         body: JSON.stringify({
           action,
-          context: { incidentId: incident.id },
-          approved: false,
+          context: {
+            incidentId: incident.id,
+            serviceId: leadServiceId,
+            extra,
+          },
+          approved: requiresApproval,
         }),
       });
       setActionResults((prev) => ({ ...prev, [action]: result }));
@@ -186,6 +341,40 @@ export default function IncidentDetailPage() {
     }
   };
 
+  const submitHttpStatusReview = async (input: {
+    newExpectedStatusCode: number;
+    approvalReason: string;
+  }) => {
+    if (!incident || !httpReviewAction) return;
+    const preview = httpReviewAction.preview ?? {};
+    const checkId = typeof preview.checkId === "string" ? preview.checkId : undefined;
+    const serviceId = incident.alerts?.[0]?.service?.id;
+
+    setExecuting("REVIEW_HTTP_EXPECTED_STATUS");
+    try {
+      const result = await apiFetch<RemediationResult>("/remediation/execute", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "REVIEW_HTTP_EXPECTED_STATUS",
+          context: {
+            incidentId: incident.id,
+            serviceId,
+            checkId,
+            extra: {
+              newExpectedStatusCode: input.newExpectedStatusCode,
+              approvalReason: input.approvalReason,
+              actualStatusCode: preview.recentActualStatus,
+            },
+          },
+          approved: true,
+        }),
+      });
+      setActionResults((prev) => ({ ...prev, REVIEW_HTTP_EXPECTED_STATUS: result }));
+      await runDiagnosis();
+    } finally {
+      setExecuting(null);
+    }
+  };
   const saveIncident = async () => {
     if (!incident) return;
     setSaving(true);
@@ -260,9 +449,84 @@ export default function IncidentDetailPage() {
         </div>
       </section>
 
+      {incident.correlationGroup ? (
+        <IncidentOrgCorrelationPanel
+          correlationGroup={incident.correlationGroup}
+          currentIncidentId={incident.id}
+        />
+      ) : null}
+
       <section className="panel">
-        <h2>Operational context</h2>
-        <div className="two-col">
+        <nav className="pill-row" aria-label="Incident views">
+          {(
+            [
+              ["overview", "Overview"],
+              ["timeline", "Timeline"],
+              ["graph", "Graph view"],
+              ["automation", "Automation"]
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={`pill${activeTab === id ? " active" : ""}`}
+              onClick={() => setActiveTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      </section>
+
+      {activeTab === "graph" ? (
+        <IncidentGraphView incidentId={incident.id} projectId={incident.project?.id} />
+      ) : null}
+
+      {activeTab === "automation" ? (
+        <AutomationPlanPanel
+          plan={automationPlan}
+          run={automationRun}
+          loading={planningAutomation}
+          acting={automationActing}
+          error={automationPlanError}
+          canApprove={canApproveAutomation}
+          onGenerate={() => void generateAutomationPlan()}
+          onApprove={(reason) => void approveAutomationPlan(reason)}
+          onReject={(reason) => void rejectAutomationPlan(reason)}
+          onCancel={() => void cancelAutomationPlan()}
+        />
+      ) : null}
+
+      {activeTab === "overview" ? (
+        <>
+      {diagnosing && !diagnosis ? (
+        <section className="panel">
+          <p className="content">Analysing incident impact and dependency graph…</p>
+        </section>
+      ) : null}
+
+      {diagnosis ? (
+        <>
+          <IncidentHealthSummary
+            projectName={incident.project?.name ?? "Application"}
+            diagnosis={diagnosis}
+          />
+          <IncidentPropagationChain
+            diagnosis={diagnosis}
+            projectId={incident.project?.id}
+          />
+          {diagnosis.layerImpacts && diagnosis.layerImpacts.length > 0 ? (
+            <IncidentLayerImpactPanel
+              layerImpacts={diagnosis.layerImpacts}
+              projectId={incident.project?.id}
+            />
+          ) : null}
+          <IncidentDiagnosisEvidence diagnosis={diagnosis} />
+        </>
+      ) : null}
+
+      <section className="panel">
+        <h2>Operational context</h2>        <div className="two-col">
           <div>
             <p className="metric-label">Project</p>
             <p>
@@ -323,29 +587,32 @@ export default function IncidentDetailPage() {
         )}
       </section>
 
-      {/* ── AI Insight ─────────────────────────────────────────────── */}
+      {/* ── Remediation actions ─────────────────────────────────────── */}
       <section className="panel ai-insight-panel">
         <div className="section-head">
           <div>
-            <h2>AI Insight</h2>
-            <p>Rule-based diagnosis and suggested remediation actions.</p>
+            <h2>Recommended actions</h2>
+            <p>Safe automatic fixes, approval-gated changes, and support actions for this incident.</p>
           </div>
-          {!diagnosis && (
+          <div style={{ display: "flex", gap: "8px" }}>
             <button
-              className="primary-button"
-              data-action="api"
-              data-endpoint="/remediation/suggest"
+              className="secondary-button"
               onClick={runDiagnosis}
               disabled={diagnosing}
             >
-              {diagnosing ? "Analysing…" : "Run diagnosis"}
+              {diagnosing ? "Refreshing…" : "Refresh diagnosis"}
             </button>
-          )}
+            <button
+              className="secondary-button"
+              onClick={triggerAutoHeal}
+              disabled={autoHealing || incident.status === "RESOLVED"}
+            >
+              {autoHealing ? "Auto-healing…" : "Trigger auto-heal"}
+            </button>
+          </div>
         </div>
 
-        {!diagnosis && !diagnosing && (
-          <p className="metric-label">Click Run diagnosis to analyse this incident.</p>
-        )}
+        {autoHealMessage ? <p className="dashboard-subtle">{autoHealMessage}</p> : null}
 
         {diagnosis && (
           <div className="ai-insight-body">
@@ -362,9 +629,24 @@ export default function IncidentDetailPage() {
                   <div className="usage-bar-fill ai-confidence-fill" />
                 </div>
                 <span className="ai-category pill">{diagnosis.category.replace("_", " ")}</span>
+                {diagnosis.analysisMode ? (
+                  <span className="pill">{diagnosis.analysisMode.toLowerCase()} analysis</span>
+                ) : null}
+                {diagnosis.failureClass ? (
+                  <span className="pill">{diagnosis.failureClass.replace(/_/g, " ").toLowerCase()}</span>
+                ) : null}
               </div>
+              {diagnosis.possibleCauses && diagnosis.possibleCauses.length > 0 ? (
+                <div className="dashboard-list" style={{ marginTop: "12px" }}>
+                  <p className="metric-label">Possible causes</p>
+                  {diagnosis.possibleCauses.map((cause) => (
+                    <article key={cause} className="dashboard-item">
+                      <div>{cause}</div>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
             </div>
-
             {diagnosis.suggestedActions.length > 0 && (
               <div className="ai-actions">
                 <p className="metric-label ai-actions-label">
@@ -494,6 +776,8 @@ export default function IncidentDetailPage() {
                           >
                             {executing === sa.action
                               ? "Running…"
+                              : sa.action === "REVIEW_HTTP_EXPECTED_STATUS"
+                              ? "Review and approve"
                               : sa.state === "UNSUPPORTED"
                               ? "Not available"
                               : sa.state === "MISSING_CONTEXT"
@@ -517,7 +801,26 @@ export default function IncidentDetailPage() {
             )}
           </div>
         )}
+
+        {!diagnosis && !diagnosing ? (
+          <p className="metric-label">Diagnosis has not loaded yet.</p>
+        ) : null}
       </section>
+
+      {httpReviewAction ? (
+        <HttpStatusReviewModal
+          action={httpReviewAction}
+          incidentId={incident.id}
+          serviceId={incident.alerts?.[0]?.service?.id}
+          checkId={
+            typeof httpReviewAction.preview?.checkId === "string"
+              ? httpReviewAction.preview.checkId
+              : undefined
+          }
+          onClose={() => setHttpReviewAction(null)}
+          onSubmit={submitHttpStatusReview}
+        />
+      ) : null}
 
       {/* ── Update incident ────────────────────────────────────────── */}
       <section className="panel">
@@ -546,6 +849,59 @@ export default function IncidentDetailPage() {
           {saveMsg && <p className="metric-label">{saveMsg}</p>}
         </div>
       </section>
+        </>
+      ) : null}
+
+      {activeTab === "timeline" ? (
+        <>
+          <section className="panel">
+            <h2>Incident timeline</h2>
+            {analysisError ? <p className="dashboard-subtle">{analysisError}</p> : null}
+            {timeline.length === 0 ? (
+              <p className="dashboard-subtle">No timeline events available yet.</p>
+            ) : (
+              <div className="incident-timeline">
+                {timeline.map((event) => (
+                  <article
+                    key={event.id}
+                    className={`timeline-item ${event.severity ? `severity-${event.severity.toLowerCase()}` : ""}`.trim()}
+                  >
+                    <div className="timeline-head">
+                      <strong>{event.summary}</strong>
+                      <span className="pill">{event.eventType.replace(/_/g, " ")}</span>
+                    </div>
+                    <p className="timeline-meta">
+                      {new Date(event.occurredAt).toLocaleString()}
+                      {event.sourceType ? ` • ${event.sourceType}` : ""}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="panel">
+            <h2>Root-cause candidates</h2>
+            {rootCauseCandidates.length === 0 ? (
+              <p className="dashboard-subtle">No ranked root-cause candidates are available yet.</p>
+            ) : (
+              <div className="dashboard-list">
+                {rootCauseCandidates.map((candidate) => (
+                  <article key={candidate.referenceId} className="dashboard-item root-cause-candidate-card">
+                    <div className="root-cause-candidate-head">
+                      <strong>{candidate.title}</strong>
+                      <span className="confidence-badge medium">Score {Math.round(candidate.score * 100)}%</span>
+                    </div>
+                    <p className="dashboard-subtle root-cause-candidate-meta">
+                      {candidate.kind.replace(/_/g, " ")} • {candidate.rationale}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      ) : null}
 
       <p className="incident-back-link">
         <Link href="/incidents" className="onboarding-link primary-button">

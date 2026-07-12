@@ -9,8 +9,8 @@
 ## CORS and Auth
 
 - Keep `NODE_ENV=production` so API only trusts configured `OPSWATCH_WEB_URL`.
-- Verify ingest endpoints require key + timestamp + signature.
-- Reject stale timestamps and invalid signatures.
+- **Not yet implemented:** ingest endpoints do not currently enforce key + timestamp + HMAC signature (API key scope only). Do not claim replay protection until implemented and tested.
+- Reject stale timestamps and invalid signatures (planned — see production-gate-report.md release blockers).
 
 ## Logging Safety
 
@@ -28,7 +28,7 @@
 
 - API: `/api/health`
 - Worker: process supervisor should alert on restart loops
-- Web: route smoke checks from `pnpm dashboard:smoke`
+- Web: route smoke checks from `pnpm quarantine:dashboard-smoke`
 
 ## Notification Safety
 

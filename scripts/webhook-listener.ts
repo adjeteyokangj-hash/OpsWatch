@@ -2,8 +2,21 @@ import fs from "fs";
 import path from "path";
 import http from "http";
 
-const port = Number(process.env.NOTIFY_WEBHOOK_PORT || 4011);
-const outputPath = process.env.NOTIFY_WEBHOOK_OUTPUT || path.join(process.cwd(), "tmp", "notification-events.jsonl");
+const requireEnv = (key: string): string => {
+  const value = process.env[key]?.trim();
+  if (!value) {
+    throw new Error(`${key} is required`);
+  }
+  return value;
+};
+
+const portRaw = requireEnv("NOTIFY_WEBHOOK_PORT");
+const port = Number(portRaw);
+if (!Number.isFinite(port) || port <= 0) {
+  throw new Error(`NOTIFY_WEBHOOK_PORT must be a positive number; received '${portRaw}'`);
+}
+
+const outputPath = requireEnv("NOTIFY_WEBHOOK_OUTPUT");
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 

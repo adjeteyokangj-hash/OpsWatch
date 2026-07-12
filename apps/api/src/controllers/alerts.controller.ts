@@ -85,10 +85,22 @@ export const acknowledgeAlert = async (req: AuthRequest, res: Response) => {
 			status: row.status === "RESOLVED" ? row.status : "ACKNOWLEDGED",
 			acknowledgedAt: new Date(),
 			assignedToUserId: typeof req.user?.sub === "string" ? req.user.sub : null
+		},
+		include: {
+			Project: { select: { id: true, name: true, organizationId: true } },
+			Service: { select: { id: true, name: true } },
+			User: { select: { id: true, name: true, email: true } },
+			IncidentAlert: {
+				include: {
+					Incident: {
+						select: { id: true, title: true, severity: true, status: true, openedAt: true }
+					}
+				}
+			}
 		}
 	});
 
-	res.json(updated);
+	res.json(mapAlertDetail(updated as any));
 };
 
 export const resolveAlert = async (req: AuthRequest, res: Response) => {
@@ -110,9 +122,21 @@ export const resolveAlert = async (req: AuthRequest, res: Response) => {
 			status: "RESOLVED",
 			resolvedAt: new Date(),
 			lastSeenAt: new Date()
+		},
+		include: {
+			Project: { select: { id: true, name: true, organizationId: true } },
+			Service: { select: { id: true, name: true } },
+			User: { select: { id: true, name: true, email: true } },
+			IncidentAlert: {
+				include: {
+					Incident: {
+						select: { id: true, title: true, severity: true, status: true, openedAt: true }
+					}
+				}
+			}
 		}
 	});
 
-	res.json(updated);
+	res.json(mapAlertDetail(updated as any));
 };
 

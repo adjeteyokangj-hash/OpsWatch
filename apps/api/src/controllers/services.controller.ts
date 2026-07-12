@@ -40,7 +40,7 @@ export const createService = async (req: AuthRequest, res: Response) => {
 			id: randomUUID(),
 			projectId,
 			name: String(body.name || "Untitled Service"),
-			type: body.type || "BACKEND",
+			type: body.type || "API",
 			baseUrl: body.baseUrl ? String(body.baseUrl) : null,
 			isCritical: body.isCritical !== undefined ? Boolean(body.isCritical) : false,
 			updatedAt: new Date()

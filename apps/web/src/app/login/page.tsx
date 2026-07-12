@@ -1,15 +1,26 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { APP_NAME, API_BASE_URL } from "../../lib/constants";
 import { setAuthCookie } from "../../lib/auth";
 
+const DEV_LOGIN_EMAIL =
+  process.env.NODE_ENV === "development" ? "adjeteyokangj@gmail.com" : "";
+
 export default function LoginPage() {
-  const [email, setEmail] = useState("admin@opswatch.local");
-  const [password, setPassword] = useState("ChangeMe123!");
+  const [mounted, setMounted] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [logoMissing, setLogoMissing] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    if (DEV_LOGIN_EMAIL) {
+      setEmail(DEV_LOGIN_EMAIL);
+    }
+  }, []);
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -54,9 +65,9 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="auth-wrap">
-      <section className="auth-card">
-        <div className="auth-logo-wrap">
+    <main className="auth-shell">
+      <section className="auth-hero">
+        <div className="auth-hero-content">
           <div className="auth-logo">
             {logoMissing ? (
               <span className="auth-logo-wordmark" aria-label={APP_NAME}>
@@ -71,20 +82,64 @@ export default function LoginPage() {
               />
             )}
           </div>
+          <h1>Command Center</h1>
+          <p>Central monitoring for every client application — health, alerts, incidents, and automation in one place.</p>
+          <ul className="auth-feature-list">
+            <li>Four-layer health across apps, modules, workflows, and components</li>
+            <li>Incident response with causal graphs and remediation</li>
+            <li>Automation playbooks with operator safeguards</li>
+          </ul>
         </div>
-        <p>Central monitoring for every client application.</p>
-        <form onSubmit={onSubmit}>
-          <label>
-            Email
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </label>
-          <label>
-            Password
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </label>
-          {error ? <div className="error-chip">{error}</div> : null}
-          <button type="submit" disabled={submitting} data-action="api" data-endpoint="/auth/login">{submitting ? "Signing in..." : "Sign In"}</button>
-        </form>
+      </section>
+      <section className="auth-panel">
+        <div className="auth-card">
+          <h2>Sign in</h2>
+          <p className="dashboard-subtle">Use your OpsWatch platform account.</p>
+          {mounted ? (
+            <form onSubmit={onSubmit}>
+              <label>
+                Email
+                <input
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  name="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </label>
+              {error ? <div className="error-chip">{error}</div> : null}
+              <button type="submit" className="primary-button auth-submit" disabled={submitting} data-action="api" data-endpoint="/auth/login">
+                {submitting ? "Signing in…" : "Sign in"}
+              </button>
+            </form>
+          ) : (
+            <form aria-hidden="true">
+              <label>
+                Email
+                <input type="email" value="" disabled readOnly />
+              </label>
+              <label>
+                Password
+                <input type="password" value="" disabled readOnly />
+              </label>
+              <button type="button" className="primary-button" disabled>
+                Sign in
+              </button>
+            </form>
+          )}
+        </div>
       </section>
     </main>
   );

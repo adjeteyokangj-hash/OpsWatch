@@ -5,6 +5,11 @@ node_modules/
 dist/
 apps/web/.next/
 apps/web/out/
+*.tsbuildinfo
+
+# Compiled artefacts in TypeScript source trees (outputs belong in dist/)
+packages/shared/src/**/*.js
+apps/worker/src/**/*.js
 
 # Environment files
 .env
@@ -27,6 +32,12 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# Temp files
+# Temp / local scratch (retain tmp/*.txt inventory artefacts when committed intentionally)
 tmp_*.ps1
 tmp_*.ts
+.tmp-main-test/
+tmp/db-backups/
+
+# Playwright / e2e artefacts
+apps/web/test-results/
+apps/web/playwright-report/

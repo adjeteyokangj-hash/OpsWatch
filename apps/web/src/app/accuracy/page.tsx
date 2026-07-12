@@ -158,6 +158,14 @@ export default function AccuracyPage() {
   return (
     <Shell>
       <Header title="Remediation Accuracy" />
+      <section className="panel">
+        <nav className="pill-row">
+          <span className="pill">Remediation accuracy</span>
+          <Link className="pill" href="/analytics/operations">
+            Operations analytics
+          </Link>
+        </nav>
+      </section>
 
       {/* ── Summary stats ──────────────────────────────────────────── */}
       <div className="grid-6" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>

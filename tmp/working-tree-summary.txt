@@ -1,0 +1,33 @@
+OpsWatch working-tree containment inventory
+Generated: 2026-07-12
+
+Purpose: baseline audit before withdrawn-gate security remediation.
+This snapshot does NOT imply production readiness.
+
+Counts (from git status --short):
+- Modified tracked: see working-tree-status.txt (lines starting with " M")
+- Untracked: see working-tree-untracked.txt
+- Diff stat: see working-tree-diff-stat.txt
+
+Migration reconciliation: see migration-reconciliation.txt
+Local prisma migrations dump: see local-prisma-migrations.txt
+
+Generated .js removed from src (10 files):
+- apps/worker/src/jobs/org-incident-correlation.js
+- apps/worker/src/jobs/run-incident-correlation.job.js
+- apps/worker/src/lib/logger.js
+- apps/worker/src/lib/prisma.js
+- packages/shared/src/constants.js
+- packages/shared/src/enums.js
+- packages/shared/src/failure-classification.js
+- packages/shared/src/index.js
+- packages/shared/src/schemas.js
+- packages/shared/src/types.js
+
+Excluded from baseline commit:
+- .tmp-main-test/
+- tmp/db-backups/
+- apps/web/test-results/
+- .env files (gitignored)
+
+Supabase: not queried (local DATABASE_URL only). Required before migration cleanup.

@@ -1,3 +1,4 @@
+import { classifyHttpCheckFailure, formatFailureMessage } from "@opswatch/shared";
 import { prisma } from "../../../lib/prisma";
 import { randomUUID } from "crypto";
 import type { RemediationExecutor } from "../types";
@@ -35,7 +36,13 @@ export const executeRerunHttpCheck: RemediationExecutor = async ({ context }) =>
     if (check.type === "HTTP") {
       if (check.expectedStatusCode && response.status !== check.expectedStatusCode) {
         status = "FAIL";
-        message = `Expected ${check.expectedStatusCode} got ${response.status}`;
+        message = formatFailureMessage(
+          classifyHttpCheckFailure({
+            checkType: "HTTP",
+            expectedStatusCode: check.expectedStatusCode,
+            actualStatusCode: response.status
+          })
+        );
       }
     } else if (check.type === "KEYWORD") {
       const body = await response.text();
@@ -62,10 +69,19 @@ export const executeRerunHttpCheck: RemediationExecutor = async ({ context }) =>
     }
   } catch (error) {
     status = "FAIL";
-    message = `HTTP request failed: ${String(error)}`;
+    message = formatFailureMessage(classifyHttpCheckFailure({ error }));
   }
 
   const responseTimeMs = Date.now() - start;
+  const failureMeta =
+    status === "FAIL"
+      ? classifyHttpCheckFailure({
+          checkType: check.type,
+          expectedStatusCode: check.expectedStatusCode,
+          actualStatusCode: responseCode ?? undefined,
+          message
+        })
+      : null;
 
   await prisma.checkResult.create({
     data: {
@@ -78,7 +94,14 @@ export const executeRerunHttpCheck: RemediationExecutor = async ({ context }) =>
       rawJson: {
         source: "remediation_rerun",
         url: check.Service.baseUrl,
-        checkedAt: new Date().toISOString()
+        checkedAt: new Date().toISOString(),
+        ...(failureMeta
+          ? {
+              failureClass: failureMeta.failureClass,
+              diagnosis: failureMeta.diagnosis,
+              possibleCauses: failureMeta.possibleCauses
+            }
+          : {})
       }
     }
   });

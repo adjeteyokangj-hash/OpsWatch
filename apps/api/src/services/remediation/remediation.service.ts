@@ -31,6 +31,7 @@ import { executeRotateWebhookSecret } from "./executors/rotate-webhook-secret.ex
 import { executeCheckProviderStatus } from "./executors/check-provider-status.executor";
 import { executeOpenRunbook } from "./executors/open-runbook.executor";
 import { executeRequestHumanReview } from "./executors/request-human-review.executor";
+import { executeReviewHttpExpectedStatus } from "./executors/review-http-expected-status.executor";
 
 const AUTO_REMEDIATION_ENABLED =
   process.env.AUTO_REMEDIATION_ENABLED !== "false";
@@ -148,7 +149,8 @@ const executors: Record<RemediationAction, RemediationExecutor> = {
   ROTATE_WEBHOOK_SECRET: executeRotateWebhookSecret,
   CHECK_PROVIDER_STATUS: executeCheckProviderStatus,
   OPEN_RUNBOOK: executeOpenRunbook,
-  REQUEST_HUMAN_REVIEW: executeRequestHumanReview
+  REQUEST_HUMAN_REVIEW: executeRequestHumanReview,
+  REVIEW_HTTP_EXPECTED_STATUS: executeReviewHttpExpectedStatus
 };
 
 export interface ExecuteRemediationOutput {
@@ -159,10 +161,21 @@ export interface ExecuteRemediationOutput {
 
 export type ExecutionMode = "MANUAL" | "APPROVED" | "AUTOMATIC";
 
+export type ExecuteRemediationOptions = {
+  approved?: boolean;
+  executedBy?: string;
+  auto?: boolean;
+  executionMode?: ExecutionMode;
+  policySnapshot?: Record<string, unknown>;
+  suppressionSnapshot?: Record<string, unknown>;
+  skipLock?: boolean;
+  idempotencyKey?: string;
+};
+
 export async function executeRemediation(
   action: RemediationAction,
   context: RemediationContext,
-  opts: { approved?: boolean; executedBy?: string; auto?: boolean; executionMode?: ExecutionMode; policySnapshot?: Record<string, unknown>; suppressionSnapshot?: Record<string, unknown> } = {}
+  opts: ExecuteRemediationOptions = {}
 ): Promise<ExecuteRemediationOutput> {
   const resolvedMode: ExecutionMode = opts.executionMode ?? (opts.auto ? "AUTOMATIC" : opts.approved ? "APPROVED" : "MANUAL");
   if (!AUTO_REMEDIATION_ENABLED) {

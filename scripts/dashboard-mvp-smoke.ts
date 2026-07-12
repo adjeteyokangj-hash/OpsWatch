@@ -1,4 +1,12 @@
-const webBase = process.env.OPSWATCH_WEB_URL || "http://localhost:3002";
+const requireEnv = (key: string): string => {
+  const value = process.env[key]?.trim();
+  if (!value) {
+    throw new Error(`${key} is required`);
+  }
+  return value;
+};
+
+const webBase = requireEnv("OPSWATCH_WEB_URL");
 
 const pages = [
   "/dashboard",

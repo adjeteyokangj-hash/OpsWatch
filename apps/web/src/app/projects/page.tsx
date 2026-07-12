@@ -16,7 +16,14 @@ const EMPTY_FORM = {
   frontendUrl: "",
   backendUrl: "",
   repoUrl: "",
-  description: ""
+  description: "",
+  projectOwner: "",
+  operationalContact: "",
+  defaultRegion: "",
+  plan: "FREE",
+  monthlyPrice: 0,
+  currency: "GBP",
+  automationMode: "OBSERVE"
 };
 
 function ProjectsPageContent() {
@@ -65,7 +72,16 @@ function ProjectsPageContent() {
           description: form.description || undefined,
           frontendUrl: form.frontendUrl || undefined,
           backendUrl: form.backendUrl || undefined,
-          repoUrl: form.repoUrl || undefined
+          repoUrl: form.repoUrl || undefined,
+          projectOwner: form.projectOwner || undefined,
+          operationalContact: form.operationalContact || undefined,
+          defaultRegion: form.defaultRegion || undefined,
+          automationMode: form.automationMode,
+          billing: {
+            plan: form.plan,
+            monthlyPrice: form.monthlyPrice,
+            currency: form.currency
+          }
         })
       });
       setForm(EMPTY_FORM);
@@ -83,6 +99,8 @@ function ProjectsPageContent() {
   const healthyCount = projects.filter((row) => row.status === "HEALTHY").length;
   const degradedCount = projects.filter((row) => row.status === "DEGRADED").length;
   const downCount = projects.filter((row) => row.status === "DOWN").length;
+  const awaitingCount = projects.filter((row) => row.status === "UNKNOWN").length;
+  const pausedCount = projects.filter((row) => row.status === "PAUSED").length;
   const openAlerts = projects.reduce((sum, row) => sum + ((row.alerts || []).length || 0), 0);
   const unresolvedIncidents = projects.reduce(
     (sum, row) => sum + ((row.incidents || []).filter((incident: any) => incident.status !== "RESOLVED").length || 0),
@@ -98,6 +116,10 @@ function ProjectsPageContent() {
         <StatCard label="Healthy" value={healthyCount} href="/projects?health=HEALTHY" />
         <StatCard label="Degraded" value={degradedCount} href="/projects?health=DEGRADED" />
         <StatCard label="Down" value={downCount} href="/projects?health=DOWN" />
+        <StatCard label="Awaiting monitoring" value={awaitingCount} href="/projects?health=UNKNOWN" />
+        <StatCard label="Paused" value={pausedCount} href="/projects?health=PAUSED" />
+      </section>
+      <section className="grid-6">
         <StatCard label="Open alerts" value={openAlerts} href="/alerts?status=OPEN" />
         <StatCard label="Unresolved incidents" value={unresolvedIncidents} href="/incidents?onlyUnresolved=true" />
       </section>
@@ -158,6 +180,36 @@ function ProjectsPageContent() {
             <label>
               Repository URL
               <input value={form.repoUrl} onChange={(event) => setForm((current) => ({ ...current, repoUrl: event.target.value }))} placeholder="https://github.com/..." />
+            </label>
+            <h3>Billing</h3>
+            <div className="form-row">
+              <label>
+                Plan
+                <select value={form.plan} onChange={(event) => setForm((current) => ({ ...current, plan: event.target.value }))}>
+                  <option value="FREE">Free</option>
+                  <option value="STARTER">Starter</option>
+                  <option value="PRO">Pro</option>
+                  <option value="ENTERPRISE">Enterprise</option>
+                  <option value="CUSTOM">Custom</option>
+                </select>
+              </label>
+              <label>
+                Monthly price
+                <input type="number" value={form.monthlyPrice} onChange={(event) => setForm((current) => ({ ...current, monthlyPrice: Number(event.target.value) }))} />
+              </label>
+              <label>
+                Currency
+                <input value={form.currency} onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))} />
+              </label>
+            </div>
+            <h3>Automation policy</h3>
+            <label>
+              Mode
+              <select value={form.automationMode} onChange={(event) => setForm((current) => ({ ...current, automationMode: event.target.value }))}>
+                <option value="OBSERVE">Observe only</option>
+                <option value="APPROVAL">Approval required</option>
+                <option value="AUTONOMOUS">Autonomous (policy permitting)</option>
+              </select>
             </label>
             <button className="primary-button" type="submit" disabled={saving} data-action="api" data-endpoint="/projects">{saving ? "Creating..." : "Create project"}</button>
           </form>

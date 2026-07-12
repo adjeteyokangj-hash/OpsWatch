@@ -1,4 +1,8 @@
 import Link from "next/link";
+import { SeverityBadge } from "../alerts/severity-badge";
+import { ActivityList } from "../ui/activity-list";
+import { EmptyState } from "../ui/empty-state";
+import { PageSection } from "../ui/page-section";
 
 export function RecentIncidents({
   items,
@@ -18,35 +22,43 @@ export function RecentIncidents({
 }) {
   if (loading) {
     return (
-      <section className="panel">
-        <h2>Recent Incidents</h2>
-        <p>Loading incidents...</p>
-      </section>
+      <PageSection title="Recent incidents" description="Active incidents requiring operator attention.">
+        <p>Loading incidents…</p>
+      </PageSection>
     );
   }
 
   return (
-    <section className="panel">
-      <h2>Recent Incidents</h2>
+    <PageSection title="Recent incidents" description="Active incidents requiring operator attention.">
       {items.length === 0 ? (
-        <p>
-          No active incidents. <Link href="/incidents">View incident history</Link>.
-        </p>
+        <EmptyState
+          title="No active incidents"
+          description="No unresolved incidents are open right now."
+          action={
+            <Link className="secondary-button" href="/incidents">
+              View incident history
+            </Link>
+          }
+        />
+      ) : (
+        <ActivityList
+          items={items.map((item, idx) => ({
+            id: `${item.id ?? item.title}-${idx}`,
+            href: item.id ? `/incidents/${item.id}` : undefined,
+            title: item.title,
+            badges: (
+              <>
+                <span className={`incident-chip ${item.status === "RESOLVED" ? "resolved" : "active"}`}>{item.status}</span>
+                <SeverityBadge severity={item.severity} />
+              </>
+            ),
+            meta: `${item.projectName} · Opened ${new Date(item.openedAt).toLocaleString()}`
+          }))}
+        />
+      )}
+      {resolvedCount > 0 ? (
+        <p className="dashboard-subtle workspace-footnote">Resolved incidents are hidden from this primary panel ({resolvedCount}).</p>
       ) : null}
-      <ul className="dashboard-list">
-        {items.map((item, idx) => (
-          <li key={`${item.id ?? item.title}-${idx}`}>
-            <div>
-              <span className={`incident-chip ${item.status === "RESOLVED" ? "resolved" : "active"}`}>{item.status}</span>{" "}
-              <strong>{item.id ? <Link href={`/incidents/${item.id}`}>{item.title}</Link> : item.title}</strong>
-            </div>
-            <div className="dashboard-subtle">
-              {item.severity} · {item.projectName} · Opened {new Date(item.openedAt).toLocaleString()}
-            </div>
-          </li>
-        ))}
-      </ul>
-      {resolvedCount > 0 ? <p className="dashboard-subtle">Resolved incidents are hidden from this primary panel ({resolvedCount}).</p> : null}
-    </section>
+    </PageSection>
   );
 }

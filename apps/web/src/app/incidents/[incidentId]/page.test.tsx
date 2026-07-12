@@ -37,8 +37,35 @@ describe("incident AI panel", () => {
           acknowledgedAt: null,
           resolvedAt: null,
           rootCause: null,
-          resolutionNotes: null
+          resolutionNotes: null,
+          project: { id: "proj-1", name: "Noble Express" },
+          alerts: []
         });
+      }
+      if (path === "/incidents/inc-1/timeline") {
+        return Promise.resolve([
+          {
+            id: "te-1",
+            eventType: "INCIDENT_OPENED",
+            summary: "Incident opened: Webhook outage",
+            sourceType: "INCIDENT",
+            sourceId: "inc-1",
+            severity: null,
+            occurredAt: new Date().toISOString()
+          }
+        ]);
+      }
+      if (path === "/incidents/inc-1/root-cause-candidates") {
+        return Promise.resolve([
+          {
+            kind: "CHANGE_EVENT",
+            referenceId: "ce-1",
+            title: "DEPLOY_FINISHED: webhook service rollout",
+            score: 0.82,
+            rationale: "Change happened near incident start.",
+            metadata: {}
+          }
+        ]);
       }
       if (path === "/remediation/suggest") {
         return Promise.resolve({
@@ -93,6 +120,49 @@ describe("incident AI panel", () => {
           ]
         });
       }
+      if (path === "/automation/incidents/inc-1/plan") {
+        return Promise.resolve({
+          playbookKey: "WEBHOOK_DELIVERY_RECOVERY",
+          playbookVersion: 1,
+          analysisMode: "RULES",
+          confidence: 85,
+          riskLevel: "LOW",
+          executionMode: "OBSERVE",
+          reason: "Webhook delivery is failing.",
+          steps: [
+            {
+              order: 1,
+              action: "CHECK_PROVIDER_STATUS",
+              approvalRequired: false,
+              description: "Check provider status."
+            }
+          ],
+          runId: "run-1",
+          permissions: { canApprove: false }
+        });
+      }
+      if (path === "/automation/runs/run-1") {
+        return Promise.resolve({
+          id: "run-1",
+          incidentId: "inc-1",
+          playbookKey: "WEBHOOK_DELIVERY_RECOVERY",
+          playbookVersion: 1,
+          executionMode: "OBSERVE",
+          status: "PLANNED",
+          plan: {
+            playbookKey: "WEBHOOK_DELIVERY_RECOVERY",
+            playbookVersion: 1,
+            analysisMode: "RULES",
+            confidence: 85,
+            riskLevel: "LOW",
+            executionMode: "OBSERVE",
+            reason: "Webhook delivery is failing.",
+            steps: []
+          },
+          steps: [],
+          permissions: { canApprove: false }
+        });
+      }
       if (path === "/remediation/execute") {
         return Promise.resolve({
           action: "RETRY_WEBHOOKS",
@@ -116,8 +186,6 @@ describe("incident AI panel", () => {
     await waitFor(() => {
       expect(screen.getByText("Webhook outage")).toBeTruthy();
     });
-
-    await user.click(screen.getByRole("button", { name: "Run diagnosis" }));
 
     await waitFor(() => {
       expect(screen.getByText("Retry webhooks")).toBeTruthy();

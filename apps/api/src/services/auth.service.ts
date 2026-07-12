@@ -36,6 +36,22 @@ export const login = async (email: string, password: string): Promise<{ token: s
   };
 };
 
+export const refreshSession = async (userId: string): Promise<{ token: string } | null> => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.isActive) {
+    return null;
+  }
+
+  return {
+    token: signJwt({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      organizationId: user.organizationId ?? undefined
+    })
+  };
+};
+
 export const changePassword = async (
   userId: string,
   currentPassword: string,

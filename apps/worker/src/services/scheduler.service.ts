@@ -3,14 +3,24 @@ import { runSslChecksJob } from "../jobs/run-ssl-checks.job";
 import { processHeartbeatStaleJob } from "../jobs/process-heartbeat-stale.job";
 import { processAlertEscalationJob } from "../jobs/process-alert-escalation.job";
 import { resolveIncidentsJob } from "../jobs/resolve-incidents.job";
+import { runIncidentCorrelationJob } from "../jobs/run-incident-correlation.job";
+import { evaluateSloBurnRateJob } from "../jobs/evaluate-slo-burn-rate.job";
+import { runIncidentAutoHealJob } from "../jobs/run-incident-auto-heal.job";
+import { runAutomationAutonomousJob } from "../jobs/run-automation-autonomous.job";
+import { runMaintenanceWindowTransitionsJob } from "../jobs/transition-maintenance-windows.job";
+import { createExclusiveRunner } from "../lib/exclusive-job";
+import { markSchedulerSuccess } from "./worker-heartbeat.service";
 
-const runSafely = async (job: () => Promise<void>): Promise<void> => {
+const runSafely = async (jobName: string, job: () => Promise<void>): Promise<void> => {
   try {
     await job();
+    markSchedulerSuccess(jobName);
   } catch (error) {
     console.error(error);
   }
 };
+
+const runExclusive = createExclusiveRunner("scheduled job");
 
 type SchedulerOptions = {
   runOnStart?: boolean;
@@ -19,6 +29,11 @@ type SchedulerOptions = {
   heartbeatMs?: number;
   escalationMs?: number;
   resolveMs?: number;
+  incidentCorrelationMs?: number;
+  sloBurnRateMs?: number;
+  autoHealMs?: number;
+  automationAutonomousMs?: number;
+  maintenanceWindowsMs?: number;
 };
 
 const readInterval = (key: string, fallback: number): number => {
@@ -38,47 +53,105 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
       options.heartbeatMs ?? readInterval("WORKER_HEARTBEAT_STALE_INTERVAL_MS", 60_000),
     escalationMs:
       options.escalationMs ?? readInterval("WORKER_ALERT_ESCALATION_INTERVAL_MS", 5 * 60_000),
-    resolveMs: options.resolveMs ?? readInterval("WORKER_INCIDENT_RESOLVE_INTERVAL_MS", 10 * 60_000)
+    resolveMs: options.resolveMs ?? readInterval("WORKER_INCIDENT_RESOLVE_INTERVAL_MS", 10 * 60_000),
+    incidentCorrelationMs:
+      options.incidentCorrelationMs ?? readInterval("WORKER_INCIDENT_CORRELATION_INTERVAL_MS", 2 * 60_000),
+    sloBurnRateMs:
+      options.sloBurnRateMs ?? readInterval("WORKER_SLO_BURN_RATE_INTERVAL_MS", 5 * 60_000),
+    autoHealMs:
+      options.autoHealMs ?? readInterval("WORKER_AUTO_HEAL_INTERVAL_MS", 3 * 60_000),
+    automationAutonomousMs:
+      options.automationAutonomousMs ??
+      readInterval("WORKER_AUTOMATION_AUTONOMOUS_INTERVAL_MS", 5 * 60_000),
+    maintenanceWindowsMs:
+      options.maintenanceWindowsMs ?? readInterval("WORKER_MAINTENANCE_WINDOWS_INTERVAL_MS", 60_000)
   };
 
   const timers: NodeJS.Timeout[] = [];
 
   if (options.runOnStart ?? true) {
-    void runSafely(runHttpChecksJob);
-    void runSafely(runSslChecksJob);
-    void runSafely(processHeartbeatStaleJob);
-    void runSafely(processAlertEscalationJob);
-    void runSafely(resolveIncidentsJob);
+    void runSafely("runHttpChecksJob", runHttpChecksJob);
+    void runSafely("runSslChecksJob", runSslChecksJob);
+    void runSafely("processHeartbeatStaleJob", processHeartbeatStaleJob);
+    void runSafely("processAlertEscalationJob", processAlertEscalationJob);
+    void runSafely("resolveIncidentsJob", resolveIncidentsJob);
+    void runSafely("runIncidentCorrelationJob", runIncidentCorrelationJob);
+    void runSafely("evaluateSloBurnRateJob", evaluateSloBurnRateJob);
+    void runExclusive(async () => {
+      await runIncidentAutoHealJob();
+      markSchedulerSuccess("runIncidentAutoHealJob");
+    });
+    void runExclusive(async () => {
+      await runAutomationAutonomousJob();
+      markSchedulerSuccess("runAutomationAutonomousJob");
+    });
+    void runSafely("runMaintenanceWindowTransitionsJob", runMaintenanceWindowTransitionsJob);
   }
 
   timers.push(
     setInterval(() => {
-      void runSafely(runHttpChecksJob);
+      void runSafely("runHttpChecksJob", runHttpChecksJob);
     }, intervals.httpMs)
   );
 
   timers.push(
     setInterval(() => {
-      void runSafely(runSslChecksJob);
+      void runSafely("runSslChecksJob", runSslChecksJob);
     }, intervals.sslMs)
   );
 
   timers.push(
     setInterval(() => {
-      void runSafely(processHeartbeatStaleJob);
+      void runSafely("processHeartbeatStaleJob", processHeartbeatStaleJob);
     }, intervals.heartbeatMs)
   );
 
   timers.push(
     setInterval(() => {
-      void runSafely(processAlertEscalationJob);
+      void runSafely("processAlertEscalationJob", processAlertEscalationJob);
     }, intervals.escalationMs)
   );
 
   timers.push(
     setInterval(() => {
-      void runSafely(resolveIncidentsJob);
+      void runSafely("resolveIncidentsJob", resolveIncidentsJob);
     }, intervals.resolveMs)
+  );
+
+  timers.push(
+    setInterval(() => {
+      void runSafely("runIncidentCorrelationJob", runIncidentCorrelationJob);
+    }, intervals.incidentCorrelationMs)
+  );
+
+  timers.push(
+    setInterval(() => {
+      void runSafely("evaluateSloBurnRateJob", evaluateSloBurnRateJob);
+    }, intervals.sloBurnRateMs)
+  );
+
+  timers.push(
+    setInterval(() => {
+      void runExclusive(async () => {
+        await runIncidentAutoHealJob();
+        markSchedulerSuccess("runIncidentAutoHealJob");
+      });
+    }, intervals.autoHealMs)
+  );
+
+  timers.push(
+    setInterval(() => {
+      void runExclusive(async () => {
+        await runAutomationAutonomousJob();
+        markSchedulerSuccess("runAutomationAutonomousJob");
+      });
+    }, intervals.automationAutonomousMs)
+  );
+
+  timers.push(
+    setInterval(() => {
+      void runSafely("runMaintenanceWindowTransitionsJob", runMaintenanceWindowTransitionsJob);
+    }, intervals.maintenanceWindowsMs)
   );
 
   return () => {

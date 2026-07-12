@@ -6,6 +6,10 @@ export enum ProjectStatus {
 }
 
 export enum ServiceType {
+	APP = "APP",
+	MODULE = "MODULE",
+	WORKFLOW = "WORKFLOW",
+	COMPONENT = "COMPONENT",
 	FRONTEND = "FRONTEND",
 	API = "API",
 	DATABASE = "DATABASE",

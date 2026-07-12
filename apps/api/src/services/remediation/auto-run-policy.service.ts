@@ -27,7 +27,11 @@ export const AUTO_RUN_ALLOWLIST = new Set<RemediationAction>([
   "RERUN_HTTP_CHECK",
   "RERUN_SSL_CHECK",
   "RETRY_WEBHOOKS",
+  "RETRY_EMAILS",
+  "REQUEUE_FAILED_JOB",
   "CHECK_PROVIDER_STATUS",
+  "ACKNOWLEDGE_INCIDENT",
+  "ADD_INCIDENT_NOTE",
 ]);
 
 // ── Cooldown windows per action in milliseconds (Phase 9.4) ─────────────────
@@ -35,7 +39,11 @@ export const AUTO_RUN_COOLDOWN_MS: Partial<Record<RemediationAction, number>> = 
   RERUN_HTTP_CHECK:       5 * 60 * 1000,  // 5 min
   RERUN_SSL_CHECK:        5 * 60 * 1000,  // 5 min
   RETRY_WEBHOOKS:        10 * 60 * 1000,  // 10 min
+  RETRY_EMAILS:          10 * 60 * 1000,  // 10 min
+  REQUEUE_FAILED_JOB:    10 * 60 * 1000,  // 10 min
   CHECK_PROVIDER_STATUS:  5 * 60 * 1000,  // 5 min
+  ACKNOWLEDGE_INCIDENT:   2 * 60 * 1000,  // 2 min
+  ADD_INCIDENT_NOTE:      1 * 60 * 1000,  // 1 min
 };
 
 // ── Policy resolution ────────────────────────────────────────────────────────
@@ -231,6 +239,8 @@ export function buildPolicySnapshot(policy: {
 
 export interface CooldownCheckResult {
   cooledDown: boolean;
+  /** Human-readable reason when cooldown is active */
+  reason?: string;
   /** When the cooldown expires (if still active) */
   expiresAt?: Date;
   /** The last automatic run that triggered cooldown */
@@ -274,6 +284,7 @@ export async function checkCooldown(
   const expiresAt = new Date(lastRun.createdAt.getTime() + windowMs);
   return {
     cooledDown: false,
+    reason: `Automatic ${action} ran recently; cooldown active until ${expiresAt.toISOString()}`,
     expiresAt,
     lastAutoRunAt: lastRun.createdAt,
   };

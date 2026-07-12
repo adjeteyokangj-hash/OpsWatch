@@ -1,10 +1,20 @@
 import { PrismaClient, ProjectStatus } from "@prisma/client";
+import { randomUUID } from "crypto";
 import { processHeartbeatStaleJob } from "../apps/worker/src/jobs/process-heartbeat-stale.job";
 import { runHttpChecksJob } from "../apps/worker/src/jobs/run-http-checks.job";
 import { runSslChecksJob } from "../apps/worker/src/jobs/run-ssl-checks.job";
 
 const prisma = new PrismaClient();
-const verificationBaseUrl = process.env.VERIFICATION_BASE_URL || "https://sparkle-valeting.vercel.app/";
+const requireEnv = (key: string): string => {
+  const value = process.env[key]?.trim();
+  if (!value) {
+    throw new Error(`${key} is required`);
+  }
+  return value;
+};
+
+const verificationBaseUrl = requireEnv("VERIFICATION_BASE_URL");
+const verificationProjectSlug = requireEnv("VERIFICATION_PROJECT_SLUG");
 
 const assertPass = (condition: unknown, message: string): void => {
   if (!condition) {
@@ -29,11 +39,13 @@ const ensureVerificationService = async (projectId: string) => {
 
   return prisma.service.create({
     data: {
+      id: randomUUID(),
       projectId,
       name: "OpsWatch Verification Service",
       type: "API",
       status: ProjectStatus.HEALTHY,
-      baseUrl: verificationBaseUrl
+      baseUrl: verificationBaseUrl,
+      updatedAt: new Date()
     }
   });
 };
@@ -71,7 +83,13 @@ const ensureCheck = async (
     });
   }
 
-  return prisma.check.create({ data: common });
+  return prisma.check.create({
+    data: {
+      id: randomUUID(),
+      ...common,
+      updatedAt: new Date()
+    }
+  });
 };
 
 const verifyHttpLoop = async (projectId: string, serviceId: string): Promise<void> => {
@@ -121,6 +139,7 @@ const verifyHttpLoop = async (projectId: string, serviceId: string): Promise<voi
 const verifyHeartbeatStale = async (projectId: string): Promise<void> => {
   await prisma.heartbeat.create({
     data: {
+      id: randomUUID(),
       projectId,
       environment: "verification",
       status: "HEALTHY",
@@ -143,6 +162,7 @@ const verifyHeartbeatStale = async (projectId: string): Promise<void> => {
 
   await prisma.heartbeat.create({
     data: {
+      id: randomUUID(),
       projectId,
       environment: "verification",
       status: "HEALTHY",
@@ -204,8 +224,8 @@ const cleanupVerificationArtifacts = async (serviceId: string): Promise<void> =>
 };
 
 const main = async (): Promise<void> => {
-  const project = await prisma.project.findUnique({ where: { slug: "sparkle" } });
-  assertPass(project, "Project 'sparkle' not found. Run api seed first.");
+  const project = await prisma.project.findUnique({ where: { slug: verificationProjectSlug } });
+  assertPass(project, `Project '${verificationProjectSlug}' not found.`);
 
   const service = await ensureVerificationService(project.id);
 

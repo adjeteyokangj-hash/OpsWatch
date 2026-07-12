@@ -7,7 +7,7 @@ OpsWatch reaches MVP when one real production-style app can be monitored end to 
 - [ ] Install dependencies from a clean checkout with `pnpm install`
 - [ ] Run `pnpm -r typecheck` successfully
 - [ ] Run `pnpm -r test` successfully
-- [ ] Replace placeholder lint scripts with real linting or document lint as out of scope
+- [ ] Ensure lint scripts are implemented and pass, or explicitly document lint as out of scope
 - [ ] Put the project under Git version control before production rollout
 
 ## 2. Infrastructure
@@ -91,8 +91,8 @@ Use these repo scripts to execute the checklist quickly:
 
 - `pnpm --filter @opswatch/web test`
 - `pnpm -r lint`
-- `pnpm verify:monitoring`
-- `pnpm demo:real-app`
-- `pnpm notify:webhook-listener`
-- `pnpm verify:notifications`
-- `pnpm dashboard:smoke`
+- `pnpm quarantine:verify-monitoring`
+- `pnpm quarantine:demo-real-app`
+- `pnpm quarantine:webhook-listener`
+- `pnpm quarantine:verify-notifications`
+- `pnpm quarantine:dashboard-smoke`

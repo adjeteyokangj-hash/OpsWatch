@@ -1,10 +1,21 @@
 param(
-  [string]$ApiBase = "http://localhost:4000/api",
-  [string]$Email = "admin@opswatch.local",
-  [string]$Password = "ChangeMe123!"
+  [string]$ApiBase = $env:OW_BASE_API_URL,
+  [string]$Email = $env:OW_ADMIN_EMAIL
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $ApiBase) {
+  throw "OW_BASE_API_URL is required"
+}
+if (-not $Email) {
+  throw "OW_ADMIN_EMAIL is required"
+}
+if (-not $env:OW_ADMIN_PASSWORD) {
+  throw "OW_ADMIN_PASSWORD is required"
+}
+
+$AdminPasswordSecure = ConvertTo-SecureString $env:OW_ADMIN_PASSWORD -AsPlainText -Force
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $apiDir = Join-Path $repoRoot "apps/api"
@@ -78,7 +89,16 @@ const recommendationId = process.argv[2];
 }
 
 Write-Step "Logging in"
-$login = Invoke-RestMethod -Method Post -Uri "$ApiBase/auth/login" -ContentType "application/json" -Body (@{ email = $Email; password = $Password } | ConvertTo-Json -Compress)
+$passwordPtr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($AdminPasswordSecure)
+try {
+  $AdminPasswordPlain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPtr)
+} finally {
+  if ($passwordPtr -ne [IntPtr]::Zero) {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPtr)
+  }
+}
+$login = Invoke-RestMethod -Method Post -Uri "$ApiBase/auth/login" -ContentType "application/json" -Body (@{ email = $Email; password = $AdminPasswordPlain } | ConvertTo-Json -Compress)
+$AdminPasswordPlain = $null
 if (-not $login.token) {
   throw "Authentication failed: no token returned"
 }

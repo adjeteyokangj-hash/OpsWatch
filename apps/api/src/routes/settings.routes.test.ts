@@ -115,7 +115,7 @@ describe("settings.routes tenant isolation", () => {
     expect(response.status).toBe(200);
     expect(mockNotificationFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { project: { organizationId: "org-1" } }
+        where: { Project: { organizationId: "org-1" } }
       })
     );
   });
@@ -154,7 +154,7 @@ describe("settings.routes tenant isolation", () => {
       expect.objectContaining({
         where: {
           projectId: "proj-1",
-          project: { organizationId: "org-1" }
+          Project: { organizationId: "org-1" }
         }
       })
     );
@@ -181,7 +181,7 @@ describe("settings.routes tenant isolation", () => {
         where: {
           projectId: "9e041215-ec08-4623-8bb8-c17db810f703",
           type: "WEBHOOK",
-          project: { organizationId: "org-1" }
+          Project: { organizationId: "org-1" }
         }
       })
     );

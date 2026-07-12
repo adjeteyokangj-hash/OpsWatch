@@ -1,7 +1,10 @@
 $ErrorActionPreference = "Stop"
 
+$adminEmail = if ($env:OW_ADMIN_EMAIL) { $env:OW_ADMIN_EMAIL } else { "adjeteyokangj@gmail.com" }
+$adminPassword = if ($env:OW_ADMIN_PASSWORD) { $env:OW_ADMIN_PASSWORD } else { "OpsWatch!2026#LiveAdmin" }
+
 $token = (
-  Invoke-RestMethod -Method Post -Uri "http://localhost:4000/api/auth/login" -ContentType "application/json" -Body '{"email":"admin@opswatch.local","password":"ChangeMe123!"}'
+  Invoke-RestMethod -Method Post -Uri "http://localhost:4000/api/auth/login" -ContentType "application/json" -Body (@{ email = $adminEmail; password = $adminPassword } | ConvertTo-Json -Compress)
 ).token
 $headers = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" }
 

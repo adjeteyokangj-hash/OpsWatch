@@ -1,47 +1,109 @@
+import { classifyHttpCheckFailure, type FailureClassification } from "@opswatch/shared";
 import { RemediationAction } from "../remediation/actions";
 
 export interface DiagnosisInput {
-  alertType?: string;       // sourceType on Alert or EventType
-  eventTypes?: string[];    // recent event types on the service/project
+  alertType?: string;
+  eventTypes?: string[];
   severity?: string;
   serviceType?: string;
   title?: string;
   message?: string;
+  failureClass?: string;
+  expectedStatusCode?: number;
+  actualStatusCode?: number;
 }
 
 export interface DiagnosisOutput {
   diagnosis: string;
-  confidence: number;       // 0.0 – 1.0
+  confidence: number;
   suggestedActions: RemediationAction[];
-  category: string;         // one of the 5 risk layers
+  category: string;
+  failureClass?: string;
+  possibleCauses?: string[];
 }
 
+const actionsForFailure = (classification: FailureClassification): RemediationAction[] => {
+  switch (classification.failureClass) {
+    case "HTTP_STATUS_MISMATCH":
+      return ["RERUN_HTTP_CHECK", "REVIEW_HTTP_EXPECTED_STATUS", "ADD_INCIDENT_NOTE", "REQUEST_HUMAN_REVIEW"];
+    case "APPLICATION_ERROR":
+      return ["RERUN_HTTP_CHECK", "RESTART_SERVICE", "ROLLBACK_DEPLOYMENT", "REQUEST_HUMAN_REVIEW"];
+    case "AUTHENTICATION":
+      return ["ADD_INCIDENT_NOTE", "RERUN_HTTP_CHECK", "REQUEST_HUMAN_REVIEW"];
+    case "NETWORK_UNREACHABLE":
+    case "CONNECTION_REFUSED":
+    case "DNS_FAILURE":
+    case "TLS_FAILURE":
+      return ["RERUN_HTTP_CHECK", "CHECK_PROVIDER_STATUS", "RESTART_SERVICE", "REQUEST_HUMAN_REVIEW"];
+    case "TIMEOUT":
+      return ["RERUN_HTTP_CHECK", "RESTART_SERVICE", "REQUEST_HUMAN_REVIEW"];
+    case "KEYWORD_MISMATCH":
+      return ["RERUN_HTTP_CHECK", "ADD_INCIDENT_NOTE", "REQUEST_HUMAN_REVIEW"];
+    case "LATENCY_THRESHOLD":
+      return ["RERUN_HTTP_CHECK", "REQUEST_HUMAN_REVIEW"];
+    default:
+      return ["RERUN_HTTP_CHECK", "REQUEST_HUMAN_REVIEW"];
+  }
+};
+
+const diagnosisFromClassification = (classification: FailureClassification): DiagnosisOutput => ({
+  diagnosis: classification.diagnosis,
+  confidence: classification.confidence,
+  category: classification.category,
+  suggestedActions: actionsForFailure(classification),
+  failureClass: classification.failureClass,
+  possibleCauses: classification.possibleCauses
+});
+
+const tryClassifyCheckFailure = (input: DiagnosisInput): DiagnosisOutput | null => {
+  const classification = classifyHttpCheckFailure({
+    checkType: input.alertType,
+    expectedStatusCode: input.expectedStatusCode,
+    actualStatusCode: input.actualStatusCode,
+    message: input.message
+  });
+
+  if (classification.failureClass === "UNKNOWN") {
+    return null;
+  }
+
+  return diagnosisFromClassification(classification);
+};
+
 /**
- * Rule-based AI diagnosis engine.
- *
- * Each rule matches on alert/event signals and returns a diagnosis with
- * confidence-weighted suggested remediation actions.
- *
- * EXTENSION POINT: replace or augment with an OpenAI call by doing:
- *   const aiResponse = await openai.chat.completions.create({ model: "gpt-4o-mini", ... })
- * and merging the result with the rule-based output.
+ * Rule-based diagnosis engine with precise HTTP/network failure classification.
  */
 export function diagnose(input: DiagnosisInput): DiagnosisOutput {
+  const classified = tryClassifyCheckFailure(input);
+  if (classified) {
+    return classified;
+  }
+
   const signals = [
+    input.failureClass?.toUpperCase() ?? "",
     input.alertType?.toUpperCase() ?? "",
     ...(input.eventTypes ?? []).map((t) => t.toUpperCase()),
     input.title?.toUpperCase() ?? "",
     input.message?.toUpperCase() ?? "",
   ].join(" ");
 
-  // ── Availability ──────────────────────────────────────────────────────────
-  if (matches(signals, ["SERVICE_DOWN", "DOWN", "HTTP_FAIL", "UNREACHABLE", "NOT RESPONDING"])) {
-    return {
-      diagnosis: "Service is not responding to health checks. The process may have crashed, been OOM-killed, or lost network connectivity.",
-      confidence: 0.9,
-      category: "AVAILABILITY",
-      suggestedActions: ["RERUN_HTTP_CHECK", "RESTART_SERVICE", "ROLLBACK_DEPLOYMENT", "REQUEST_HUMAN_REVIEW"],
-    };
+  if (matches(signals, ["HTTP_STATUS_MISMATCH"])) {
+    return diagnosisFromClassification(
+      classifyHttpCheckFailure({
+        message: input.message,
+        expectedStatusCode: input.expectedStatusCode,
+        actualStatusCode: input.actualStatusCode
+      })
+    );
+  }
+
+  if (matches(signals, ["APPLICATION_ERROR"])) {
+    return diagnosisFromClassification(
+      classifyHttpCheckFailure({
+        expectedStatusCode: input.expectedStatusCode ?? 200,
+        actualStatusCode: input.actualStatusCode ?? 500
+      })
+    );
   }
 
   if (matches(signals, ["HEARTBEAT_MISSED", "HEARTBEAT STALE", "HEARTBEAT_STALE"])) {
@@ -53,7 +115,6 @@ export function diagnose(input: DiagnosisInput): DiagnosisOutput {
     };
   }
 
-  // ── Reliability ───────────────────────────────────────────────────────────
   if (matches(signals, ["WEBHOOK_FAILED", "WEBHOOK FAIL", "WEBHOOK_SIGNATURE_FAILED"])) {
     return {
       diagnosis: "Webhook delivery is failing. The target endpoint may be down, returning errors, or rejecting the signature.",
@@ -99,24 +160,20 @@ export function diagnose(input: DiagnosisInput): DiagnosisOutput {
     };
   }
 
-  // ── Performance ───────────────────────────────────────────────────────────
-  if (matches(signals, ["RESPONSE_TIME", "LATENCY", "TIMEOUT", "SLOW", "DEGRADED"])) {
-    return {
-      diagnosis: "Response times are elevated. The service may be under heavy load or a downstream dependency is slow.",
-      confidence: 0.72,
-      category: "PERFORMANCE",
-      suggestedActions: ["RERUN_HTTP_CHECK", "REQUEST_HUMAN_REVIEW"],
-    };
+  if (matches(signals, ["RESPONSE_TIME", "LATENCY", "SLOW", "DEGRADED", "LATENCY_THRESHOLD"])) {
+    return diagnosisFromClassification(
+      classifyHttpCheckFailure({ checkType: "RESPONSE_TIME", message: input.message })
+    );
   }
 
-  // ── Security ──────────────────────────────────────────────────────────────
-  if (matches(signals, ["AUTH_FAILURE_SPIKE", "AUTH_SPIKE", "BRUTE", "FAILED LOGIN", "401", "403"])) {
-    return {
-      diagnosis: "Spike in authentication failures detected. This may indicate a brute-force or credential-stuffing attack.",
-      confidence: 0.84,
-      category: "SECURITY",
-      suggestedActions: ["REQUEST_HUMAN_REVIEW", "DISABLE_INTEGRATION"],
-    };
+  if (matches(signals, ["TIMEOUT"])) {
+    return diagnosisFromClassification(classifyHttpCheckFailure({ error: new Error("timeout") }));
+  }
+
+  if (matches(signals, ["AUTH_FAILURE_SPIKE", "AUTH_SPIKE", "BRUTE", "FAILED LOGIN", "AUTHENTICATION"])) {
+    return diagnosisFromClassification(
+      classifyHttpCheckFailure({ expectedStatusCode: 200, actualStatusCode: 401 })
+    );
   }
 
   if (matches(signals, ["TRAFFIC_SPIKE", "REQUEST SPIKE", "429", "RATE LIMIT", "HAMMERED"])) {
@@ -128,7 +185,6 @@ export function diagnose(input: DiagnosisInput): DiagnosisOutput {
     };
   }
 
-  // ── Dependency / Change ───────────────────────────────────────────────────
   if (matches(signals, ["DEPLOY_FAILED", "DEPLOYMENT FAIL", "BUILD FAIL", "GITHUB ACTION FAIL"])) {
     return {
       diagnosis: "Deployment pipeline has failed. The last deployment did not complete successfully.",
@@ -138,22 +194,17 @@ export function diagnose(input: DiagnosisInput): DiagnosisOutput {
     };
   }
 
-  if (matches(signals, ["SSL_EXPIRING", "SSL EXPIR", "CERTIFICATE"])) {
+  if (matches(signals, ["SSL_EXPIRING", "SSL EXPIR", "CERTIFICATE", "TLS_FAILURE"])) {
     return {
-      diagnosis: "SSL certificate is approaching expiry. Renew it before the deadline to prevent HTTPS failures.",
+      diagnosis: "SSL certificate is approaching expiry or TLS validation failed. Renew or fix the certificate chain before HTTPS failures spread.",
       confidence: 0.95,
       category: "DEPENDENCY_CHANGE",
       suggestedActions: ["RERUN_SSL_CHECK", "ADD_INCIDENT_NOTE", "REQUEST_HUMAN_REVIEW"],
     };
   }
 
-  if (matches(signals, ["DOMAIN_EXPIRING", "DOMAIN EXPIR"])) {
-    return {
-      diagnosis: "Domain registration is approaching expiry. Renew the domain to prevent DNS resolution failures.",
-      confidence: 0.95,
-      category: "DEPENDENCY_CHANGE",
-      suggestedActions: ["ADD_INCIDENT_NOTE", "REQUEST_HUMAN_REVIEW"],
-    };
+  if (matches(signals, ["DOMAIN_EXPIRING", "DOMAIN EXPIR", "DNS_FAILURE"])) {
+    return diagnosisFromClassification(classifyHttpCheckFailure({ error: Object.assign(new Error("dns"), { cause: { code: "ENOTFOUND" } }) }));
   }
 
   if (matches(signals, ["GOOGLE_API_FAILED", "THIRD_PARTY", "PROVIDER OUTAGE", "PROVIDER DOWN"])) {
@@ -165,7 +216,12 @@ export function diagnose(input: DiagnosisInput): DiagnosisOutput {
     };
   }
 
-  // ── Default / Unknown ─────────────────────────────────────────────────────
+  if (matches(signals, ["SERVICE_DOWN", "DOWN", "HTTP_FAIL", "UNREACHABLE", "NOT RESPONDING", "CONNECTION_REFUSED", "NETWORK_UNREACHABLE"])) {
+    return diagnosisFromClassification(
+      classifyHttpCheckFailure({ message: input.message, error: new Error(input.message || "unreachable") })
+    );
+  }
+
   return {
     diagnosis: "Insufficient signal to provide a specific diagnosis. Review recent events and logs for the affected service.",
     confidence: 0.3,

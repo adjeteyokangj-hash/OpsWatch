@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { classifyHttpCheckFailure, formatFailureMessage } from "@opswatch/shared";
 import { prisma } from "../lib/prisma";
 import { logger } from "../lib/logger";
 import { dispatchAlertNotifications } from "../services/notifications/notification.service";
@@ -114,7 +115,12 @@ export const runHttpChecksJob = async (): Promise<void> => {
       if (check.type === "HTTP") {
         if (check.expectedStatusCode && response.status !== check.expectedStatusCode) {
           status = "FAIL";
-          message = `Expected ${check.expectedStatusCode} got ${response.status}`;
+          const classification = classifyHttpCheckFailure({
+            checkType: "HTTP",
+            expectedStatusCode: check.expectedStatusCode,
+            actualStatusCode: response.status
+          });
+          message = formatFailureMessage(classification);
         }
       } else if (check.type === "KEYWORD") {
         const body = await response.text();
@@ -134,17 +140,32 @@ export const runHttpChecksJob = async (): Promise<void> => {
         const threshold = config?.maxResponseTimeMs ?? 3000;
         if (responseTimeMs > threshold) {
           status = "FAIL";
-          message = `Response time ${responseTimeMs}ms exceeds threshold ${threshold}ms`;
+          message = formatFailureMessage(
+            classifyHttpCheckFailure({
+              checkType: "RESPONSE_TIME",
+              message: `Response time ${responseTimeMs}ms exceeds threshold ${threshold}ms`
+            })
+          );
         } else {
           message = `Response time ${responseTimeMs}ms within threshold ${threshold}ms`;
         }
       }
     } catch (error) {
       status = "FAIL";
-      message = describeHttpTargetFailure(check.Service.baseUrl || "", error);
+      message = formatFailureMessage(classifyHttpCheckFailure({ error, message: describeHttpTargetFailure(check.Service.baseUrl || "", error) }));
     }
 
     const responseTimeMs = Date.now() - start;
+
+    const failureMeta =
+      status === "FAIL"
+        ? classifyHttpCheckFailure({
+            checkType: check.type,
+            expectedStatusCode: check.expectedStatusCode,
+            actualStatusCode: responseCode ?? undefined,
+            message
+          })
+        : null;
 
     await prisma.checkResult.create({
       data: {
@@ -156,7 +177,16 @@ export const runHttpChecksJob = async (): Promise<void> => {
         message,
         rawJson: {
           url: check.Service.baseUrl,
-          checkedAt: new Date().toISOString()
+          checkedAt: new Date().toISOString(),
+          ...(failureMeta
+            ? {
+                failureClass: failureMeta.failureClass,
+                diagnosis: failureMeta.diagnosis,
+                possibleCauses: failureMeta.possibleCauses,
+                expectedStatusCode: failureMeta.expectedStatusCode,
+                actualStatusCode: failureMeta.actualStatusCode
+              }
+            : {})
         }
       }
     });

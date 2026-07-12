@@ -12,7 +12,7 @@ type AlertDetail = {
   message: string;
   category: string;
   sourceType: string;
-  project: { id: string; name: string };
+  project: { id: string; name: string } | null;
   service: { id: string; name: string } | null;
   assignedTo: { id: string; name: string; email: string } | null;
   incidents: Array<{ id: string; title: string; severity: string; status: string; openedAt: string }>;
@@ -106,7 +106,12 @@ export default function AlertDetailPage() {
               <strong>Last seen:</strong> {new Date(alert.lastSeenAt).toLocaleString()}
             </p>
             <p>
-              <strong>Project:</strong> <Link href={`/projects/${alert.project.id}`}>{alert.project.name}</Link>
+              <strong>Project:</strong>{" "}
+              {alert.project ? (
+                <Link href={`/projects/${alert.project.id}`}>{alert.project.name}</Link>
+              ) : (
+                "-"
+              )}
             </p>
             <p>
               <strong>Service:</strong> {alert.service ? <Link href={`/checks?serviceId=${alert.service.id}`}>{alert.service.name}</Link> : "-"}
@@ -128,11 +133,11 @@ export default function AlertDetailPage() {
             </p>
 
             <h3>Linked incidents</h3>
-            {alert.incidents.length === 0 ? (
+            {alert.incidents?.length === 0 ? (
               <p className="table-subtle">No incidents are currently linked to this alert.</p>
             ) : (
               <ul className="dashboard-list">
-                {alert.incidents.map((incident) => (
+                {alert.incidents?.map((incident) => (
                   <li key={incident.id}>
                     <Link href={`/incidents/${incident.id}`}>{incident.title}</Link>
                     <div className="dashboard-subtle">{incident.status} · {incident.severity} · Opened {new Date(incident.openedAt).toLocaleString()}</div>

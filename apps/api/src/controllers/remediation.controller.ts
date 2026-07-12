@@ -1,9 +1,17 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { prisma } from "../lib/prisma";
-import { diagnose } from "../services/ai/incident-ai.service";
 import { executeRemediation } from "../services/remediation/remediation.service";
+import { buildIncidentDiagnosis } from "../services/remediation/remediation-suggest.service";
+import {
+  buildAutoRunMetricsReport,
+  buildRemediationAccuracyReport
+} from "../services/operations-analytics.service";
+import type { RemediationAction } from "../services/remediation/actions";
+import {
+  canExecuteRemediationAction,
+  hasPermission
+} from "../auth/permissions";
 import type { AuthRequest } from "../middleware/auth";
-
 const orgIdOr403 = (req: AuthRequest, res: Response): string | null => {
 	const orgId = req.user?.organizationId;
 	if (!orgId) {
@@ -16,33 +24,52 @@ const orgIdOr403 = (req: AuthRequest, res: Response): string | null => {
 export const suggestRemediation = async (req: AuthRequest, res: Response) => {
 	const orgId = orgIdOr403(req, res);
 	if (!orgId) return;
+	if (!hasPermission(req.user?.role, "diagnosis:read")) {
+		res.status(403).json({ error: "Forbidden" });
+		return;
+	}
 
 	const body = req.body ?? {};
-	const diagnosis = diagnose({
-		alertType: body.alertType,
-		eventTypes: body.eventTypes,
-		severity: body.severity,
-		title: body.title,
-		message: body.message
-	});
-
-	res.json({ organizationId: orgId, diagnosis });
+	try {
+		const diagnosis = await buildIncidentDiagnosis(orgId, {
+			incidentId: typeof body.incidentId === "string" ? body.incidentId : undefined,
+			alertType: body.alertType,
+			eventTypes: body.eventTypes,
+			severity: body.severity,
+			title: body.title,
+			message: body.message
+		});
+		res.json(diagnosis);
+	} catch (error: any) {
+		if (error?.message === "Incident not found") {
+			res.status(404).json({ error: "Incident not found" });
+			return;
+		}
+		throw error;
+	}
 };
 
 export const executeRemediationAction = async (req: AuthRequest, res: Response) => {
 	const orgId = orgIdOr403(req, res);
 	if (!orgId) return;
 
-	const { action, context = {}, approved = false, auto = false } = req.body ?? {};
+	const { action, context = {}, approved = false, auto = false, idempotencyKey } = req.body ?? {};
 	if (!action) {
 		res.status(400).json({ error: "action is required" });
 		return;
 	}
 
+	if (!canExecuteRemediationAction(req.user?.role, action as RemediationAction, Boolean(approved))) {
+		res.status(403).json({ error: "Forbidden", action });
+		return;
+	}
+
+	const headerIdempotencyKey = req.header("Idempotency-Key")?.trim();
 	const result = await executeRemediation(action, { ...context, organizationId: orgId }, {
 		approved: Boolean(approved),
 		auto: Boolean(auto),
-		executedBy: typeof req.user?.sub === "string" ? req.user.sub : undefined
+		executedBy: typeof req.user?.sub === "string" ? req.user.sub : undefined,
+		idempotencyKey: typeof idempotencyKey === "string" ? idempotencyKey : headerIdempotencyKey
 	});
 	res.json(result);
 };
@@ -88,10 +115,5 @@ export const getRemediationAccuracy = async (req: AuthRequest, res: Response) =>
 	const orgId = orgIdOr403(req, res);
 	if (!orgId) return;
 
-	const rows = await prisma.remediationLog.findMany({ where: { organizationId: orgId }, take: 500 });
-	const total = rows.length;
-	const success = rows.filter((r) => r.status === "SUCCEEDED").length;
-	const failed = rows.filter((r) => r.status === "FAILED").length;
-	res.json({ total, success, failed, accuracy: total ? Math.round((success / total) * 100) : 0 });
+	res.json(await buildRemediationAccuracyReport(orgId));
 };
-

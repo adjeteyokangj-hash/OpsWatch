@@ -1,148 +1,123 @@
+"use client";
+
 import Link from "next/link";
 
 const healthClass = (status: string) => {
   if (status === "HEALTHY") return "pass";
   if (status === "DOWN") return "fail";
+  if (status === "UNKNOWN") return "unknown";
+  if (status === "PAUSED" || status === "MAINTENANCE") return "paused";
   return "warn";
 };
 
 const healthToneClass = (status: string) => {
   if (status === "HEALTHY") return "healthy";
   if (status === "DOWN") return "down";
+  if (status === "UNKNOWN") return "unknown";
+  if (status === "PAUSED" || status === "MAINTENANCE" || status === "RECOVERING") return "paused";
   return "degraded";
 };
 
-const projectReason = (row: any) => {
+const displayHealth = (row: any): string => row.healthDisplayLabel ?? row.status;
+
+const projectReason = (row: any): string => {
+  if (row.healthReason) return row.healthReason;
   const openAlerts = row.alerts || [];
-  const unresolvedIncidents = (row.incidents || []).filter((incident: any) => incident.status !== "RESOLVED");
-  if (openAlerts.length > 0) {
-    const first = openAlerts[0];
-    const extra = openAlerts.length > 1 ? ` + ${openAlerts.length - 1} more` : "";
-    return `${first.title || "Open alert"}${extra}`;
-  }
-  if (unresolvedIncidents.length > 0) {
-    const first = unresolvedIncidents[0];
-    const extra = unresolvedIncidents.length > 1 ? ` + ${unresolvedIncidents.length - 1} more` : "";
-    return `${first.title || "Active incident"}${extra}`;
-  }
-  if (row.status === "DEGRADED") return "Project status is still marked degraded";
+  if (openAlerts.length > 0) return openAlerts[0].title || "Open alert";
+  if (row.status === "UNKNOWN") return "No completed monitoring result";
   return "-";
 };
 
-const latestCheckAt = (row: any): string | null => {
-  const services = Array.isArray(row.services) ? row.services : [];
-  let latest: string | null = null;
-
-  for (const service of services) {
-    const checks = Array.isArray(service?.checks) ? service.checks : Array.isArray(service?.Check) ? service.Check : [];
-    for (const check of checks) {
-      const result = Array.isArray(check?.checkResults)
-        ? check.checkResults[0]
-        : Array.isArray(check?.CheckResult)
-          ? check.CheckResult[0]
-          : null;
-      const checkedAt = result?.checkedAt ? String(result.checkedAt) : null;
-      if (!checkedAt) continue;
-      if (!latest || new Date(checkedAt).getTime() > new Date(latest).getTime()) {
-        latest = checkedAt;
-      }
-    }
-  }
-
-  return latest;
+const latestSignal = (row: any): string => {
+  if (row.lastSignalAt) return new Date(row.lastSignalAt).toLocaleString();
+  if (row.lastCompletedCheckAt) return new Date(row.lastCompletedCheckAt).toLocaleString();
+  return "No completed checks";
 };
 
-const signalLabel = (row: any): string => {
-  const latest = row.heartbeats?.[0]?.receivedAt ?? latestCheckAt(row);
-  if (!latest) return "Awaiting first check";
-  const ageMs = Date.now() - new Date(latest).getTime();
-  const ageMin = Math.floor(ageMs / 60000);
-  if (ageMin < 2) return "Just now";
-  if (ageMin < 60) return `${ageMin} min ago`;
-  const ageHours = Math.floor(ageMin / 60);
-  if (ageHours < 24) return `${ageHours} h ago`;
-  const ageDays = Math.floor(ageHours / 24);
-  return `${ageDays} d ago`;
+import { formatPrice as formatBillingPrice, formatPlanLabel } from "../../lib/project-billing";
+
+const formatPrice = (row: any): string => {
+  const billing = row.billing;
+  if (!billing) return "—";
+  return formatBillingPrice(billing.monthlyPrice, billing.currency);
 };
 
-const issueSummary = (row: any): string => {
-  if (row.status === "DOWN") {
-    return "Service down";
-  }
+const formatPlanCell = (row: any): string => {
+  const billing = row.billing;
+  if (!billing) return "—";
+  const label = billing.pricingLabel ?? billing.plan;
+  return formatPlanLabel(label);
+};
 
-  if (row.status === "DEGRADED") {
-    const extraIssues = Math.max((row.alerts?.length || 0) - 1, 0);
-    if (extraIssues > 0) {
-      return `Monitoring degraded (+${extraIssues} issue${extraIssues === 1 ? "" : "s"})`;
-    }
-    return "Monitoring degraded";
+const formatProjectContacts = (row: any): string => {
+  const parts: string[] = [];
+  if (row.projectOwner?.trim()) {
+    parts.push(`Owner: ${row.projectOwner.trim()}`);
   }
-
-  return projectReason(row);
+  if (row.operationalContact?.trim()) {
+    parts.push(row.operationalContact.trim());
+  }
+  const channels = row.notificationChannels ?? row.NotificationChannel ?? [];
+  const emailTargets = channels
+    .filter((channel: any) => String(channel.type).toUpperCase() === "EMAIL" && channel.target)
+    .map((channel: any) => String(channel.target));
+  if (emailTargets.length > 0) {
+    parts.push(...emailTargets);
+  }
+  return parts.length > 0 ? parts.join(" · ") : "—";
 };
 
 export function ProjectsTable({ rows }: { rows: Array<any> }) {
   return (
-    <table className="data-table projects-table">
-      <thead>
-        <tr>
-          <th>Project</th>
-          <th>Client</th>
-          <th>Env</th>
-          <th>Health</th>
-          <th>Reason</th>
-          <th>Services</th>
-          <th>Last Signal</th>
-          <th>Open Alerts</th>
-          <th>Unresolved Incidents</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.id}>
-            <td>
-              <Link href={`/projects/${row.id}`}>{row.name}</Link>
-            </td>
-            <td>{row.clientName}</td>
-            <td>{row.environment}</td>
-            <td>
-              <Link href={`/alerts?projectId=${row.id}&status=OPEN`} className={`result-pill ${healthClass(row.status)} pill ${healthToneClass(row.status)}`}>
-                {row.status}
-              </Link>
-            </td>
-            <td>
-              {row.status !== "HEALTHY" ? <span className="needs-attention">Needs attention</span> : null}
-              {row.status !== "HEALTHY" ? " " : null}
-              <span className={`issue-text${row.status === "DOWN" ? " critical" : ""}`}>
-                {issueSummary(row)}
-              </span>
-            </td>
-            <td>{row.services?.length || 0}</td>
-            <td>
-              <Link href={`/projects/${row.id}/activity`}>{signalLabel(row)}</Link>
-            </td>
-            <td>
-              <Link
-                href={`/alerts?projectId=${row.id}&status=OPEN`}
-                className={
-                  (row.alerts?.length || 0) === 0
-                    ? undefined
-                    : row.status === "DOWN"
-                      ? "alert-count-critical"
-                      : "alert-count-warning"
-                }
-              >
-                {row.alerts?.length || 0}
-              </Link>
-            </td>
-            <td>
-              <Link href={`/incidents?projectId=${row.id}&onlyUnresolved=true`}>
-                {(row.incidents || []).filter((incident: any) => incident.status !== "RESOLVED").length}
-              </Link>
-            </td>
+    <div className="projects-table-wrap">
+      <table className="data-table projects-table">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Client</th>
+            <th>Env</th>
+            <th>Health</th>
+            <th>Reason</th>
+            <th>Monitored Areas</th>
+            <th>Plan</th>
+            <th>Monthly Price</th>
+            <th>Last Signal</th>
+            <th>Contacts</th>
+            <th>Alerts</th>
+            <th>Incidents</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id}>
+              <td data-label="Project">
+                <Link href={`/projects/${row.id}`}>{row.name}</Link>
+              </td>
+              <td data-label="Client">{row.clientName}</td>
+              <td data-label="Environment">{row.environment}</td>
+              <td data-label="Health">
+                <span className={`result-pill ${healthClass(row.status)} pill ${healthToneClass(row.status)}`}>
+                  {displayHealth(row)}
+                </span>
+              </td>
+              <td data-label="Reason">{projectReason(row)}</td>
+              <td data-label="Monitored areas">{row.monitoredAreaCount ?? row.services?.length ?? 0}</td>
+              <td data-label="Plan">{formatPlanCell(row)}</td>
+              <td data-label="Monthly price">{formatPrice(row)}</td>
+              <td data-label="Last signal">{latestSignal(row)}</td>
+              <td data-label="Contacts">{formatProjectContacts(row)}</td>
+              <td data-label="Alerts">
+                <Link href={`/alerts?projectId=${row.id}&status=OPEN`}>{row.alerts?.length || 0}</Link>
+              </td>
+              <td data-label="Incidents">
+                <Link href={`/incidents?projectId=${row.id}&onlyUnresolved=true`}>
+                  {(row.incidents || []).filter((incident: any) => incident.status !== "RESOLVED").length}
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
