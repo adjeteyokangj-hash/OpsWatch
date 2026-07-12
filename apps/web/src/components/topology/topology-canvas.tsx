@@ -15,6 +15,7 @@ import {
   countHierarchyChildren,
   getCollapsedDescendantIds
 } from "./topology-focus";
+import { resolveDependencyDisplayLinks, resolveHierarchyDisplayLinks } from "./topology-edge-resolve";
 import { edgeTrafficWeight, replayNodeStatus } from "./topology-metrics";
 import type { VisualLayer } from "./topology-visual-layers";
 import { classifyVisualLayer, layerEdgeColor, visualLayerCountLabel, visualLayerTitle } from "./topology-visual-layers";
@@ -165,18 +166,14 @@ export const TopologyCanvas = ({
     [baseNodes, typeFilter, healthFilter, searchQuery, replayMinutesAgo, layoutVisibleIds]
   );
 
-  const visibleNodeIds = new Set(visibleNodes.map((row) => row.id));
-  const hierarchyEdges = topology.edges.filter(
-    (edge) =>
-      edge.type === "HIERARCHY" &&
-      visibleNodeIds.has(edge.sourceId) &&
-      visibleNodeIds.has(edge.targetId)
+  const hierarchyLinks = useMemo(
+    () => resolveHierarchyDisplayLinks(topology.edges, topology.nodes, graphLayout),
+    [topology.edges, topology.nodes, graphLayout]
   );
-  const dependencyEdges = topology.edges.filter(
-    (edge) =>
-      edge.type === "DEPENDENCY" &&
-      visibleNodeIds.has(edge.sourceId) &&
-      visibleNodeIds.has(edge.targetId)
+
+  const dependencyLinks = useMemo(
+    () => resolveDependencyDisplayLinks(topology.edges, graphLayout),
+    [topology.edges, graphLayout]
   );
 
   const rootCauseByNode = new Map((overlays?.rootCauses ?? []).map((row) => [row.nodeId, row]));
@@ -396,57 +393,59 @@ export const TopologyCanvas = ({
             </foreignObject>
           ))}
 
-          {hierarchyEdges.map((edge) => {
-            const childPos = graphLayout.positions.get(edge.sourceId);
-            const parentPos = graphLayout.positions.get(edge.targetId);
+          {hierarchyLinks.map((link) => {
+            const childPos = graphLayout.positions.get(link.childId);
+            const parentPos = graphLayout.positions.get(link.parentId);
             if (!childPos || !parentPos) return null;
 
-            const parentNode = nodeById.get(edge.targetId);
-            const parentLayer = parentNode ? classifyVisualLayer(parentNode) : "MODULE";
             const start = nodeAnchor(parentPos, "bottom");
             const end = nodeAnchor(childPos, "top");
             const pathD = edgePath(start, end, true);
             const edgeDimmed =
-              shouldDim && focusNodeIds.size > 0 && (!focusNodeIds.has(edge.sourceId) || !focusNodeIds.has(edge.targetId));
+              shouldDim &&
+              focusNodeIds.size > 0 &&
+              (!focusNodeIds.has(link.childId) || !focusNodeIds.has(link.parentId));
 
             return (
               <g
-                key={edge.id}
+                key={link.key}
                 className={`topology-edge topology-edge-hierarchy${edgeDimmed ? " dimmed" : ""}`}
-                style={{ color: layerEdgeColor(parentLayer) }}
+                style={{ color: layerEdgeColor(link.parentLayer) }}
               >
                 <path
                   d={pathD}
                   className="topology-edge-line topology-edge-line--hierarchy"
-                  stroke={layerEdgeColor(parentLayer)}
+                  stroke={layerEdgeColor(link.parentLayer)}
                   strokeWidth={2.5}
                 />
               </g>
             );
           })}
 
-          {dependencyEdges.map((edge) => {
-            const source = graphLayout.positions.get(edge.sourceId);
-            const target = graphLayout.positions.get(edge.targetId);
+          {dependencyLinks.map((link) => {
+            const source = graphLayout.positions.get(link.sourceId);
+            const target = graphLayout.positions.get(link.targetId);
             if (!source || !target) return null;
 
-            const replayStatus = displayStatusFor(edge.targetId, edge.status);
+            const replayStatus = displayStatusFor(link.edge.targetId, link.edge.status);
             const pathD = edgePath(nodeAnchor(source, "bottom"), nodeAnchor(target, "top"), true);
-            const weight = edgeTrafficWeight(edge, topology.nodes);
+            const weight = edgeTrafficWeight(link.edge, topology.nodes);
             const edgeDimmed =
-              shouldDim && focusNodeIds.size > 0 && (!focusNodeIds.has(edge.sourceId) || !focusNodeIds.has(edge.targetId));
+              shouldDim &&
+              focusNodeIds.size > 0 &&
+              (!focusNodeIds.has(link.sourceId) || !focusNodeIds.has(link.targetId));
 
             return (
               <g
-                key={edge.id}
+                key={link.key}
                 className={`topology-edge topology-edge-dependency${edgeDimmed ? " dimmed" : ""}`}
               >
                 <path
                   d={pathD}
-                  className={`topology-edge-line topology-edge-line--dependency ${healthClassName(replayStatus)}${edge.critical ? " critical" : ""}`}
+                  className={`topology-edge-line topology-edge-line--dependency ${healthClassName(replayStatus)}${link.edge.critical ? " critical" : ""}`}
                   markerEnd="url(#topology-arrow)"
                   strokeWidth={edgeStrokeWidth(weight)}
-                  opacity={0.45}
+                  opacity={0.55}
                 />
               </g>
             );
@@ -454,10 +453,10 @@ export const TopologyCanvas = ({
 
           {(overlays?.propagationEdges ?? []).map((edge) => {
             if (
-              dependencyEdges.some(
+              dependencyLinks.some(
                 (row) =>
-                  (row.sourceId === edge.sourceId && row.targetId === edge.targetId) ||
-                  (row.sourceId === edge.targetId && row.targetId === edge.sourceId)
+                  (row.edge.sourceId === edge.sourceId && row.edge.targetId === edge.targetId) ||
+                  (row.edge.sourceId === edge.targetId && row.edge.targetId === edge.sourceId)
               )
             ) {
               return null;
