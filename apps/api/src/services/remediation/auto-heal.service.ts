@@ -117,7 +117,7 @@ export const runIncidentAutoHeal = async (
     action: "AUTO_HEAL",
     holder: `auto-heal:${incidentId}`
   });
-  if (!lock.acquired) {
+  if (lock.acquired === false) {
     return {
       incidentId,
       attempted: false,

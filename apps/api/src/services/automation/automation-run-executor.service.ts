@@ -385,7 +385,7 @@ const executeApprovedRun = async (input: {
     action: "AUTOMATION_RUN",
     holder: lockHolder
   });
-  if (!lock.acquired) throw new Error(lock.reason);
+  if (lock.acquired === false) throw new Error(lock.reason);
 
   let succeeded = 0;
   let failed = 0;
