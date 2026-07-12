@@ -435,7 +435,7 @@ export const TopologyCanvas = ({
               height={band.height}
               className="topology-layer-label-wrap"
             >
-              <div xmlns="http://www.w3.org/1999/xhtml" className="topology-layer-label-box">
+              <div className="topology-layer-label-box">
                 <span className="topology-layer-label-title">{visualLayerTitle(band.layer)}</span>
                 <span className="topology-layer-label-meta">{visualLayerCountLabel(band.layer, band.count)}</span>
               </div>

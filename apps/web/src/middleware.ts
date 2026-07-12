@@ -17,10 +17,16 @@ const clearSessionCookies = (response: NextResponse, hostname: string): void => 
 };
 
 export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Proxied API routes — auth is enforced by the API, not Next.js middleware.
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
   // Presence of opswatch_session is an access hint only; the API validates session state.
   const sessionCookie = request.cookies.get("opswatch_session")?.value;
   const hasSession = Boolean(sessionCookie);
-  const { pathname } = request.nextUrl;
   const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/register");
   const isPublicRoute = isAuthRoute || pathname.startsWith("/status") || pathname.startsWith("/status-page");
 
@@ -42,5 +48,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|brand/).*)"]
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|brand/|api/).*)"]
 };

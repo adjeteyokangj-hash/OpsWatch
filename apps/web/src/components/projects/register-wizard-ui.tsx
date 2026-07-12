@@ -46,7 +46,7 @@ export function CopyFeedbackButton({
     <button
       type="button"
       className={`secondary-button copy-feedback-button${copied ? " copy-feedback-button--success" : ""} ${className}`.trim()}
-      onClick={() => void onAction().then(() => flash(successLabel))}
+      onClick={() => void Promise.resolve(onAction()).then(() => flash(successLabel))}
       data-action="local-ui"
     >
       {label ?? idleLabel}

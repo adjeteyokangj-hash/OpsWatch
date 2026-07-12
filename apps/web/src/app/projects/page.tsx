@@ -45,7 +45,9 @@ function ProjectsPageContent() {
     (sum, row) => sum + ((row.incidents || []).filter((incident: any) => incident.status !== "RESOLVED").length || 0),
     0
   );
-  const knownClients = projects.map((row) => row.clientName as string | undefined);
+  const knownClients = projects
+    .map((row) => row.clientName)
+    .filter((name): name is string => typeof name === "string" && name.trim().length > 0);
 
   return (
     <Shell>

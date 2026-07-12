@@ -60,7 +60,7 @@ export const resolveVisibleHierarchyParent = (
     if (placedId) return placedId;
 
     const node = nodesById.get(current);
-    const nextParent = parentByChild.get(current) ?? node?.parentId ?? undefined;
+    const nextParent: string | undefined = parentByChild.get(current) ?? node?.parentId ?? undefined;
     if (!nextParent) return null;
 
     if (isHiddenAppNode(nodesById.get(nextParent))) {

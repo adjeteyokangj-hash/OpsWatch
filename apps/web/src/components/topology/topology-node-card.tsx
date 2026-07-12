@@ -49,7 +49,6 @@ export function TopologyNodeCard({
     return (
       <div
         className={`topology-node-card topology-node-card--compact topology-node-card--layer-${visualLayer.toLowerCase()}`}
-        xmlns="http://www.w3.org/1999/xhtml"
       >
         <div className="topology-node-card-compact-head">
           {icon ? (
@@ -91,7 +90,7 @@ export function TopologyNodeCard({
   }
 
   return (
-    <div className={`topology-node-card topology-node-card--${statusTone}`} xmlns="http://www.w3.org/1999/xhtml">
+    <div className={`topology-node-card topology-node-card--${statusTone}`}>
       <div className="topology-node-card-head">
         <strong className="topology-node-card-name">{node.name}</strong>
       </div>
@@ -102,7 +101,7 @@ export function TopologyNodeCard({
 
 export function TopologyMoreCard({ count, label }: { count: number; label: string }) {
   return (
-    <div className="topology-node-card topology-more-card" xmlns="http://www.w3.org/1999/xhtml">
+    <div className="topology-node-card topology-more-card">
       <span className="topology-more-card-count">+{count}</span>
       <span className="topology-more-card-label">more {label}</span>
     </div>

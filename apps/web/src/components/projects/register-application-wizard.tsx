@@ -507,7 +507,7 @@ export function RegisterApplicationWizard({
                 const mode = event.target.value as ClientMode;
                 setClientMode(mode);
                 if (mode === "existing" && clientSuggestions.length > 0 && !selectedClient) {
-                  setSelectedClient(clientSuggestions[0]);
+                  setSelectedClient(clientSuggestions[0] ?? "");
                 }
                 if (mode !== "new") {
                   setForm((current) => ({ ...current, clientName: "" }));
