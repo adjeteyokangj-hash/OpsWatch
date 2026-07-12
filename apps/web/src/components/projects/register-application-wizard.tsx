@@ -274,7 +274,7 @@ export function RegisterApplicationWizard({
 
   const stepDescription =
     step === "register"
-      ? "Connect a new application to OpsWatch. Only the essentials are required — everything else is configured after the first heartbeat."
+      ? "Register a new application with OpsWatch. Everything else is configured after the first heartbeat."
       : step === "success"
         ? "Your application is ready. Copy the API key when you are ready to connect."
         : step === "credentials"
@@ -290,9 +290,11 @@ export function RegisterApplicationWizard({
           <h2>{stepTitle}</h2>
           <p>{stepDescription}</p>
         </div>
-        <button type="button" className="secondary-button" onClick={closeWizard} data-action="local-ui">
-          Cancel
-        </button>
+        {step !== "register" ? (
+          <button type="button" className="secondary-button" onClick={closeWizard} data-action="local-ui">
+            Cancel
+          </button>
+        ) : null}
       </div>
 
       {visibleSteps.length > 0 ? (
@@ -330,8 +332,12 @@ export function RegisterApplicationWizard({
 
           <label>
             Organization *
-            <input value={org?.name ?? "Loading organization…"} disabled />
-            <span className="field-hint">Applications belong to your OpsWatch organization.</span>
+            <div className="register-org-readonly" aria-readonly="true">
+              <span>{org?.name ?? "Loading organization…"}</span>
+              <span className="register-org-lock" title="Organization is fixed for your workspace" aria-hidden="true">
+                🔒
+              </span>
+            </div>
           </label>
 
           <label>
@@ -402,10 +408,13 @@ export function RegisterApplicationWizard({
               placeholder="https://your-domain.com"
               type="url"
             />
-            <span className="field-hint">Leave blank for internal services.</span>
+            <span className="field-hint field-hint--spaced">Leave blank for internal services.</span>
           </label>
 
           <div className="register-wizard-form-actions">
+            <button type="button" className="secondary-button" onClick={closeWizard} data-action="local-ui">
+              Cancel
+            </button>
             <button className="primary-button" type="submit" disabled={saving || !org} data-action="api" data-endpoint="/projects">
               {saving ? "Registering…" : "Register application"}
             </button>

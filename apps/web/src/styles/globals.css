@@ -1473,12 +1473,52 @@ h1 {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 4px;
+  margin-top: 8px;
+}
+
+.register-wizard-form-actions .primary-button,
+.register-wizard-form-actions .secondary-button {
+  width: auto;
+  min-width: 0;
 }
 
 .register-wizard-form-actions .primary-button {
   min-width: 260px;
+  max-width: 300px;
   justify-content: center;
+  background: var(--brand);
+  color: #fff;
+  border: none;
+}
+
+.register-wizard-form-actions .secondary-button {
+  min-width: 120px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+.register-org-readonly {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface-2) 80%, var(--bg));
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.register-org-lock {
+  font-size: 0.9rem;
+  opacity: 0.75;
+}
+
+.field-hint--spaced {
+  margin-top: 14px;
 }
 
 .register-wizard-success-banner {
