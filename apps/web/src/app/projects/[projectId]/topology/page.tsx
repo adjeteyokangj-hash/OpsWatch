@@ -167,7 +167,7 @@ export default function ProjectTopologyPage() {
 
         {topology ? (
           <>
-            <TopologySummaryCards topology={topology} />
+            {viewMode === "list" ? <TopologySummaryCards topology={topology} /> : null}
             <TopologyFilterBar
               typeFilter={typeFilter}
               healthFilter={healthFilter}
@@ -207,6 +207,7 @@ export default function ProjectTopologyPage() {
                 topology={topology}
                 node={selectedNode}
                 projectId={projectId}
+                project={project}
                 onClose={() => setSelectedNodeId(null)}
               />
             </div>

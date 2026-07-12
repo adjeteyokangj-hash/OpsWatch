@@ -60,6 +60,12 @@ export function TopologyFilterBar({
           <option value="layer">Layer</option>
         </select>
       </label>
+      <label className="topology-filter-field">
+        <span>Layout</span>
+        <select defaultValue="hierarchical" aria-label="Layout">
+          <option value="hierarchical">Hierarchical</option>
+        </select>
+      </label>
       <div className="topology-filter-field topology-view-toggle-wrap">
         <span>View</span>
         <div className="topology-view-toggle" role="group" aria-label="Topology view mode">

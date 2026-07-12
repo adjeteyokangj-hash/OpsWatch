@@ -4,13 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import type { ProjectTopologyResponse, TopologyNode } from "./topology-types";
 import { healthClassName, healthLabel } from "./topology-types";
-import { EmptyState } from "../ui/empty-state";
 import { TopologySparkline } from "./topology-sparkline";
+import { TopologyApplicationPanel } from "./topology-application-panel";
 
 type Props = {
   topology: ProjectTopologyResponse;
   node: TopologyNode | null;
   projectId: string;
+  project?: any;
   onClose: () => void;
 };
 
@@ -27,18 +28,11 @@ const formatRelativeTime = (value: string | null | undefined): string => {
   return new Date(value).toLocaleString();
 };
 
-export const TopologyNodeDrawer = ({ topology, node, projectId, onClose }: Props) => {
+export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose }: Props) => {
   const [tab, setTab] = useState<DetailTab>("overview");
 
   if (!node) {
-    return (
-      <aside className="topology-detail-panel panel" aria-label="Node details">
-        <EmptyState
-          title="Select a node"
-          description="Click any app, module, workflow, or component on the map to inspect health, alerts, and quick actions."
-        />
-      </aside>
-    );
+    return <TopologyApplicationPanel topology={topology} projectId={projectId} project={project} />;
   }
 
   const context = topology.nodeContext[node.id];

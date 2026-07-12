@@ -8,14 +8,24 @@ import type {
   TopologyOverlays
 } from "./topology-types";
 import { healthClassName, healthLabel } from "./topology-types";
-import { computeLayeredLayout, edgePath, edgeStrokeWidth, LAYOUT } from "./topology-layout";
-import { TopologyNodeCard } from "./topology-node-card";
+import { computeLayeredLayout, edgePath, edgeStrokeWidth, layerExpansionKey, LAYOUT } from "./topology-layout";
+import { TopologyMoreCard, TopologyNodeCard } from "./topology-node-card";
 import {
   buildTraceFocusIds,
   countHierarchyChildren,
   getCollapsedDescendantIds
 } from "./topology-focus";
 import { edgeTrafficWeight, replayNodeStatus } from "./topology-metrics";
+import type { VisualLayer } from "./topology-visual-layers";
+
+const moreLayerLabel = (layer: VisualLayer): string => {
+  if (layer === "MODULE") return "modules";
+  if (layer === "WORKFLOW") return "workflows";
+  if (layer === "SERVICE") return "services";
+  if (layer === "INFRASTRUCTURE") return "resources";
+  if (layer === "EXTERNAL") return "services";
+  return "nodes";
+};
 
 type Props = {
   topology: ProjectTopologyResponse;
@@ -67,6 +77,7 @@ export const TopologyCanvas = ({
   const [referenceScale, setReferenceScale] = useState(1);
   const [dragging, setDragging] = useState(false);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
+  const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
   const dragOrigin = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
 
   const overlayFocusIds = useMemo(() => {
@@ -101,10 +112,10 @@ export const TopologyCanvas = ({
     return rows;
   }, [topology.nodes, hiddenDescendants, subgraphOnly, focusNodeIds]);
 
-  const layoutKey = `${baseNodes.map((row) => row.id).sort().join("|")}|${[...collapsedNodeIds].sort().join(",")}`;
+  const layoutKey = `${baseNodes.map((row) => row.id).sort().join("|")}|${[...collapsedNodeIds].sort().join(",")}|${[...expandedLayers].sort().join(",")}`;
 
   const graphLayout = useMemo(() => {
-    const base = computeLayeredLayout(baseNodes);
+    const base = computeLayeredLayout(baseNodes, expandedLayers);
     const positions = new Map(base.positions);
 
     if (showCorrelatedIncidents && overlays?.correlatedIncidents?.length) {
@@ -123,7 +134,9 @@ export const TopologyCanvas = ({
     }
 
     return { ...base, positions };
-  }, [baseNodes, layoutKey, overlays, showChangeEvents, showCorrelatedIncidents]);
+  }, [baseNodes, layoutKey, overlays, showChangeEvents, showCorrelatedIncidents, expandedLayers]);
+
+  const layoutVisibleIds = graphLayout.visibleNodeIds;
 
   const zoomPercent = Math.max(25, Math.min(250, Math.round((viewport.scale / referenceScale) * 100)));
 
@@ -145,9 +158,10 @@ export const TopologyCanvas = ({
             return false;
           }
         }
+        if (!layoutVisibleIds.has(node.id)) return false;
         return true;
       }),
-    [baseNodes, typeFilter, healthFilter, searchQuery, replayMinutesAgo]
+    [baseNodes, typeFilter, healthFilter, searchQuery, replayMinutesAgo, layoutVisibleIds]
   );
 
   const visibleNodeIds = new Set(visibleNodes.map((row) => row.id));
@@ -218,6 +232,16 @@ export const TopologyCanvas = ({
       const next = new Set(current);
       if (next.has(nodeId)) next.delete(nodeId);
       else next.add(nodeId);
+      return next;
+    });
+  };
+
+  const toggleLayerExpand = (layer: VisualLayer) => {
+    const key = layerExpansionKey(layer);
+    setExpandedLayers((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -299,6 +323,27 @@ export const TopologyCanvas = ({
       title="Ctrl + scroll to zoom the map"
       data-testid="topology-canvas"
     >
+      <div className="topology-map-toolbar" onPointerDown={(event) => event.stopPropagation()}>
+        <div className="topology-map-toolbar-group">
+          <button type="button" className="topology-icon-button" aria-label="Select" title="Select">◎</button>
+          <button type="button" className="topology-icon-button" aria-label="Pan" title="Pan">✥</button>
+        </div>
+        <div className="topology-map-toolbar-group">
+          <label className="topology-map-toolbar-field">
+            <span>Group by</span>
+            <select defaultValue="layer" aria-label="Group by">
+              <option value="layer">Layer</option>
+            </select>
+          </label>
+          <label className="topology-map-toolbar-field">
+            <span>Layout</span>
+            <select defaultValue="hierarchical" aria-label="Layout">
+              <option value="hierarchical">Hierarchical</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
       <svg
         className="topology-canvas"
         role="img"
@@ -321,8 +366,8 @@ export const TopologyCanvas = ({
 
         <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
           {graphLayout.layerBands.map((band) => (
-            <text key={`label-${band.layer}`} x={36} y={band.y + 24} className="topology-layer-label">
-              {band.layer}
+            <text key={`label-${band.layer}`} x={52} y={band.y + band.height / 2 + 4} className="topology-layer-label">
+              {band.label}
             </text>
           ))}
 
@@ -330,11 +375,11 @@ export const TopologyCanvas = ({
             <rect
               key={`band-${band.layer}`}
               className={`topology-layer-band layer-${band.layer.toLowerCase()}`}
-              x={24}
+              x={120}
               y={band.y}
-              width={graphLayout.width - 48}
+              width={graphLayout.width - 136}
               height={band.height}
-              rx={16}
+              rx={14}
             />
           ))}
 
@@ -450,6 +495,7 @@ export const TopologyCanvas = ({
                   <TopologyNodeCard
                     node={node}
                     displayStatus={displayStatus}
+                    compact
                     childCount={childCount}
                     collapsed={collapsed}
                     onToggleCollapse={() => toggleCollapse(node.id)}
@@ -458,6 +504,31 @@ export const TopologyCanvas = ({
                 <title>
                   {node.name} · {healthLabel(displayStatus)}
                 </title>
+              </g>
+            );
+          })}
+
+          {graphLayout.moreNodes.map((more) => {
+            const position = graphLayout.positions.get(more.id);
+            if (!position) return null;
+            return (
+              <g
+                key={more.id}
+                className="topology-node topology-more-node"
+                transform={`translate(${position.x - NODE_WIDTH / 2} ${position.y - NODE_HEIGHT / 2})`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleLayerExpand(more.layer);
+                }}
+                data-testid={`topology-more-${more.layer}`}
+                aria-label={`Expand ${more.hiddenCount} more ${moreLayerLabel(more.layer)}`}
+                role="button"
+                tabIndex={0}
+              >
+                <rect width={NODE_WIDTH} height={NODE_HEIGHT} rx={14} className="topology-node-surface topology-more-node-surface" />
+                <foreignObject x={0} y={0} width={NODE_WIDTH} height={NODE_HEIGHT}>
+                  <TopologyMoreCard count={more.hiddenCount} label={moreLayerLabel(more.layer)} />
+                </foreignObject>
               </g>
             );
           })}
