@@ -139,4 +139,94 @@ describe("topology.service", () => {
     expect(topology.nodes.find((row) => row.id === "quotes-module")?.status).toBe("CRITICAL");
     expect(topology.summary.critical).toBe(1);
   });
+
+  it("uses project heartbeats for APP metrics when checks are absent", () => {
+    const topology = buildProjectTopologyResponse({
+      project,
+      services: [
+        {
+          id: "app",
+          name: "Noble Express",
+          type: "APP" as const,
+          status: "HEALTHY",
+          Check: []
+        }
+      ],
+      dependencies: [],
+      alerts: [],
+      incidents: [],
+      slos: [],
+      heartbeats: [
+        { status: "UP", receivedAt: new Date("2026-07-12T10:00:00Z") },
+        { status: "UP", receivedAt: new Date("2026-07-12T09:55:00Z") }
+      ]
+    });
+
+    const app = topology.nodes.find((row) => row.id === "app");
+    expect(app?.metrics.availabilityPercent).toBe(100);
+    expect(app?.metrics.availabilityTrend).toEqual([100, 100]);
+  });
+
+  it("rolls parent metrics up from monitored children", () => {
+    const topology = buildProjectTopologyResponse({
+      project,
+      services: [
+        {
+          id: "app",
+          name: "Noble Express",
+          type: "APP" as const,
+          status: "HEALTHY",
+          Check: []
+        },
+        {
+          id: "quotes-module",
+          name: "Quotes",
+          type: "MODULE" as const,
+          status: "HEALTHY",
+          Check: []
+        },
+        {
+          id: "quote-api",
+          name: "Quote API",
+          type: "COMPONENT" as const,
+          status: "HEALTHY",
+          Check: [
+            {
+              isActive: true,
+              CheckResult: [
+                { status: "PASS", checkedAt: new Date(), responseTimeMs: 80 },
+                { status: "FAIL", checkedAt: new Date(Date.now() - 60_000), responseTimeMs: 120 }
+              ]
+            }
+          ]
+        }
+      ],
+      dependencies: [
+        {
+          id: "h1",
+          fromServiceId: "quotes-module",
+          toServiceId: "app",
+          dependencyType: "HIERARCHY",
+          criticality: "HIGH",
+          isActive: true
+        },
+        {
+          id: "h2",
+          fromServiceId: "quote-api",
+          toServiceId: "quotes-module",
+          dependencyType: "HIERARCHY",
+          criticality: "HIGH",
+          isActive: true
+        }
+      ],
+      alerts: [],
+      incidents: [],
+      slos: []
+    });
+
+    const module = topology.nodes.find((row) => row.id === "quotes-module");
+    expect(module?.metrics.availabilityPercent).toBe(50);
+    expect(module?.metrics.availabilityTrend.length).toBeGreaterThan(0);
+    expect(topology.nodeContext["quotes-module"]?.monitoringState).toBe("MONITORED");
+  });
 });

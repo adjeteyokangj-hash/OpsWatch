@@ -16,6 +16,8 @@ export const LAYOUT = {
   rowHeight: 128,
   nodesPerRow: 4,
   previewCount: 3,
+  labelGutter: 128,
+  bandStartX: 132,
   paddingX: 148,
   paddingY: 72,
   layerGap: 28,

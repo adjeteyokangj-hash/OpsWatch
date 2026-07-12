@@ -17,7 +17,7 @@ import {
 } from "./topology-focus";
 import { edgeTrafficWeight, replayNodeStatus } from "./topology-metrics";
 import type { VisualLayer } from "./topology-visual-layers";
-import { classifyVisualLayer, layerEdgeColor } from "./topology-visual-layers";
+import { classifyVisualLayer, layerEdgeColor, visualLayerCountLabel, visualLayerTitle } from "./topology-visual-layers";
 
 const moreLayerLabel = (layer: VisualLayer): string => {
   if (layer === "MODULE") return "modules";
@@ -369,21 +369,31 @@ export const TopologyCanvas = ({
 
         <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
           {graphLayout.layerBands.map((band) => (
-            <text key={`label-${band.layer}`} x={52} y={band.y + band.height / 2 + 4} className="topology-layer-label">
-              {band.label}
-            </text>
-          ))}
-
-          {graphLayout.layerBands.map((band) => (
             <rect
               key={`band-${band.layer}`}
               className={`topology-layer-band layer-${band.layer.toLowerCase()}`}
-              x={120}
+              x={LAYOUT.bandStartX}
               y={band.y}
-              width={graphLayout.width - 136}
+              width={graphLayout.width - LAYOUT.bandStartX - 12}
               height={band.height}
               rx={14}
             />
+          ))}
+
+          {graphLayout.layerBands.map((band) => (
+            <foreignObject
+              key={`label-${band.layer}`}
+              x={8}
+              y={band.y}
+              width={LAYOUT.labelGutter - 16}
+              height={band.height}
+              className="topology-layer-label-wrap"
+            >
+              <div xmlns="http://www.w3.org/1999/xhtml" className="topology-layer-label-box">
+                <span className="topology-layer-label-title">{visualLayerTitle(band.layer)}</span>
+                <span className="topology-layer-label-meta">{visualLayerCountLabel(band.layer, band.count)}</span>
+              </div>
+            </foreignObject>
           ))}
 
           {hierarchyEdges.map((edge) => {

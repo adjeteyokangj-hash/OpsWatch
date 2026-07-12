@@ -2,7 +2,7 @@ import type { VisualLayer } from "./topology-visual-layers";
 
 type Props = {
   points?: number[];
-  seed: string;
+  seed?: string;
   tone: string;
 };
 
@@ -17,15 +17,10 @@ const toneColor: Record<string, string> = {
   service: "#ED8936"
 };
 
-const fallbackPoints = (seed: string): number[] => {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) hash = (hash + seed.charCodeAt(i) * (i + 3)) % 97;
-  return Array.from({ length: 12 }, (_, index) => 72 + Math.sin((hash + index * 11) * 0.31) * 18);
-};
-
-export function TopologySparkline({ points, seed, tone }: Props) {
+export function TopologySparkline({ points, tone }: Props) {
   const color = toneColor[tone] ?? toneColor.neutral;
-  const series = points && points.length > 1 ? points : fallbackPoints(seed);
+  const hasLiveSeries = Boolean(points && points.length > 1);
+  const series = hasLiveSeries ? points! : [50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50];
   const min = Math.min(...series);
   const max = Math.max(...series);
   const range = Math.max(max - min, 1);
@@ -39,8 +34,21 @@ export function TopologySparkline({ points, seed, tone }: Props) {
     .join(" ");
 
   return (
-    <svg className="topology-kpi-sparkline" viewBox="0 0 132 28" aria-hidden="true">
-      <polyline fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={polyline} />
+    <svg
+      className={`topology-kpi-sparkline${hasLiveSeries ? "" : " topology-kpi-sparkline--idle"}`}
+      viewBox="0 0 132 28"
+      aria-hidden="true"
+    >
+      <polyline
+        fill="none"
+        stroke={hasLiveSeries ? color : "#cbd5e1"}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray={hasLiveSeries ? undefined : "4 4"}
+        opacity={hasLiveSeries ? 1 : 0.65}
+        points={polyline}
+      />
     </svg>
   );
 }

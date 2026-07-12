@@ -15,7 +15,7 @@ export const loadProjectTopology = async (
   });
   if (!project) return null;
 
-  const [services, dependencies, alerts, incidents, sloDefinitions] = await Promise.all([
+  const [services, dependencies, alerts, incidents, sloDefinitions, heartbeats] = await Promise.all([
     prisma.service.findMany({
       where: { projectId },
       include: {
@@ -63,6 +63,12 @@ export const loadProjectTopology = async (
         serviceId: true,
         SLOWindow: { orderBy: { windowEnd: "desc" }, take: 1 }
       }
+    }),
+    prisma.heartbeat.findMany({
+      where: { projectId },
+      orderBy: { receivedAt: "desc" },
+      take: 12,
+      select: { status: true, receivedAt: true }
     })
   ]);
 
@@ -93,6 +99,7 @@ export const loadProjectTopology = async (
             burnRate: row.SLOWindow[0].burnRate
           }
         : null
-    }))
+    })),
+    heartbeats
   });
 };

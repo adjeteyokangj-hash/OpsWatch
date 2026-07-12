@@ -16,7 +16,7 @@ import { TopologyListView } from "../../../../components/topology/topology-list-
 import { TopologyTimeReplay } from "../../../../components/topology/topology-time-replay";
 import type { ProjectTopologyResponse, TopologyHealthStatus, TopologyNodeType } from "../../../../components/topology/topology-types";
 
-const REFRESH_MS = 30_000;
+const REFRESH_MS = 15_000;
 
 type MaintenanceBanner = {
   id: string;

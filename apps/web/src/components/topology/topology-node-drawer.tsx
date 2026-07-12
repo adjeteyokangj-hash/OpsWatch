@@ -136,7 +136,7 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
           <section className="topology-detail-section">
             <h3>Success rate</h3>
             <TopologySparkline
-              seed={`${node.id}-success`}
+              points={node.metrics.availabilityTrend}
               tone={
                 node.status === "HEALTHY"
                   ? "healthy"

@@ -4563,6 +4563,41 @@ button {
   fill: rgba(248, 250, 252, 0.85);
 }
 
+.topology-layer-label-wrap {
+  pointer-events: none;
+  overflow: visible;
+}
+
+.topology-layer-label-box {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  gap: 2px;
+  padding-right: 10px;
+  overflow: hidden;
+}
+
+.topology-layer-label-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.topology-layer-label-meta {
+  font-size: 10px;
+  font-weight: 500;
+  color: #94a3b8;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.topology-kpi-sparkline--idle {
+  opacity: 0.85;
+}
+
 .topology-layer-label {
   font-size: 10px;
   font-weight: 700;

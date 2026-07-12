@@ -27,14 +27,26 @@ export const classifyVisualLayer = (node: TopologyNode): VisualLayer => {
   return "SERVICE";
 };
 
-export const visualLayerLabel = (layer: VisualLayer, count: number): string => {
-  if (layer === "APP") return count === 1 ? "Application" : `Applications (${count})`;
-  if (layer === "MODULE") return `Modules (${count} module${count === 1 ? "" : "s"})`;
-  if (layer === "WORKFLOW") return `Workflows (${count} workflow${count === 1 ? "" : "s"})`;
-  if (layer === "SERVICE") return `Services (${count} service${count === 1 ? "" : "s"})`;
-  if (layer === "INFRASTRUCTURE") return `Infrastructure (${count} resource${count === 1 ? "" : "s"})`;
-  return `External (${count} service${count === 1 ? "" : "s"})`;
+export const visualLayerTitle = (layer: VisualLayer): string => {
+  if (layer === "APP") return "Application";
+  if (layer === "MODULE") return "Modules";
+  if (layer === "WORKFLOW") return "Workflows";
+  if (layer === "SERVICE") return "Services";
+  if (layer === "INFRASTRUCTURE") return "Infrastructure";
+  return "External";
 };
+
+export const visualLayerCountLabel = (layer: VisualLayer, count: number): string => {
+  if (layer === "APP") return count === 1 ? "1 application" : `${count} applications`;
+  if (layer === "MODULE") return count === 1 ? "1 module" : `${count} modules`;
+  if (layer === "WORKFLOW") return count === 1 ? "1 workflow" : `${count} workflows`;
+  if (layer === "SERVICE") return count === 1 ? "1 service" : `${count} services`;
+  if (layer === "INFRASTRUCTURE") return count === 1 ? "1 resource" : `${count} resources`;
+  return count === 1 ? "1 service" : `${count} services`;
+};
+
+export const visualLayerLabel = (layer: VisualLayer, count: number): string =>
+  `${visualLayerTitle(layer)} (${visualLayerCountLabel(layer, count)})`;
 
 export const layerEdgeColor = (layer: VisualLayer): string => {
   if (layer === "MODULE") return "#48BB78";
