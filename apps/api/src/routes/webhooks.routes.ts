@@ -1,18 +1,9 @@
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
 import { prisma } from "../lib/prisma";
+import { requireWebhookSignature } from "../middleware/webhook-auth";
 
 export const webhooksRouter = Router();
-
-// ---------- helpers ----------
-
-const safeCompare = (a: string, b: string): boolean => {
-  try {
-    return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
-  } catch {
-    return false;
-  }
-};
 
 const findProjectByIntegrationId = async (field: "vercelProjectId" | "renderServiceId", value: string) =>
   prisma.project.findFirst({ where: { [field]: value } });
@@ -43,20 +34,7 @@ const createWebhookAlert = async (projectId: string, title: string, message: str
   });
 };
 
-// ---------- Vercel ----------
-
-webhooksRouter.post("/webhooks/vercel", async (req: Request, res: Response): Promise<void> => {
-  const secret = process.env.VERCEL_WEBHOOK_SECRET;
-  if (secret) {
-    const rawBody = JSON.stringify(req.body);
-    const sig = req.header("x-vercel-signature") || "";
-    const expected = crypto.createHmac("sha1", secret).update(rawBody).digest("hex");
-    if (!safeCompare(sig, expected)) {
-      res.status(401).json({ error: "Invalid Vercel signature" });
-      return;
-    }
-  }
-
+webhooksRouter.post("/vercel", requireWebhookSignature("vercel"), async (req: Request, res: Response): Promise<void> => {
   const payload = req.body as {
     type?: string;
     payload?: { deployment?: { url?: string; project?: { id?: string } }; target?: string };
@@ -75,7 +53,7 @@ webhooksRouter.post("/webhooks/vercel", async (req: Request, res: Response): Pro
     if (project) {
       await createWebhookAlert(
         project.id,
-        `Vercel deployment failed`,
+        "Vercel deployment failed",
         `Event: ${eventType} — URL: ${payload.payload?.deployment?.url || "unknown"}`,
         `vercel:${vercelProjectId}`
       );
@@ -85,20 +63,7 @@ webhooksRouter.post("/webhooks/vercel", async (req: Request, res: Response): Pro
   res.status(200).json({ ok: true });
 });
 
-// ---------- GitHub ----------
-
-webhooksRouter.post("/webhooks/github", async (req: Request, res: Response): Promise<void> => {
-  const secret = process.env.GITHUB_WEBHOOK_SECRET;
-  if (secret) {
-    const rawBody = JSON.stringify(req.body);
-    const sig = req.header("x-hub-signature-256") || "";
-    const expected = "sha256=" + crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-    if (!safeCompare(sig, expected)) {
-      res.status(401).json({ error: "Invalid GitHub signature" });
-      return;
-    }
-  }
-
+webhooksRouter.post("/github", requireWebhookSignature("github"), async (req: Request, res: Response): Promise<void> => {
   const event = req.header("x-github-event") || "";
   const payload = req.body as {
     action?: string;
@@ -120,7 +85,7 @@ webhooksRouter.post("/webhooks/github", async (req: Request, res: Response): Pro
     if (project) {
       await createWebhookAlert(
         project.id,
-        `GitHub Actions workflow failed`,
+        "GitHub Actions workflow failed",
         `Workflow "${payload.workflow_run?.name}" failed — ${payload.workflow_run?.html_url || ""}`,
         `github:${repoName}`
       );
@@ -130,20 +95,7 @@ webhooksRouter.post("/webhooks/github", async (req: Request, res: Response): Pro
   res.status(200).json({ ok: true });
 });
 
-// ---------- Render ----------
-
-webhooksRouter.post("/webhooks/render", async (req: Request, res: Response): Promise<void> => {
-  const secret = process.env.RENDER_WEBHOOK_SECRET;
-  if (secret) {
-    const rawBody = JSON.stringify(req.body);
-    const sig = req.header("x-render-signature") || "";
-    const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-    if (!safeCompare(sig, expected)) {
-      res.status(401).json({ error: "Invalid Render signature" });
-      return;
-    }
-  }
-
+webhooksRouter.post("/render", requireWebhookSignature("render"), async (req: Request, res: Response): Promise<void> => {
   const payload = req.body as {
     type?: string;
     data?: { serviceId?: string; serviceType?: string; status?: string };
@@ -151,9 +103,14 @@ webhooksRouter.post("/webhooks/render", async (req: Request, res: Response): Pro
 
   const eventType = payload.type || "";
   const renderServiceId = payload.data?.serviceId;
-  const status = payload.data?.status;
+  const status = (payload.data?.status || "").toLowerCase();
 
-  if (!eventType.includes("deploy") || status === "live") {
+  const isDeployFailure =
+    eventType.includes("deploy") &&
+    status.length > 0 &&
+    !["live", "succeeded", "success"].includes(status);
+
+  if (!isDeployFailure) {
     res.status(200).json({ ok: true, skipped: true });
     return;
   }
@@ -163,8 +120,8 @@ webhooksRouter.post("/webhooks/render", async (req: Request, res: Response): Pro
     if (project) {
       await createWebhookAlert(
         project.id,
-        `Render deployment failed`,
-        `Event: ${eventType} — Service: ${renderServiceId} — Status: ${status || "unknown"}`,
+        "Render deployment failed",
+        `Event: ${eventType} — Service: ${renderServiceId} — Status: ${status}`,
         `render:${renderServiceId}`
       );
     }

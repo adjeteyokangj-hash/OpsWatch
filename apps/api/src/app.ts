@@ -1,5 +1,6 @@
 import "express-async-errors";
 import express from "express";
+import { WebhookRequest } from "./middleware/webhook-auth";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -32,6 +33,13 @@ import maintenanceWindowsRouter from "./routes/maintenance-windows.routes";
 import automationRouter from "./routes/automation.routes";
 import { internalRouter } from "./routes/internal.routes";
 import { webhooksRouter } from "./routes/webhooks.routes";
+
+const webhookJsonParser = express.json({
+  limit: "1mb",
+  verify: (req, _res, buf) => {
+    (req as WebhookRequest).rawBody = buf;
+  }
+});
 
 export const app = express();
 
@@ -76,7 +84,7 @@ app.use(API_PREFIX, statusRouter);
 app.use(API_PREFIX, trueNumerisRouter);
 app.use(API_PREFIX, eventsRouter);
 app.use(API_PREFIX, heartbeatsRouter);
-app.use(API_PREFIX, webhooksRouter);
+app.use(`${API_PREFIX}/webhooks`, webhookJsonParser, webhooksRouter);
 
 app.use(API_PREFIX, requireAuth, projectsRouter);
 app.use(API_PREFIX, requireAuth, servicesRouter);
