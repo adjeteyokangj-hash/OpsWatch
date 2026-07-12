@@ -15,8 +15,8 @@ The previous production-gate assessment **no longer represents the current OpsWa
 
 1. Webhook authentication must fail closed and verify signatures against raw request bytes.
 2. Signed ingest protection must be enforced on `/event`, `/health-snapshot`, and `/heartbeat` routes, including timestamp-age validation and constant-time signature comparison.
-3. Browser-readable stateless JWT authentication must be replaced with revocable server-managed sessions or an equivalent secure design.
-4. PostgreSQL integration testing and Playwright browser testing must run as mandatory CI release checks.
+3. ~~Browser-readable stateless JWT authentication must be replaced with revocable server-managed sessions or an equivalent secure design.~~ **Closed** — commit `c05bdd5` (HttpOnly sessions, CSRF, hashed tokens, revocation on credential/role changes).
+4. PostgreSQL integration testing and Playwright browser testing must run as mandatory CI release checks. **In progress** — workflow committed; clean run and branch protection pending.
 5. Untracked and potentially duplicate migrations must be reconciled against all deployed database migration histories.
 6. Generated JavaScript artefacts must be removed from TypeScript source paths or proven not to affect module resolution.
 
@@ -33,7 +33,7 @@ Billing should be described as **administrative plan configuration** rather than
 | Public production readiness | **Not approved** |
 | Internal/staging deployment | Allowed with restrictions |
 | Database migration integrity | Requires verification |
-| Authentication and session security | **Release blocker** |
+| Authentication and session security | **Remediated** — verify in staging |
 | Webhook and ingest security | **Release blocker** |
 | Worker reliability | Not production-grade |
 | Billing | Administrative prototype, not production commerce |
@@ -51,7 +51,7 @@ Captured from `git status` on 2026-07-12. **Do not treat green CI or the 2026-07
 | Untracked application files | ~150+ | Controllers, services, pages, topology, automation, tests |
 | Untracked migrations (on disk) | 16 | All 16 are also present in `prisma/migrations/` (26 total on disk) |
 | Generated `.js` in source paths | 11 | See artefact list below |
-| CI workflow | 1 untracked | `.github/workflows/ci.yml` — E2E optional via `RUN_BROWSER_E2E` |
+| CI workflow | committed | `.github/workflows/ci.yml` — Postgres service, `migrate deploy`, `RUN_DATABASE_E2E`, Playwright E2E |
 
 ### Duplicate / related migration names (compare SQL before merge)
 
@@ -80,8 +80,8 @@ Captured from `git status` on 2026-07-12. **Do not treat green CI or the 2026-07
 |---------|----------------|
 | Webhook auth | `webhooks.routes.ts` — if secret env var is **unset**, signature check is **skipped** (fail-open). Uses `JSON.stringify(req.body)` not raw bytes. No 503 when secret missing. |
 | Ingest replay | `/event`, `/health-snapshot`, `/heartbeat` — API key scope only; **no** timestamp, HMAC, or replay ID enforcement |
-| Session model | `apps/web/src/lib/auth.ts` — JWT in `document.cookie` (`opswatch_token`); not HttpOnly; client-set cookie |
-| CI | `.github/workflows/ci.yml` — Playwright gated on `RUN_BROWSER_E2E == 'true'` (off by default); no mandatory `RUN_DATABASE_E2E` job |
+| Session model | **Remediated** — HttpOnly `opswatch_session`, CSRF double-submit, hashed DB storage (`c05bdd5`) |
+| CI | **Pending verification** — mandatory workflow committed; requires green run + branch protection |
 
 ---
 
@@ -359,8 +359,8 @@ Two background startup tasks failed during investigation and are **superseded** 
 1. **Contain working tree** — commit or stash baseline; reconcile migrations against local + Supabase `_prisma_migrations`; remove generated `.js` from `src/`
 2. **Webhook authentication** — fail-closed 503; raw-body signing; rate limits; rejection audit
 3. **Ingest replay protection** — `/event`, `/health-snapshot`, `/heartbeat`
-4. **Session model** — replace `document.cookie` JWT with HttpOnly server sessions
-5. **CI** — mandatory migration deploy, database E2E, Playwright E2E on primary workflow
+4. ~~**Session model**~~ — **Done** (`c05bdd5`)
+5. **CI** — mandatory migration deploy, database E2E, Playwright E2E on primary workflow; require check on `main`
 
 **Do not start:** Feature expansion, AI Brain implementation, Security Command Centre, or public production marketing until blockers are closed and gate is re-run against a **clean committed baseline**.
 

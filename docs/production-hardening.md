@@ -14,6 +14,11 @@
 - **Browser sessions:** Authentication uses server-managed sessions in HttpOnly cookies (`opswatch_session`) with CSRF double-submit (`opswatch_csrf` + `x-opswatch-csrf`). Session secrets are stored hashed in PostgreSQL (`tokenHash`, `csrfTokenHash`); raw tokens exist only in cookies. Production sets `Secure` cookies. `SESSION_SIGNING_REQUIRED=true` (default) enables cookie authentication; set `false` only for local bearer-token testing. Next.js middleware treats the session cookie as an access hint; the API is authoritative for validity, expiry, and revocation. Password changes, admin resets, role changes, and deactivation revoke existing sessions.
 - Reject stale timestamps and invalid signatures on ingest routes (enforced — see ingest replay protection above).
 
+## CI and Release Verification
+
+- Primary workflow (`.github/workflows/ci.yml`) runs on `main` and pull requests: lint, typecheck, sequential package tests (`RUN_DATABASE_E2E=true`), build, and Playwright browser E2E against a seeded Postgres 16 service.
+- Do not treat the production gate as closed until CI is required on the protected branch and at least one clean run is recorded after the session and CI commits land.
+
 ## Logging Safety
 
 - Do not log request bodies containing secrets.

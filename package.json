@@ -44,7 +44,7 @@
 		"build": "pnpm -r build",
 		"lint": "pnpm -r lint",
 		"typecheck": "pnpm -r typecheck",
-		"test": "pnpm -r --if-present test",
+		"test": "pnpm -r --workspace-concurrency 1 --if-present test",
 		"test:database-e2e": "pnpm --filter @opswatch/api test && pnpm --filter @opswatch/worker test",
 		"db:generate": "pnpm --filter @opswatch/api db:generate",
 		"db:migrate": "pnpm --filter @opswatch/api db:migrate",
