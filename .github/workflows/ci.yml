@@ -99,7 +99,8 @@ jobs:
         env:
           NODE_ENV: test
         run: |
-          node apps/api/dist/index.js > /tmp/opswatch-api.log 2>&1 &
+          cd apps/api
+          node dist/index.js > /tmp/opswatch-api.log 2>&1 &
           echo $! > /tmp/opswatch-api.pid
           for i in {1..60}; do
             if curl -fsS http://127.0.0.1:4000/api/health/live >/dev/null; then
