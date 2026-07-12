@@ -33,7 +33,6 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/opswatch?schema=public
       DIRECT_URL: postgresql://postgres:postgres@localhost:5432/opswatch?schema=public
       JWT_SECRET: ci-opswatch-jwt-secret
-      NODE_ENV: test
       RUN_DATABASE_E2E: "true"
       RUN_BROWSER_E2E: "true"
       OPSWATCH_WEB_URL: http://localhost:3000
@@ -84,14 +83,20 @@ jobs:
 
       - name: Test
         run: pnpm test
+        env:
+          NODE_ENV: test
 
       - name: Build
         run: pnpm build
+        env:
+          NODE_ENV: production
 
       - name: Install Playwright browsers
         run: pnpm --filter @opswatch/web exec playwright install chromium
 
       - name: Start API for browser E2E
+        env:
+          NODE_ENV: production
         run: |
           pnpm --filter @opswatch/api start > /tmp/opswatch-api.log 2>&1 &
           echo $! > /tmp/opswatch-api.pid
