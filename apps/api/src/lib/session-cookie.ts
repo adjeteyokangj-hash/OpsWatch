@@ -1,4 +1,5 @@
 import type { CookieOptions, Response } from "express";
+import { resolveSessionCookieDomain } from "../config/cookie-domain";
 import {
   CSRF_COOKIE_NAME,
   SESSION_COOKIE_NAME,
@@ -27,11 +28,15 @@ export const parseCookieHeader = (header: string | undefined): Record<string, st
   }, {});
 };
 
-const baseCookieOptions = (): Pick<CookieOptions, "path" | "sameSite" | "secure"> => ({
-  path: "/",
-  sameSite: "lax",
-  secure: process.env.NODE_ENV === "production"
-});
+const baseCookieOptions = (): CookieOptions => {
+  const domain = resolveSessionCookieDomain();
+  return {
+    path: "/",
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    ...(domain ? { domain } : {})
+  };
+};
 
 export const setSessionCookies = (
   res: Response,
@@ -65,6 +70,10 @@ export const readCsrfToken = (cookieHeader: string | undefined): string | null =
 
 export const sessionCookieFlags = (): string[] => {
   const flags = ["HttpOnly", "Path=/", "SameSite=Lax"];
+  const domain = resolveSessionCookieDomain();
+  if (domain) {
+    flags.push(`Domain=${domain}`);
+  }
   if (process.env.NODE_ENV === "production") {
     flags.push("Secure");
   }
@@ -73,6 +82,10 @@ export const sessionCookieFlags = (): string[] => {
 
 export const csrfCookieFlags = (): string[] => {
   const flags = ["Path=/", "SameSite=Lax"];
+  const domain = resolveSessionCookieDomain();
+  if (domain) {
+    flags.push(`Domain=${domain}`);
+  }
   if (process.env.NODE_ENV === "production") {
     flags.push("Secure");
   }

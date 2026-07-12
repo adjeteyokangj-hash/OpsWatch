@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "./constants";
+import { resolveSessionCookieDomain } from "./cookie-domain";
 
 export type SessionUser = {
   id: string;
@@ -30,8 +31,11 @@ export const clearAuthCookies = (): void => {
     return;
   }
 
-  document.cookie = "opswatch_session=; path=/; max-age=0; SameSite=Lax";
-  document.cookie = "opswatch_csrf=; path=/; max-age=0; SameSite=Lax";
+  const domain = resolveSessionCookieDomain(window.location.hostname);
+  const domainAttr = domain ? `; domain=${domain}` : "";
+
+  document.cookie = `opswatch_session=; path=/; max-age=0; SameSite=Lax${domainAttr}`;
+  document.cookie = `opswatch_csrf=; path=/; max-age=0; SameSite=Lax${domainAttr}`;
 };
 
 /** @deprecated Browser JWT cookies are no longer used. */

@@ -1,5 +1,20 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { resolveSessionCookieDomain } from "./lib/cookie-domain";
+
+const clearSessionCookies = (response: NextResponse, hostname: string): void => {
+  const domain = resolveSessionCookieDomain(hostname);
+  const names = ["opswatch_session", "opswatch_csrf", "opswatch_token"] as const;
+
+  for (const name of names) {
+    if (domain) {
+      response.cookies.set(name, "", { path: "/", maxAge: 0, domain });
+      continue;
+    }
+
+    response.cookies.delete(name);
+  }
+};
 
 export function middleware(request: NextRequest) {
   // Presence of opswatch_session is an access hint only; the API validates session state.
@@ -19,9 +34,7 @@ export function middleware(request: NextRequest) {
 
   if (!hasSession) {
     const response = NextResponse.redirect(new URL("/login", request.url));
-    response.cookies.delete("opswatch_session");
-    response.cookies.delete("opswatch_csrf");
-    response.cookies.delete("opswatch_token");
+    clearSessionCookies(response, request.nextUrl.hostname);
     return response;
   }
 

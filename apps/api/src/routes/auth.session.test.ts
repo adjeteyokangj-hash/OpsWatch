@@ -193,6 +193,18 @@ describe("server-managed sessions", () => {
     expect(setCookies.every((row) => row.includes("Secure"))).toBe(true);
   });
 
+  it("scopes session cookies to the parent domain for cross-subdomain deployments", async () => {
+    process.env.OPSWATCH_WEB_URL = "https://opswatch.okanggroup.com";
+    delete process.env.OPSWATCH_COOKIE_DOMAIN;
+
+    const response = await request("POST", "/auth/login", {
+      body: { email: "admin@example.com", password }
+    });
+
+    const setCookies = response.headers.getSetCookie();
+    expect(setCookies.every((row) => row.includes("Domain=.okanggroup.com"))).toBe(true);
+  });
+
   it("rejects state-changing requests without CSRF headers", async () => {
     const loginResponse = await request("POST", "/auth/login", {
       body: { email: "admin@example.com", password }
