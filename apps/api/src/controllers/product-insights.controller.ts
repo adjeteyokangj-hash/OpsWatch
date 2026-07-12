@@ -714,32 +714,36 @@ const ensureProjectIntegration = async (tx: any, projectId: string, type: string
 });
 
 const syncPersistedRecommendationState = async (projectInsights: any[]) => {
-  for (const insight of projectInsights) {
-    for (const rec of insight.recommendations as InsightRecommendationView[]) {
-      await upsertPersistedRecommendation(rec);
+  try {
+    for (const insight of projectInsights) {
+      for (const rec of insight.recommendations as InsightRecommendationView[]) {
+        await upsertPersistedRecommendation(rec);
+      }
+
+      const activeIds = (insight.recommendations as InsightRecommendationView[]).map((rec) => rec.id);
+      await (prisma as any).insightRecommendation.updateMany({
+        where: {
+          projectId: insight.id,
+          status: RECOMMENDATION_STATUS.OPEN,
+          ...(activeIds.length ? { id: { notIn: activeIds } } : {}),
+        },
+        data: { status: RECOMMENDATION_STATUS.EXPIRED },
+      });
+
+      const persisted = await (prisma as any).insightRecommendation.findMany({
+        where: { projectId: insight.id, id: { in: activeIds } },
+        select: { id: true, status: true },
+      });
+      const persistedById = new Map<string, RecommendationStatus>(
+        persisted.map((row: { id: string; status: RecommendationStatus }) => [row.id, row.status]),
+      );
+
+      insight.recommendations = (insight.recommendations as InsightRecommendationView[])
+        .map((rec) => ({ ...rec, status: persistedById.get(rec.id) || rec.status }))
+        .filter((rec) => rec.status === RECOMMENDATION_STATUS.OPEN);
     }
-
-    const activeIds = (insight.recommendations as InsightRecommendationView[]).map((rec) => rec.id);
-    await (prisma as any).insightRecommendation.updateMany({
-      where: {
-        projectId: insight.id,
-        status: RECOMMENDATION_STATUS.OPEN,
-        ...(activeIds.length ? { id: { notIn: activeIds } } : {}),
-      },
-      data: { status: RECOMMENDATION_STATUS.EXPIRED },
-    });
-
-    const persisted = await (prisma as any).insightRecommendation.findMany({
-      where: { projectId: insight.id, id: { in: activeIds } },
-      select: { id: true, status: true },
-    });
-    const persistedById = new Map<string, RecommendationStatus>(
-      persisted.map((row: { id: string; status: RecommendationStatus }) => [row.id, row.status]),
-    );
-
-    insight.recommendations = (insight.recommendations as InsightRecommendationView[])
-      .map((rec) => ({ ...rec, status: persistedById.get(rec.id) || rec.status }))
-      .filter((rec) => rec.status === RECOMMENDATION_STATUS.OPEN);
+  } catch (error) {
+    console.error("INSIGHT_SYNC_ERROR", error instanceof Error ? error.message : error);
   }
 
   return projectInsights;
@@ -758,24 +762,29 @@ export const getProductInsights = async (req: Request, res: Response) => {
     res.status(403).json({ error: "Organization required" });
     return;
   }
-  const projects = await loadProjectsForInsights(orgId);
-  const projectInsights = await syncPersistedRecommendationState(projects.map(buildProjectInsight));
-  const learningLoop = await remediationLearning(orgId);
-  const actionHistory = await (prisma as any).event
-    .findMany({ where: { Project: { organizationId: orgId }, source: "insight-action" }, orderBy: { createdAt: "desc" }, take: 30 })
-    .catch(() => []);
-  res.json({
-    generatedAt: new Date().toISOString(),
-    projects: projectInsights,
-    portfolio: {
-      projects: projectInsights.length,
-      averageCoverage: projectInsights.length ? Math.round(projectInsights.reduce((sum: number, project: any) => sum + project.coverageScore, 0) / projectInsights.length) : 0,
-      openBusinessRisks: projectInsights.reduce((sum: number, project: any) => sum + project.businessImpact.length, 0),
-      activeCorrelations: projectInsights.filter((project: any) => project.rootCause.severity !== "LOW").length,
-    },
-    remediationLearning: learningLoop,
-    actionHistory,
-  });
+  try {
+    const projects = await loadProjectsForInsights(orgId);
+    const projectInsights = await syncPersistedRecommendationState(projects.map(buildProjectInsight));
+    const learningLoop = await remediationLearning(orgId);
+    const actionHistory = await (prisma as any).event
+      .findMany({ where: { Project: { organizationId: orgId }, source: "insight-action" }, orderBy: { createdAt: "desc" }, take: 30 })
+      .catch(() => []);
+    res.json({
+      generatedAt: new Date().toISOString(),
+      projects: projectInsights,
+      portfolio: {
+        projects: projectInsights.length,
+        averageCoverage: projectInsights.length ? Math.round(projectInsights.reduce((sum: number, project: any) => sum + project.coverageScore, 0) / projectInsights.length) : 0,
+        openBusinessRisks: projectInsights.reduce((sum: number, project: any) => sum + project.businessImpact.length, 0),
+        activeCorrelations: projectInsights.filter((project: any) => project.rootCause.severity !== "LOW").length,
+      },
+      remediationLearning: learningLoop,
+      actionHistory,
+    });
+  } catch (error) {
+    console.error("INSIGHTS_LOAD_ERROR", error instanceof Error ? error.message : error);
+    throw error;
+  }
 };
 
 export const getInsightRecommendations = async (req: Request, res: Response) => {

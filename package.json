@@ -4,6 +4,7 @@
 	"private": true,
 	"packageManager": "pnpm@9.12.3",
 	"scripts": {
+		"postinstall": "pnpm --filter @opswatch/api db:generate",
 		"dev": "node scripts/dev.mjs",
 		"dev:raw": "pnpm -r --parallel dev",
 		"dev:free-ports": "powershell -ExecutionPolicy Bypass -File scripts/free-dev-ports.ps1",
@@ -31,6 +32,9 @@
 		"gate:backup-drill": "powershell -ExecutionPolicy Bypass -File scripts/db-backup-drill.ps1",
 		"gate:verify-self-monitoring": "tsx scripts/verify-opswatch-self-monitoring.ts",
 		"monitoring:seed-noble-express": "tsx scripts/seed-noble-express-graph.ts",
+		"monitoring:setup-noble": "tsx scripts/setup-noble-production.ts",
+		"monitoring:noble-live": "tsx scripts/noble-live-heartbeat.ts",
+		"monitoring:cleanup-demo": "tsx scripts/cleanup-noble-demo-data.ts",
 		"monitoring:validate-noble-express-cascade": "tsx scripts/validate-noble-express-cascade.ts",
 		"monitoring:seed-automation-playbooks": "tsx scripts/seed-automation-playbooks.ts",
 		"quarantine:sparkle-smoke": "tsx scripts/sparkle-smoke.ts",

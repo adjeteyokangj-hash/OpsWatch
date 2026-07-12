@@ -13,6 +13,7 @@ export const createOpsWatchClient = (config: OpsWatchClientConfig = loadConfigFr
 	};
 };
 
+export * from "./api-base";
 export * from "./config";
 export * from "./event";
 export * from "./health";

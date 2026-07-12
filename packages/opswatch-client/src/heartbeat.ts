@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from "crypto";
 import { HeartbeatPayload } from "@opswatch/shared";
+import { resolveApiBaseUrl } from "./api-base";
 import { OpsWatchClientConfig, SendHeartbeatInput } from "./types";
 
 const assertOk = async (response: Response): Promise<void> => {
@@ -29,11 +30,11 @@ export const sendHeartbeat = async (
 		.update(`${timestamp}.${nonce}.${body}`)
 		.digest("hex");
 
-	const response = await fetch(`${config.baseUrl}/api/ingest/heartbeat`, {
+	const response = await fetch(`${resolveApiBaseUrl(config.baseUrl)}/heartbeat`, {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
-			"x-opswatch-project-key": config.projectKey,
+			"x-api-key": config.projectKey,
 			"x-opswatch-timestamp": timestamp,
 			"x-opswatch-nonce": nonce,
 			"x-opswatch-signature": signature,
