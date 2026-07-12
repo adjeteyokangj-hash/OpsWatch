@@ -22,7 +22,7 @@ export const loadProjectTopology = async (
         Check: {
           where: { isActive: true },
           include: {
-            CheckResult: { orderBy: { checkedAt: "desc" }, take: 1 }
+            CheckResult: { orderBy: { checkedAt: "desc" }, take: 12 }
           }
         }
       },

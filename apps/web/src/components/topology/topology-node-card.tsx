@@ -1,9 +1,9 @@
 import type { TopologyNode } from "./topology-types";
 import { healthLabel } from "./topology-types";
-import { TopologySparkline } from "./topology-sparkline";
+import { TopologySparkline, layerSparkTone } from "./topology-sparkline";
 import { deriveNodeLiveMetrics } from "./topology-metrics";
 import { resolveInfraIcon } from "./topology-infra-icons";
-import { classifyVisualLayer } from "./topology-visual-layers";
+import { classifyVisualLayer, type VisualLayer } from "./topology-visual-layers";
 
 type Props = {
   node: TopologyNode;
@@ -21,13 +21,13 @@ const toneFromStatus = (status: TopologyNode["status"]): string => {
   return "neutral";
 };
 
-const defaultGlyph = (node: TopologyNode): string => {
-  if (node.type === "APP") return "▦";
-  if (node.type === "MODULE") return "▣";
-  if (node.type === "WORKFLOW") return "↻";
-  if (classifyVisualLayer(node) === "INFRASTRUCTURE") return "⛭";
-  if (classifyVisualLayer(node) === "EXTERNAL") return "↗";
-  return "◎";
+const defaultGlyph = (layer: VisualLayer): string => {
+  if (layer === "MODULE") return "▣";
+  if (layer === "WORKFLOW") return "↻";
+  if (layer === "SERVICE") return "◎";
+  if (layer === "INFRASTRUCTURE") return "⛭";
+  if (layer === "EXTERNAL") return "↗";
+  return "▦";
 };
 
 export function TopologyNodeCard({
@@ -40,30 +40,39 @@ export function TopologyNodeCard({
 }: Props) {
   const metrics = deriveNodeLiveMetrics(node);
   const icon = resolveInfraIcon(node.name);
-  const tone = toneFromStatus(displayStatus);
+  const visualLayer = classifyVisualLayer(node);
+  const layerTone = layerSparkTone(visualLayer);
+  const statusTone = toneFromStatus(displayStatus);
   const availability = metrics.availabilityPercent;
 
   if (compact) {
     return (
-      <div className={`topology-node-card topology-node-card--compact topology-node-card--${tone}`} xmlns="http://www.w3.org/1999/xhtml">
+      <div
+        className={`topology-node-card topology-node-card--compact topology-node-card--layer-${visualLayer.toLowerCase()}`}
+        xmlns="http://www.w3.org/1999/xhtml"
+      >
         <div className="topology-node-card-compact-head">
           {icon ? (
             <span className="topology-node-card-icon" style={{ color: icon.color, background: icon.background }}>
               {icon.glyph}
             </span>
           ) : (
-            <span className="topology-node-card-icon topology-node-card-icon--generic">{defaultGlyph(node)}</span>
+            <span className={`topology-node-card-icon topology-node-card-icon--${visualLayer.toLowerCase()}`}>
+              {defaultGlyph(visualLayer)}
+            </span>
           )}
           <strong className="topology-node-card-name">{node.name}</strong>
-          <span className={`topology-node-card-dot topology-node-card-dot--${tone}`} aria-hidden="true" />
+          <span className={`topology-node-card-dot topology-node-card-dot--${statusTone}`} aria-hidden="true" />
         </div>
-        <TopologySparkline seed={`${node.id}:${displayStatus}`} tone={tone} />
-        <div className="topology-node-card-compact-foot">
+        <div className="topology-node-card-compact-body">
+          <TopologySparkline points={metrics.availabilityTrend} seed={`${node.id}:${displayStatus}`} tone={layerTone} />
           <span className="topology-node-card-availability">
-            {availability == null ? healthLabel(displayStatus) : `${availability.toFixed(2)}%`}
+            {availability == null ? "—" : `${availability.toFixed(2)}%`}
           </span>
-          {metrics.latencyMs != null ? <span className="topology-node-card-metric">{metrics.latencyMs}ms</span> : null}
         </div>
+        {availability == null ? (
+          <span className="topology-node-card-awaiting">{healthLabel(displayStatus)}</span>
+        ) : null}
         {childCount > 0 ? (
           <button
             type="button"
@@ -82,26 +91,11 @@ export function TopologyNodeCard({
   }
 
   return (
-    <div className={`topology-node-card topology-node-card--${tone}`} xmlns="http://www.w3.org/1999/xhtml">
+    <div className={`topology-node-card topology-node-card--${statusTone}`} xmlns="http://www.w3.org/1999/xhtml">
       <div className="topology-node-card-head">
-        {icon ? (
-          <span className="topology-node-card-icon" style={{ color: icon.color, background: icon.background }}>
-            {icon.glyph}
-          </span>
-        ) : (
-          <span className={`topology-node-card-dot topology-node-card-dot--${tone}`} aria-hidden="true" />
-        )}
-        <div className="topology-node-card-title-wrap">
-          <span className="topology-node-card-type">{node.type}</span>
-          <strong className="topology-node-card-name">{node.name}</strong>
-        </div>
+        <strong className="topology-node-card-name">{node.name}</strong>
       </div>
-      <div className="topology-node-card-status-row">
-        <span className={`topology-node-card-health topology-node-card-health--${tone}`}>
-          ● {healthLabel(displayStatus)}
-        </span>
-      </div>
-      <TopologySparkline seed={`${node.id}:${displayStatus}`} tone={tone} />
+      <TopologySparkline points={metrics.availabilityTrend} seed={`${node.id}:${displayStatus}`} tone={layerTone} />
     </div>
   );
 }

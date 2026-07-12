@@ -13,6 +13,7 @@ export type TopologyNode = {
     latencyMs: number | null;
     errorRatePercent: number | null;
     sloBurnRate: number | null;
+    availabilityTrend: number[];
   };
   risk: {
     openAlerts: number;

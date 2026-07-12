@@ -1,10 +1,11 @@
 import type { ProjectTopologyResponse, TopologyEdge, TopologyNode } from "./topology-types";
 
+/** Hierarchy edges are stored child → parent (from = child, to = parent). */
 const hierarchyChildren = (nodeId: string, edges: TopologyEdge[]): string[] =>
-  edges.filter((edge) => edge.type === "HIERARCHY" && edge.sourceId === nodeId).map((edge) => edge.targetId);
+  edges.filter((edge) => edge.type === "HIERARCHY" && edge.targetId === nodeId).map((edge) => edge.sourceId);
 
 const hierarchyParents = (nodeId: string, edges: TopologyEdge[]): string[] =>
-  edges.filter((edge) => edge.type === "HIERARCHY" && edge.targetId === nodeId).map((edge) => edge.sourceId);
+  edges.filter((edge) => edge.type === "HIERARCHY" && edge.sourceId === nodeId).map((edge) => edge.targetId);
 
 const walkDescendants = (nodeId: string, edges: TopologyEdge[]): Set<string> => {
   const seen = new Set<string>();
@@ -68,3 +69,6 @@ export const countHierarchyChildren = (nodeId: string, edges: TopologyEdge[], no
   const childIds = hierarchyChildren(nodeId, edges);
   return nodes.filter((row) => childIds.includes(row.id)).length;
 };
+
+export const hierarchyChildEdges = (edges: TopologyEdge[]): TopologyEdge[] =>
+  edges.filter((edge) => edge.type === "HIERARCHY");

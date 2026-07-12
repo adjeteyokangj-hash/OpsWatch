@@ -13,7 +13,7 @@ const topology: ProjectTopologyResponse = {
       type: "COMPONENT",
       status: "CRITICAL",
       parentId: null,
-      metrics: { availabilityPercent: null, latencyMs: null, errorRatePercent: null, sloBurnRate: null },
+      metrics: { availabilityPercent: null, latencyMs: null, errorRatePercent: null, sloBurnRate: null, availabilityTrend: [] },
       risk: { openAlerts: 1, unresolvedIncidents: 0 }
     },
     {
@@ -22,7 +22,7 @@ const topology: ProjectTopologyResponse = {
       type: "COMPONENT",
       status: "DEGRADED",
       parentId: null,
-      metrics: { availabilityPercent: null, latencyMs: null, errorRatePercent: null, sloBurnRate: null },
+      metrics: { availabilityPercent: null, latencyMs: null, errorRatePercent: null, sloBurnRate: null, availabilityTrend: [] },
       risk: { openAlerts: 0, unresolvedIncidents: 1 }
     },
     {
@@ -31,7 +31,7 @@ const topology: ProjectTopologyResponse = {
       type: "APP",
       status: "HEALTHY",
       parentId: null,
-      metrics: { availabilityPercent: null, latencyMs: null, errorRatePercent: null, sloBurnRate: null },
+      metrics: { availabilityPercent: null, latencyMs: null, errorRatePercent: null, sloBurnRate: null, availabilityTrend: [] },
       risk: { openAlerts: 0, unresolvedIncidents: 0 }
     }
   ],
@@ -151,7 +151,7 @@ describe("TopologyCanvas overlays", () => {
           type: "COMPONENT",
           status: "UNKNOWN",
           parentId: null,
-          metrics: { availabilityPercent: null, latencyMs: null, errorRatePercent: null, sloBurnRate: null },
+          metrics: { availabilityPercent: null, latencyMs: null, errorRatePercent: null, sloBurnRate: null, availabilityTrend: [] },
           risk: { openAlerts: 1, unresolvedIncidents: 1 }
         }
       ],

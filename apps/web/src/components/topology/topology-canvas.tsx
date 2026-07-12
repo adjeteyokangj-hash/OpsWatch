@@ -8,7 +8,7 @@ import type {
   TopologyOverlays
 } from "./topology-types";
 import { healthClassName, healthLabel } from "./topology-types";
-import { computeLayeredLayout, edgePath, edgeStrokeWidth, layerExpansionKey, LAYOUT } from "./topology-layout";
+import { computeLayeredLayout, edgePath, edgeStrokeWidth, layerExpansionKey, LAYOUT, nodeAnchor } from "./topology-layout";
 import { TopologyMoreCard, TopologyNodeCard } from "./topology-node-card";
 import {
   buildTraceFocusIds,
@@ -17,6 +17,7 @@ import {
 } from "./topology-focus";
 import { edgeTrafficWeight, replayNodeStatus } from "./topology-metrics";
 import type { VisualLayer } from "./topology-visual-layers";
+import { classifyVisualLayer, layerEdgeColor } from "./topology-visual-layers";
 
 const moreLayerLabel = (layer: VisualLayer): string => {
   if (layer === "MODULE") return "modules";
@@ -47,13 +48,6 @@ type Props = {
 
 const NODE_WIDTH = LAYOUT.nodeWidth;
 const NODE_HEIGHT = LAYOUT.nodeHeight;
-
-const trafficTone = (status: TopologyHealthStatus): string => {
-  if (status === "HEALTHY") return "healthy";
-  if (status === "DEGRADED") return "degraded";
-  if (status === "CRITICAL") return "critical";
-  return "unknown";
-};
 
 export const TopologyCanvas = ({
   topology,
@@ -112,10 +106,15 @@ export const TopologyCanvas = ({
     return rows;
   }, [topology.nodes, hiddenDescendants, subgraphOnly, focusNodeIds]);
 
-  const layoutKey = `${baseNodes.map((row) => row.id).sort().join("|")}|${[...collapsedNodeIds].sort().join(",")}|${[...expandedLayers].sort().join(",")}`;
+  const layoutNodes = useMemo(
+    () => baseNodes.filter((node) => classifyVisualLayer(node) !== "APP"),
+    [baseNodes]
+  );
+
+  const layoutKey = `${layoutNodes.map((row) => row.id).sort().join("|")}|${[...collapsedNodeIds].sort().join(",")}|${[...expandedLayers].sort().join(",")}`;
 
   const graphLayout = useMemo(() => {
-    const base = computeLayeredLayout(baseNodes, expandedLayers);
+    const base = computeLayeredLayout(layoutNodes, expandedLayers);
     const positions = new Map(base.positions);
 
     if (showCorrelatedIncidents && overlays?.correlatedIncidents?.length) {
@@ -134,7 +133,9 @@ export const TopologyCanvas = ({
     }
 
     return { ...base, positions };
-  }, [baseNodes, layoutKey, overlays, showChangeEvents, showCorrelatedIncidents, expandedLayers]);
+  }, [layoutNodes, layoutKey, overlays, showChangeEvents, showCorrelatedIncidents, expandedLayers]);
+
+  const nodeById = useMemo(() => new Map(topology.nodes.map((row) => [row.id, row])), [topology.nodes]);
 
   const layoutVisibleIds = graphLayout.visibleNodeIds;
 
@@ -165,18 +166,20 @@ export const TopologyCanvas = ({
   );
 
   const visibleNodeIds = new Set(visibleNodes.map((row) => row.id));
-  const visibleEdges = topology.edges.filter((edge) => {
-    if (!visibleNodeIds.has(edge.sourceId) || !visibleNodeIds.has(edge.targetId)) return false;
-    if (subgraphOnly && focusNodeIds.size > 0) {
-      return focusNodeIds.has(edge.sourceId) && focusNodeIds.has(edge.targetId);
-    }
-    return true;
-  });
+  const hierarchyEdges = topology.edges.filter(
+    (edge) =>
+      edge.type === "HIERARCHY" &&
+      visibleNodeIds.has(edge.sourceId) &&
+      visibleNodeIds.has(edge.targetId)
+  );
+  const dependencyEdges = topology.edges.filter(
+    (edge) =>
+      edge.type === "DEPENDENCY" &&
+      visibleNodeIds.has(edge.sourceId) &&
+      visibleNodeIds.has(edge.targetId)
+  );
 
   const rootCauseByNode = new Map((overlays?.rootCauses ?? []).map((row) => [row.nodeId, row]));
-  const propagationKeys = new Set(
-    (overlays?.propagationEdges ?? []).map((row) => `${row.sourceId}->${row.targetId}`)
-  );
 
   useEffect(() => {
     onInteractingChange?.(dragging);
@@ -184,7 +187,7 @@ export const TopologyCanvas = ({
 
   const fitToScreen = () => {
     const container = containerRef.current;
-    if (!container || baseNodes.length === 0) return;
+    if (!container || layoutNodes.length === 0) return;
     const bounds = [...graphLayout.positions.values()];
     const minX = Math.min(...bounds.map((row) => row.x)) - NODE_WIDTH;
     const maxX = Math.max(...bounds.map((row) => row.x)) + NODE_WIDTH;
@@ -383,19 +386,42 @@ export const TopologyCanvas = ({
             />
           ))}
 
-          {visibleEdges.map((edge) => {
+          {hierarchyEdges.map((edge) => {
+            const childPos = graphLayout.positions.get(edge.sourceId);
+            const parentPos = graphLayout.positions.get(edge.targetId);
+            if (!childPos || !parentPos) return null;
+
+            const parentNode = nodeById.get(edge.targetId);
+            const parentLayer = parentNode ? classifyVisualLayer(parentNode) : "MODULE";
+            const start = nodeAnchor(parentPos, "bottom");
+            const end = nodeAnchor(childPos, "top");
+            const pathD = edgePath(start, end, true);
+            const edgeDimmed =
+              shouldDim && focusNodeIds.size > 0 && (!focusNodeIds.has(edge.sourceId) || !focusNodeIds.has(edge.targetId));
+
+            return (
+              <g
+                key={edge.id}
+                className={`topology-edge topology-edge-hierarchy${edgeDimmed ? " dimmed" : ""}`}
+                style={{ color: layerEdgeColor(parentLayer) }}
+              >
+                <path
+                  d={pathD}
+                  className="topology-edge-line topology-edge-line--hierarchy"
+                  stroke={layerEdgeColor(parentLayer)}
+                  strokeWidth={2.5}
+                />
+              </g>
+            );
+          })}
+
+          {dependencyEdges.map((edge) => {
             const source = graphLayout.positions.get(edge.sourceId);
             const target = graphLayout.positions.get(edge.targetId);
             if (!source || !target) return null;
 
             const replayStatus = displayStatusFor(edge.targetId, edge.status);
-            const propagation = propagationKeys.has(`${edge.targetId}->${edge.sourceId}`)
-              ? overlays?.propagationEdges?.find((row) => row.sourceId === edge.targetId && row.targetId === edge.sourceId)
-              : propagationKeys.has(`${edge.sourceId}->${edge.targetId}`)
-                ? overlays?.propagationEdges?.find((row) => row.sourceId === edge.sourceId && row.targetId === edge.targetId)
-                : null;
-            const pathId = `edge-path-${edge.id}`;
-            const pathD = edgePath(source, target, true);
+            const pathD = edgePath(nodeAnchor(source, "bottom"), nodeAnchor(target, "top"), true);
             const weight = edgeTrafficWeight(edge, topology.nodes);
             const edgeDimmed =
               shouldDim && focusNodeIds.size > 0 && (!focusNodeIds.has(edge.sourceId) || !focusNodeIds.has(edge.targetId));
@@ -403,39 +429,22 @@ export const TopologyCanvas = ({
             return (
               <g
                 key={edge.id}
-                className={`topology-edge topology-edge-${edge.type.toLowerCase()}${propagation ? " topology-propagation-edge" : ""}${edgeDimmed ? " dimmed" : ""}`}
+                className={`topology-edge topology-edge-dependency${edgeDimmed ? " dimmed" : ""}`}
               >
                 <path
-                  id={pathId}
                   d={pathD}
-                  className={`topology-edge-line ${healthClassName(replayStatus)}${edge.critical ? " critical" : ""}${propagation ? " propagation" : ""}`}
-                  markerEnd={edge.type === "DEPENDENCY" ? "url(#topology-arrow)" : undefined}
+                  className={`topology-edge-line topology-edge-line--dependency ${healthClassName(replayStatus)}${edge.critical ? " critical" : ""}`}
+                  markerEnd="url(#topology-arrow)"
                   strokeWidth={edgeStrokeWidth(weight)}
-                  filter="url(#topology-edge-glow)"
+                  opacity={0.45}
                 />
-                {!edgeDimmed && replayMinutesAgo === 0
-                  ? [0, 1.1, 2.3].map((delay, index) => (
-                      <circle
-                        key={`${edge.id}-packet-${index}`}
-                        r={edge.critical ? 3.5 : 2.8}
-                        className={`topology-traffic-packet topology-traffic-packet--${trafficTone(replayStatus)}`}
-                      >
-                        <animateMotion dur={`${2.2 + index * 0.35}s`} repeatCount="indefinite" begin={`${delay}s`} path={pathD} />
-                      </circle>
-                    ))
-                  : null}
-                {propagation ? (
-                  <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2 - 6} className="topology-propagation-order">
-                    {propagation.order}
-                  </text>
-                ) : null}
               </g>
             );
           })}
 
           {(overlays?.propagationEdges ?? []).map((edge) => {
             if (
-              visibleEdges.some(
+              dependencyEdges.some(
                 (row) =>
                   (row.sourceId === edge.sourceId && row.targetId === edge.targetId) ||
                   (row.sourceId === edge.targetId && row.targetId === edge.sourceId)
@@ -483,6 +492,8 @@ export const TopologyCanvas = ({
                 tabIndex={0}
               >
                 <rect width={NODE_WIDTH} height={NODE_HEIGHT} rx={14} className="topology-node-surface" />
+                <circle cx={NODE_WIDTH / 2} cy={4} r={3.5} className="topology-node-anchor topology-node-anchor--top" />
+                <circle cx={NODE_WIDTH / 2} cy={NODE_HEIGHT - 4} r={3.5} className="topology-node-anchor topology-node-anchor--bottom" />
                 {rootCause ? (
                   <g className="topology-root-badge">
                     <rect x={NODE_WIDTH - 34} y={8} width={26} height={18} rx={9} />

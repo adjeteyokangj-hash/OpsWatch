@@ -4470,23 +4470,93 @@ button {
 }
 
 .topology-layer-band.layer-module {
-  fill: rgba(240, 253, 244, 0.58);
+  fill: rgba(72, 187, 120, 0.12);
+  stroke: rgba(72, 187, 120, 0.28);
 }
 
 .topology-layer-band.layer-workflow {
-  fill: rgba(255, 251, 235, 0.62);
+  fill: rgba(159, 122, 234, 0.12);
+  stroke: rgba(159, 122, 234, 0.28);
 }
 
 .topology-layer-band.layer-service {
-  fill: rgba(248, 250, 252, 0.88);
+  fill: rgba(237, 137, 54, 0.12);
+  stroke: rgba(237, 137, 54, 0.28);
 }
 
 .topology-layer-band.layer-infrastructure {
   fill: rgba(241, 245, 249, 0.92);
+  stroke: rgba(148, 163, 184, 0.35);
 }
 
 .topology-layer-band.layer-external {
   fill: rgba(255, 247, 237, 0.55);
+  stroke: rgba(237, 137, 54, 0.22);
+}
+
+.topology-edge-line--hierarchy {
+  fill: none;
+  opacity: 0.9;
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.08));
+}
+
+.topology-edge-line--dependency {
+  fill: none;
+  stroke-dasharray: 5 4;
+}
+
+.topology-node-anchor {
+  fill: #fff;
+  stroke: #cbd5e1;
+  stroke-width: 1.5;
+}
+
+.topology-node-card--layer-module .topology-node-card-icon--module {
+  background: rgba(72, 187, 120, 0.16);
+  color: #2f855a;
+}
+
+.topology-node-card--layer-workflow .topology-node-card-icon--workflow {
+  background: rgba(159, 122, 234, 0.16);
+  color: #6b46c1;
+}
+
+.topology-node-card--layer-service .topology-node-card-icon--service,
+.topology-node-card--layer-component .topology-node-card-icon--service {
+  background: rgba(237, 137, 54, 0.16);
+  color: #c05621;
+}
+
+.topology-node-card-compact-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.topology-node-card-availability {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.topology-node-card-awaiting {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+}
+
+.topology-node-card-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
 .topology-layer-band.layer-component {

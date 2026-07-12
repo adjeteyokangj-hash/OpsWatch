@@ -163,3 +163,12 @@ export const edgeStrokeWidth = (weight: number): number => {
   const normalized = Math.max(1.5, Math.min(6.5, 1.5 + weight / 4200));
   return Number(normalized.toFixed(1));
 };
+
+export const nodeAnchor = (
+  position: NodePosition,
+  side: "top" | "bottom",
+  nodeHeight = LAYOUT.nodeHeight
+): NodePosition => ({
+  x: position.x,
+  y: position.y + (side === "top" ? -nodeHeight / 2 : nodeHeight / 2)
+});

@@ -13,7 +13,7 @@ const topology: ProjectTopologyResponse = {
       type: "COMPONENT",
       status: "UNKNOWN",
       parentId: null,
-      metrics: { availabilityPercent: null, latencyMs: null, errorRatePercent: null, sloBurnRate: null },
+      metrics: { availabilityPercent: null, latencyMs: null, errorRatePercent: null, sloBurnRate: null, availabilityTrend: [] },
       risk: { openAlerts: 1, unresolvedIncidents: 0 }
     }
   ],

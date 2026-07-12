@@ -36,6 +36,13 @@ export const visualLayerLabel = (layer: VisualLayer, count: number): string => {
   return `External (${count} service${count === 1 ? "" : "s"})`;
 };
 
-export const moreNodeId = (layer: VisualLayer, row: number): string => `more:${layer}:${row}`;
+export const layerEdgeColor = (layer: VisualLayer): string => {
+  if (layer === "MODULE") return "#48BB78";
+  if (layer === "WORKFLOW") return "#9F7AEA";
+  if (layer === "SERVICE") return "#ED8936";
+  if (layer === "INFRASTRUCTURE") return "#64748b";
+  if (layer === "EXTERNAL") return "#d97706";
+  return "#94a3b8";
+};
 
-export const rowExpansionKey = (layer: VisualLayer, row: number): string => `${layer}:${row}`;
+export const moreNodeId = (layer: VisualLayer, row: number): string => `more:${layer}:${row}`;

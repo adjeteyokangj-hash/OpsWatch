@@ -47,6 +47,22 @@ describe("topology.service", () => {
     }
   ];
 
+  it("derives availability from recent checks when SLO windows are absent", () => {
+    const topology = buildProjectTopologyResponse({
+      project,
+      services,
+      dependencies,
+      alerts: [],
+      incidents: [],
+      slos: []
+    });
+
+    const quotes = topology.nodes.find((row) => row.id === "quotes-module");
+    expect(quotes?.metrics.availabilityPercent).toBe(100);
+    expect(quotes?.metrics.latencyMs).toBe(90);
+    expect(quotes?.metrics.availabilityTrend.length).toBeGreaterThan(0);
+  });
+
   it("returns four-layer nodes with hierarchy and dependency edges", () => {
     const topology = buildProjectTopologyResponse({
       project,

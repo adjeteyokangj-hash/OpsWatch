@@ -13,7 +13,7 @@ const topology: ProjectTopologyResponse = {
       type: "APP",
       status: "HEALTHY",
       parentId: null,
-      metrics: { availabilityPercent: 99.9, latencyMs: 120, errorRatePercent: 0.1, sloBurnRate: 1 },
+      metrics: { availabilityPercent: 99.9, latencyMs: 120, errorRatePercent: 0.1, sloBurnRate: 1, availabilityTrend: [100, 100, 100] },
       risk: { openAlerts: 0, unresolvedIncidents: 0 }
     },
     {
@@ -22,7 +22,7 @@ const topology: ProjectTopologyResponse = {
       type: "COMPONENT",
       status: "UNKNOWN",
       parentId: null,
-      metrics: { availabilityPercent: null, latencyMs: null, errorRatePercent: null, sloBurnRate: null },
+      metrics: { availabilityPercent: null, latencyMs: null, errorRatePercent: null, sloBurnRate: null, availabilityTrend: [] },
       risk: { openAlerts: 0, unresolvedIncidents: 0 }
     }
   ],
@@ -84,7 +84,7 @@ describe("TopologyCanvas", () => {
     );
 
     expect(screen.getByTestId("topology-canvas")).toBeInTheDocument();
-    expect(screen.getByTestId("topology-node-app")).toBeInTheDocument();
+    expect(screen.queryByTestId("topology-node-app")).not.toBeInTheDocument();
     expect(screen.getByTestId("topology-node-redis")).toBeInTheDocument();
     expect(screen.getByLabelText("Redis, Waiting for first heartbeat")).toBeInTheDocument();
   });
@@ -116,8 +116,8 @@ describe("TopologyCanvas", () => {
       />
     );
 
-    fireEvent.click(screen.getByLabelText("Noble Express, Healthy"));
-    expect(onSelectNode).toHaveBeenCalledWith("app");
+    fireEvent.click(screen.getByLabelText("Redis, Waiting for first heartbeat"));
+    expect(onSelectNode).toHaveBeenCalledWith("redis");
   });
 
   it("shows empty setup state when no nodes exist", () => {

@@ -108,9 +108,46 @@ const buildServiceSignals = (
 };
 
 const latestCheckForService = (service: TopologyServiceRecord) => {
-  const results = service.Check.flatMap((row) => row.CheckResult);
-  if (results.length === 0) return null;
-  return [...results].sort((a, b) => b.checkedAt.getTime() - a.checkedAt.getTime())[0] ?? null;
+  const results = recentCheckResults(service);
+  return results[0] ?? null;
+};
+
+const recentCheckResults = (service: TopologyServiceRecord) =>
+  service.Check.flatMap((row) => row.CheckResult).sort((a, b) => b.checkedAt.getTime() - a.checkedAt.getTime());
+
+const checkStatusScore = (status: string): number => {
+  if (status === "PASS") return 100;
+  if (status === "WARN") return 65;
+  if (status === "FAIL") return 0;
+  return 50;
+};
+
+const metricsFromChecks = (service: TopologyServiceRecord) => {
+  const results = recentCheckResults(service).slice(0, 12);
+  if (results.length === 0) {
+    return {
+      availabilityPercent: null as number | null,
+      latencyMs: null as number | null,
+      errorRatePercent: null as number | null,
+      availabilityTrend: [] as number[]
+    };
+  }
+
+  const passCount = results.filter((row) => row.status === "PASS").length;
+  const failCount = results.filter((row) => row.status === "FAIL").length;
+  const latencySamples = results
+    .map((row) => row.responseTimeMs)
+    .filter((value): value is number => value != null && Number.isFinite(value));
+
+  return {
+    availabilityPercent: Number(((passCount / results.length) * 100).toFixed(2)),
+    latencyMs:
+      latencySamples.length > 0
+        ? Math.round(latencySamples.reduce((sum, value) => sum + value, 0) / latencySamples.length)
+        : null,
+    errorRatePercent: Number(((failCount / results.length) * 100).toFixed(2)),
+    availabilityTrend: [...results].reverse().map((row) => checkStatusScore(row.status))
+  };
 };
 
 const sloForService = (slos: TopologySloRecord[], serviceId: string) =>
@@ -167,6 +204,7 @@ export const buildProjectTopologyResponse = (input: TopologyBuildInput): Project
   const nodes: TopologyNode[] = input.services.map((service) => {
     const slo = sloForService(input.slos, service.id);
     const signals = signalsByService.get(service.id)!;
+    const checkMetrics = metricsFromChecks(service);
     return {
       id: service.id,
       name: service.name,
@@ -174,10 +212,11 @@ export const buildProjectTopologyResponse = (input: TopologyBuildInput): Project
       status: healthByService.get(service.id)!,
       parentId: hierarchyParents.get(service.id) ?? null,
       metrics: {
-        availabilityPercent: slo?.latestWindow?.availabilityPct ?? null,
-        latencyMs: slo?.latestWindow?.p95LatencyMs ?? null,
-        errorRatePercent: slo?.latestWindow?.errorRatePct ?? null,
-        sloBurnRate: slo?.latestWindow?.burnRate ?? null
+        availabilityPercent: slo?.latestWindow?.availabilityPct ?? checkMetrics.availabilityPercent,
+        latencyMs: slo?.latestWindow?.p95LatencyMs ?? checkMetrics.latencyMs,
+        errorRatePercent: slo?.latestWindow?.errorRatePct ?? checkMetrics.errorRatePercent,
+        sloBurnRate: slo?.latestWindow?.burnRate ?? null,
+        availabilityTrend: checkMetrics.availabilityTrend
       },
       risk: {
         openAlerts: signals.openAlerts,

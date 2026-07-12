@@ -254,6 +254,7 @@ export type TopologyNodeMetrics = {
   latencyMs: number | null;
   errorRatePercent: number | null;
   sloBurnRate: number | null;
+  availabilityTrend: number[];
 };
 
 export type TopologyNodeRisk = {
