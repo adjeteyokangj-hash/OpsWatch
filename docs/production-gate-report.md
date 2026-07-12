@@ -16,7 +16,7 @@ The previous production-gate assessment **no longer represents the current OpsWa
 1. Webhook authentication must fail closed and verify signatures against raw request bytes.
 2. Signed ingest protection must be enforced on `/event`, `/health-snapshot`, and `/heartbeat` routes, including timestamp-age validation and constant-time signature comparison.
 3. ~~Browser-readable stateless JWT authentication must be replaced with revocable server-managed sessions or an equivalent secure design.~~ **Closed** — commit `c05bdd5` (HttpOnly sessions, CSRF, hashed tokens, revocation on credential/role changes).
-4. PostgreSQL integration testing and Playwright browser testing must run as mandatory CI release checks. **In progress** — workflow committed; clean run and branch protection pending.
+4. PostgreSQL integration testing and Playwright browser testing must run as mandatory CI release checks. **Committed with a recorded clean run** (`bfdb38e`, run 29195201911: migrations, seed, tests, build, and browser E2E all green). The gate stays withdrawn until the `validate` check is marked required on the protected `main` branch.
 5. Untracked and potentially duplicate migrations must be reconciled against all deployed database migration histories.
 6. Generated JavaScript artefacts must be removed from TypeScript source paths or proven not to affect module resolution.
 
@@ -81,7 +81,7 @@ Captured from `git status` on 2026-07-12. **Do not treat green CI or the 2026-07
 | Webhook auth | `webhooks.routes.ts` — if secret env var is **unset**, signature check is **skipped** (fail-open). Uses `JSON.stringify(req.body)` not raw bytes. No 503 when secret missing. |
 | Ingest replay | `/event`, `/health-snapshot`, `/heartbeat` — API key scope only; **no** timestamp, HMAC, or replay ID enforcement |
 | Session model | **Remediated** — HttpOnly `opswatch_session`, CSRF double-submit, hashed DB storage (`c05bdd5`) |
-| CI | **Pending verification** — mandatory workflow committed; requires green run + branch protection |
+| CI | **Green run recorded** (`bfdb38e`) — mandatory workflow passes end to end; requires branch protection to mark `validate` required on `main` |
 
 ---
 

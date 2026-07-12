@@ -17,7 +17,7 @@
 ## CI and Release Verification
 
 - Primary workflow (`.github/workflows/ci.yml`) runs on `main` and pull requests: lint, typecheck, sequential package tests (`RUN_DATABASE_E2E=true`), build, and Playwright browser E2E against a seeded Postgres 16 service.
-- Do not treat the production gate as closed until CI is required on the protected branch and at least one clean run is recorded after the session and CI commits land.
+- A clean end-to-end run is recorded (commit `bfdb38e`, run 29195201911). Do not treat the production gate as closed until the `validate` check is also marked required on the protected `main` branch.
 
 ## Logging Safety
 
