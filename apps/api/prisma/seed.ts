@@ -115,6 +115,29 @@ async function main() {
   const action = existingUser ? "Updated" : "Created";
   console.log(`${action} administrator: ${user.email} (${user.id}) in org ${org.slug}`);
 
+  if (process.env.RUN_DATABASE_E2E === "true") {
+    const nobleExpress = await prisma.project.upsert({
+      where: { slug: "noble-express" },
+      update: { organizationId: org.id, updatedAt: new Date() },
+      create: {
+        id: randomUUID(),
+        name: "Noble Express",
+        slug: "noble-express",
+        clientName: "CI",
+        environment: "test",
+        apiKey: randomUUID(),
+        signingSecret: randomUUID(),
+        organizationId: org.id,
+        updatedAt: new Date()
+      }
+    });
+    const { seedNobleExpressGraph } = await import("../../../scripts/lib/noble-express-graph.seed");
+    const graph = await seedNobleExpressGraph(prisma);
+    console.log(
+      `Seeded Noble Express graph (${graph.serviceCount} services, ${graph.dependencyCount} dependencies) for ${nobleExpress.slug}`
+    );
+  }
+
   if (!isProduction) {
     const [movedProjects, movedUsers] = await Promise.all([
       prisma.project.updateMany({
