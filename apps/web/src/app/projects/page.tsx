@@ -10,11 +10,12 @@ import { StatCard } from "../../components/dashboard/stat-card";
 import { API_BASE_URL } from "../../lib/constants";
 
 type IngestCredentials = {
-  apiKey: string;
-  signingSecret: string;
-  projectSlug: string;
-  scopes: string[];
-  reused: boolean;
+  apiKey?: string;
+  signingSecret?: string;
+  projectSlug?: string;
+  scopes?: string[];
+  reused?: boolean;
+  error?: string;
 };
 
 type CreateProjectResponse = {
@@ -104,11 +105,13 @@ function ProjectsPageContent() {
           }
         })
       });
-      if (created.ingestCredentials) {
+      if (created.ingestCredentials && !created.ingestCredentials.error) {
         setCreatedCredentials({
           projectName: created.name,
           credentials: created.ingestCredentials
         });
+      } else if (created.ingestCredentials?.error) {
+        setError(created.ingestCredentials.error);
       }
       setForm(EMPTY_FORM);
       setShowForm(false);
@@ -273,38 +276,44 @@ function ProjectsPageContent() {
               </button>
             </div>
             <div className="stack-form">
-              {!createdCredentials.credentials.reused ? (
+              {!createdCredentials.credentials.reused && createdCredentials.credentials.apiKey ? (
                 <label>
                   API key
                   <input value={createdCredentials.credentials.apiKey} readOnly />
                 </label>
               ) : null}
-              <label>
-                Signing secret
-                <input value={createdCredentials.credentials.signingSecret} readOnly />
-              </label>
-              <label>
-                Project slug
-                <input value={createdCredentials.credentials.projectSlug} readOnly />
-              </label>
-              <label>
-                Noble / client env snippet
-                <textarea
-                  readOnly
-                  rows={7}
-                  value={`OPSWATCH_API_URL=${API_BASE_URL}
-NOBLE_API_KEY=${createdCredentials.credentials.apiKey || "<existing-org-api-key>"}
+              {createdCredentials.credentials.signingSecret ? (
+                <label>
+                  Signing secret
+                  <input value={createdCredentials.credentials.signingSecret} readOnly />
+                </label>
+              ) : null}
+              {createdCredentials.credentials.projectSlug ? (
+                <label>
+                  Project slug
+                  <input value={createdCredentials.credentials.projectSlug} readOnly />
+                </label>
+              ) : null}
+              {createdCredentials.credentials.apiKey && createdCredentials.credentials.signingSecret ? (
+                <label>
+                  Noble / client env snippet
+                  <textarea
+                    readOnly
+                    rows={7}
+                    value={`OPSWATCH_API_URL=${API_BASE_URL}
+NOBLE_API_KEY=${createdCredentials.credentials.apiKey}
 NOBLE_SIGNING_SECRET=${createdCredentials.credentials.signingSecret}
 NOBLE_EXPRESS_PROJECT_SLUG=${createdCredentials.credentials.projectSlug}`}
-                />
-              </label>
-              {!createdCredentials.credentials.reused ? (
+                  />
+                </label>
+              ) : null}
+              {!createdCredentials.credentials.reused && createdCredentials.credentials.apiKey ? (
                 <button
                   type="button"
                   className="primary-button"
                   data-action="local-ui"
                   onClick={() =>
-                    void navigator.clipboard.writeText(createdCredentials.credentials.apiKey)
+                    void navigator.clipboard.writeText(createdCredentials.credentials.apiKey ?? "")
                   }
                 >
                   Copy API key

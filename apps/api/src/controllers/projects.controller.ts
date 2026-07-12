@@ -5,11 +5,16 @@ import { generateApiKey, generateSigningSecret } from "../utils/crypto";
 import type { AuthRequest } from "../middleware/auth";
 import { hasPermission } from "../auth/permissions";
 import { requireOrg } from "../lib/require-org";
-import { enrichProjectRow, projectInclude } from "../services/project-loader.service";
+import { isPrismaSchemaDriftError, isPrismaUniqueViolation } from "../lib/prisma-errors";
+import {
+	enrichProjectRow,
+	projectInclude,
+	projectIncludeLite
+} from "../services/project-loader.service";
 import { createDefaultProjectBilling, updateProjectBilling } from "../services/project-billing.service";
 import {
-	projectHasProductInfo,
-	provisionProjectIngestCredentials
+	provisionProjectIngestCredentials,
+	type ProvisionedIngestCredentials
 } from "../services/project-ingest-credentials.service";
 
 const normalizeProjectRow = (row: any) => {
@@ -27,16 +32,58 @@ const normalizeProjectRow = (row: any) => {
 	};
 };
 
+const loadProjectsForOrg = async (orgId: string) => {
+	try {
+		return await prisma.project.findMany({
+			where: { organizationId: orgId },
+			include: projectInclude,
+			orderBy: { createdAt: "desc" }
+		});
+	} catch (error) {
+		if (!isPrismaSchemaDriftError(error)) {
+			throw error;
+		}
+		console.error("PROJECT_LIST_SCHEMA_DRIFT", error instanceof Error ? error.message : error);
+		return prisma.project.findMany({
+			where: { organizationId: orgId },
+			include: projectIncludeLite,
+			orderBy: { createdAt: "desc" }
+		});
+	}
+};
+
+const loadProjectForResponse = async (projectId: string, orgId: string, fallback: any) => {
+	try {
+		const row = await prisma.project.findFirst({
+			where: { id: projectId, organizationId: orgId },
+			include: projectInclude
+		});
+		if (!row) return normalizeProjectRow(fallback);
+		return normalizeProjectRow(await enrichProjectRow(row as any));
+	} catch (error) {
+		if (!isPrismaSchemaDriftError(error)) {
+			throw error;
+		}
+		console.error("PROJECT_LOAD_SCHEMA_DRIFT", error instanceof Error ? error.message : error);
+		try {
+			const row = await prisma.project.findFirst({
+				where: { id: projectId, organizationId: orgId },
+				include: projectIncludeLite
+			});
+			if (!row) return normalizeProjectRow(fallback);
+			return normalizeProjectRow(await enrichProjectRow(row as any));
+		} catch (enrichError) {
+			console.error("PROJECT_ENRICH_ERROR", enrichError instanceof Error ? enrichError.message : enrichError);
+			return normalizeProjectRow(fallback);
+		}
+	}
+};
+
 export const listProjects = async (req: AuthRequest, res: Response) => {
 	const orgId = requireOrg(req, res);
 	if (!orgId) return;
 
-	const rows = await prisma.project.findMany({
-		where: { organizationId: orgId },
-		include: projectInclude,
-		orderBy: { createdAt: "desc" }
-	});
-
+	const rows = await loadProjectsForOrg(orgId);
 	const enriched = await Promise.all(
 		rows.map(async (row) => {
 			try {
@@ -63,70 +110,94 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 	const slug = String(body.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""));
 	const now = new Date();
 
-	const row = await prisma.project.create({
-		data: {
-			id: randomUUID(),
-			name,
-			slug,
-			clientName: String(body.clientName || name),
-			description: body.description ? String(body.description) : null,
-			environment: String(body.environment || "production"),
-			frontendUrl: body.frontendUrl ? String(body.frontendUrl) : null,
-			backendUrl: body.backendUrl ? String(body.backendUrl) : null,
-			repoUrl: body.repoUrl ? String(body.repoUrl) : null,
-			projectOwner: body.projectOwner ? String(body.projectOwner) : null,
-			operationalContact: body.operationalContact ? String(body.operationalContact) : null,
-			defaultRegion: body.defaultRegion ? String(body.defaultRegion) : null,
-			status: "UNKNOWN",
-			healthReason: "Awaiting first completed check",
-			healthSource: "project-create",
-			monitoringEnabled: body.monitoringEnabled !== false,
-			monitoringStartedAt: body.monitoringEnabled === false ? null : now,
-			automationMode: typeof body.automationMode === "string" ? body.automationMode : "OBSERVE",
-			apiKey: generateApiKey(),
-			signingSecret: generateSigningSecret(),
-			updatedAt: now,
-			organizationId: orgId
-		},
-		include: projectInclude
-	});
-
-	await createDefaultProjectBilling(row.id, "FREE");
-
-	if (hasPermission(req.user?.role, "policy:manage") && (body.billing || body.plan)) {
-		const billingBody = body.billing ?? {};
-		await updateProjectBilling({
-			projectId: row.id,
-			plan: billingBody.plan ?? body.plan,
-			monthlyPrice: typeof billingBody.monthlyPrice === "number" ? billingBody.monthlyPrice : undefined,
-			currency: typeof billingBody.currency === "string" ? billingBody.currency : undefined,
-			billingStatus: billingBody.billingStatus,
-			checkLimit: typeof billingBody.checkLimit === "number" || billingBody.checkLimit === null ? billingBody.checkLimit : undefined,
-			userLimit: typeof billingBody.userLimit === "number" || billingBody.userLimit === null ? billingBody.userLimit : undefined,
-			automationRunLimit:
-				typeof billingBody.automationRunLimit === "number" || billingBody.automationRunLimit === null
-					? billingBody.automationRunLimit
-					: undefined,
-			internalNotes: typeof billingBody.internalNotes === "string" ? billingBody.internalNotes : undefined,
-			updatedById: typeof req.user?.sub === "string" ? req.user.sub : undefined
+	let row;
+	try {
+		row = await prisma.project.create({
+			data: {
+				id: randomUUID(),
+				name,
+				slug,
+				clientName: String(body.clientName || name),
+				description: body.description ? String(body.description) : null,
+				environment: String(body.environment || "production"),
+				frontendUrl: body.frontendUrl ? String(body.frontendUrl) : null,
+				backendUrl: body.backendUrl ? String(body.backendUrl) : null,
+				repoUrl: body.repoUrl ? String(body.repoUrl) : null,
+				projectOwner: body.projectOwner ? String(body.projectOwner) : null,
+				operationalContact: body.operationalContact ? String(body.operationalContact) : null,
+				defaultRegion: body.defaultRegion ? String(body.defaultRegion) : null,
+				status: "UNKNOWN",
+				healthReason: "Awaiting first completed check",
+				healthSource: "project-create",
+				monitoringEnabled: body.monitoringEnabled !== false,
+				monitoringStartedAt: body.monitoringEnabled === false ? null : now,
+				automationMode: typeof body.automationMode === "string" ? body.automationMode : "OBSERVE",
+				apiKey: generateApiKey(),
+				signingSecret: generateSigningSecret(),
+				updatedAt: now,
+				organizationId: orgId
+			}
 		});
+	} catch (error) {
+		if (isPrismaUniqueViolation(error, "slug")) {
+			res.status(409).json({ error: "A project with this slug already exists" });
+			return;
+		}
+		throw error;
 	}
 
-	const enriched = await prisma.project.findFirst({
-		where: { id: row.id, organizationId: orgId },
-		include: projectInclude
-	});
+	let ingestCredentials: ProvisionedIngestCredentials | { error: string };
+	try {
+		ingestCredentials = await provisionProjectIngestCredentials({
+			organizationId: orgId,
+			projectId: row.id,
+			projectName: row.name,
+			projectSlug: row.slug,
+			signingSecret: row.signingSecret,
+			environment: row.environment === "development" || row.environment === "staging" ? "test" : "live"
+		});
+	} catch (error) {
+		console.error("INGEST_KEY_PROVISION_ERROR", error instanceof Error ? error.message : error);
+		ingestCredentials = {
+			error:
+				isPrismaSchemaDriftError(error)
+					? "Database migrations are incomplete. Run prisma migrate deploy, then retry."
+					: error instanceof Error
+						? error.message
+						: "Failed to provision ingest API key"
+		};
+	}
 
-	const normalized = normalizeProjectRow(await enrichProjectRow((enriched ?? row) as any));
-	const ingestCredentials = await provisionProjectIngestCredentials({
-		organizationId: orgId,
-		projectId: row.id,
-		projectName: row.name,
-		projectSlug: row.slug,
-		signingSecret: row.signingSecret,
-		environment: row.environment === "development" || row.environment === "staging" ? "test" : "live"
-	});
+	try {
+		await createDefaultProjectBilling(row.id, "FREE");
+	} catch (error) {
+		console.error("PROJECT_BILLING_CREATE_ERROR", error instanceof Error ? error.message : error);
+	}
 
+	if (hasPermission(req.user?.role, "policy:manage") && (body.billing || body.plan)) {
+		try {
+			const billingBody = body.billing ?? {};
+			await updateProjectBilling({
+				projectId: row.id,
+				plan: billingBody.plan ?? body.plan,
+				monthlyPrice: typeof billingBody.monthlyPrice === "number" ? billingBody.monthlyPrice : undefined,
+				currency: typeof billingBody.currency === "string" ? billingBody.currency : undefined,
+				billingStatus: billingBody.billingStatus,
+				checkLimit: typeof billingBody.checkLimit === "number" || billingBody.checkLimit === null ? billingBody.checkLimit : undefined,
+				userLimit: typeof billingBody.userLimit === "number" || billingBody.userLimit === null ? billingBody.userLimit : undefined,
+				automationRunLimit:
+					typeof billingBody.automationRunLimit === "number" || billingBody.automationRunLimit === null
+						? billingBody.automationRunLimit
+						: undefined,
+				internalNotes: typeof billingBody.internalNotes === "string" ? billingBody.internalNotes : undefined,
+				updatedById: typeof req.user?.sub === "string" ? req.user.sub : undefined
+			});
+		} catch (error) {
+			console.error("PROJECT_BILLING_UPDATE_ERROR", error instanceof Error ? error.message : error);
+		}
+	}
+
+	const normalized = await loadProjectForResponse(row.id, orgId, row);
 	res.status(201).json({
 		...normalized,
 		ingestCredentials
@@ -192,15 +263,8 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 		}
 	});
 
-	let ingestCredentials;
-	if (
-		projectHasProductInfo({
-			name: row.name,
-			clientName: row.clientName,
-			frontendUrl: row.frontendUrl,
-			backendUrl: row.backendUrl
-		})
-	) {
+	let ingestCredentials: ProvisionedIngestCredentials | { error: string } | undefined;
+	try {
 		ingestCredentials = await provisionProjectIngestCredentials({
 			organizationId: orgId,
 			projectId: row.id,
@@ -209,6 +273,11 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 			signingSecret: row.signingSecret,
 			environment: row.environment === "development" || row.environment === "staging" ? "test" : "live"
 		});
+	} catch (error) {
+		console.error("INGEST_KEY_PROVISION_ERROR", error instanceof Error ? error.message : error);
+		ingestCredentials = {
+			error: error instanceof Error ? error.message : "Failed to provision ingest API key"
+		};
 	}
 
 	res.json({

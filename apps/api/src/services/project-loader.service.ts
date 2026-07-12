@@ -150,3 +150,22 @@ export const projectInclude = {
     select: { type: true, target: true, name: true }
   }
 };
+
+export const projectIncludeLite = {
+  Service: {
+    include: {
+      Check: {
+        include: {
+          CheckResult: { orderBy: { checkedAt: "desc" as const }, take: 1 }
+        }
+      }
+    }
+  },
+  Alert: { where: { status: { in: ["OPEN", "ACKNOWLEDGED"] as ("OPEN" | "ACKNOWLEDGED")[] } } },
+  Incident: { where: { status: { in: ["OPEN", "INVESTIGATING", "MONITORING"] as ("OPEN" | "INVESTIGATING" | "MONITORING")[] } } },
+  Heartbeat: { orderBy: { receivedAt: "desc" as const }, take: 1 },
+  NotificationChannel: {
+    where: { isActive: true },
+    select: { type: true, target: true, name: true }
+  }
+};
