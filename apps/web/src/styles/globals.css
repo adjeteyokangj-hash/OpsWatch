@@ -1461,6 +1461,24 @@ h1 {
   color: var(--muted);
 }
 
+.register-wizard-modal {
+  max-width: 720px;
+  width: min(720px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.application-health-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.application-health-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+
 /* ----- Form helpers ----- */
 .form-row {
   display: grid;

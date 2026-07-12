@@ -68,7 +68,7 @@ export function ProjectSnapshotPanel({
           <h2>Operational snapshot</h2>
           <p className="dashboard-subtle">Current health, risk, and signal context for this application.</p>
         </div>
-        <HealthBadge status={healthLabel === "Awaiting first check" ? "UNKNOWN" : healthLabel.toUpperCase()} displayLabel={healthLabel} />
+        <HealthBadge status={healthLabel === "Waiting for first heartbeat" ? "UNKNOWN" : healthLabel.toUpperCase()} displayLabel={healthLabel} />
       </div>
       <div className="snapshot-grid">
         <div className="snapshot-item">

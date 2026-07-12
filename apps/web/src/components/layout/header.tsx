@@ -7,7 +7,7 @@ import { API_BASE_URL } from "../../lib/constants";
 
 const pageDescriptions: Record<string, string> = {
   Dashboard: "A live view of system health, risk, and operator priorities.",
-  Projects: "Monitor every application, service, and customer environment.",
+  Applications: "Register and monitor every connected application from one registry.",
   Alerts: "Triage active signals and focus on what needs attention now.",
   Incidents: "Coordinate investigation, impact, recovery, and resolution.",
   Checks: "Manage uptime, performance, keyword, SSL, and heartbeat checks.",

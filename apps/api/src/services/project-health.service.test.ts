@@ -22,8 +22,8 @@ describe("project-health.service", () => {
     });
 
     expect(snapshot.status).toBe("UNKNOWN");
-    expect(snapshot.healthReason).toContain("Awaiting first completed check");
-    expect(healthDisplayLabel("UNKNOWN")).toBe("Awaiting first check");
+    expect(snapshot.healthReason).toContain("Waiting for first heartbeat");
+    expect(healthDisplayLabel("UNKNOWN")).toBe("Waiting for first heartbeat");
   });
 
   it("does not mark project DOWN when only low-criticality component fails", () => {

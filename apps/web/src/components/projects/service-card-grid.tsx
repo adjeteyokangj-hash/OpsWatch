@@ -16,7 +16,7 @@ const statusHint = (status: string): string => {
   if (status === "HEALTHY") return "Operating normally";
   if (status === "DEGRADED") return "Needs attention";
   if (status === "DOWN" || status === "CRITICAL") return "Action required";
-  return "Awaiting first check";
+  return "Waiting for first heartbeat";
 };
 
 export function ServiceCardGrid({ rows, projectId }: { rows: Array<any>; projectId: string }) {

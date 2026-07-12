@@ -8,7 +8,7 @@ import { ProjectWorkspaceShell } from "../../../components/projects/project-work
 import { useProjectWorkspace } from "../../../hooks/use-project-workspace";
 
 const signalAgeLabel = (receivedAt?: string | null): string => {
-	if (!receivedAt) return "Awaiting first check";
+	if (!receivedAt) return "Waiting for first heartbeat";
 	const ageMs = Date.now() - new Date(receivedAt).getTime();
 	const ageMin = Math.floor(ageMs / 60000);
 	if (ageMin < 2) return "Just now";
@@ -62,7 +62,7 @@ export default function ProjectDetailPage() {
 	const unresolvedIncidents = (project?.incidents ?? []).filter((incident: any) => incident.status !== "RESOLVED");
 	const resolvedIncidents = (project?.incidents ?? []).filter((incident: any) => incident.status === "RESOLVED");
 	const latestSignal = project?.lastSignalAt ?? project?.lastCompletedCheckAt ?? project?.heartbeats?.[0]?.receivedAt ?? latestCheckAt(project);
-	const healthLabel = project?.healthDisplayLabel ?? (project?.status === "UNKNOWN" ? "Awaiting first check" : project?.status);
+	const healthLabel = project?.healthDisplayLabel ?? (project?.status === "UNKNOWN" ? "Waiting for first heartbeat" : project?.status);
 	const liveRisk =
 		project?.status === "UNKNOWN"
 			? "No confirmed operational status yet"

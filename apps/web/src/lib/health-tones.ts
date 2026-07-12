@@ -11,7 +11,7 @@ export const healthTone = (status: string): HealthTone => {
 
 export const healthLabel = (status: string, displayLabel?: string | null): string => {
   if (displayLabel) return displayLabel;
-  if (status === "UNKNOWN") return "Awaiting first check";
+  if (status === "UNKNOWN") return "Waiting for first heartbeat";
   if (status === "RECOVERING") return "Recovering";
   if (status === "MAINTENANCE") return "Maintenance";
   if (status === "PAUSED") return "Paused";

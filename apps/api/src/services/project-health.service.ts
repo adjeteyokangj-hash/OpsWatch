@@ -25,7 +25,7 @@ const CRITICALITY_RANK: Record<string, number> = {
 export const healthDisplayLabel = (status: ProjectStatus): string => {
   switch (status) {
     case "UNKNOWN":
-      return "Awaiting first check";
+      return "Waiting for first heartbeat";
     case "MAINTENANCE":
       return "Maintenance";
     case "RECOVERING":
@@ -202,7 +202,7 @@ export const computeProjectHealth = (input: {
   if (!anyCompletedCheck && input.openAlerts.length === 0 && input.unresolvedIncidents.length === 0) {
     return {
       status: "UNKNOWN",
-      healthReason: "Awaiting first completed check",
+      healthReason: "Waiting for first heartbeat",
       healthSource: "monitoring",
       displayLabel: healthDisplayLabel("UNKNOWN"),
       lastCompletedCheckAt: null,
@@ -223,7 +223,7 @@ export const computeProjectHealth = (input: {
   let healthReason = input.healthReason ?? "";
   if (!healthReason) {
     if (rolled === "HEALTHY") {
-      healthReason = anyCompletedCheck ? "All monitored areas are healthy" : "Awaiting first completed check";
+      healthReason = anyCompletedCheck ? "All monitored areas are healthy" : "Waiting for first heartbeat";
     } else if (rolled === "DOWN") {
       const critical = serviceStatuses.find((row) => row.status === "DOWN");
       healthReason = critical
@@ -242,7 +242,7 @@ export const computeProjectHealth = (input: {
   if (rolled === "DEGRADED" && !anyCompletedCheck && input.openAlerts.length === 0) {
     return {
       status: "UNKNOWN",
-      healthReason: "Awaiting first completed check",
+      healthReason: "Waiting for first heartbeat",
       healthSource: "monitoring",
       displayLabel: healthDisplayLabel("UNKNOWN"),
       lastCompletedCheckAt: null,

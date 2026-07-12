@@ -42,7 +42,7 @@ export function TopologyFilterBar({
           <option value="HEALTHY">Healthy</option>
           <option value="DEGRADED">Degraded</option>
           <option value="CRITICAL">Critical</option>
-          <option value="UNKNOWN">Awaiting first check</option>
+          <option value="UNKNOWN">Waiting for first heartbeat</option>
         </select>
       </label>
       <label className="topology-filter-field topology-filter-search">

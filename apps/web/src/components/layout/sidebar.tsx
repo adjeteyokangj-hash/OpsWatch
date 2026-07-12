@@ -12,7 +12,7 @@ const navGroups = [
   {
     label: "Operations",
     links: [
-      ["Projects", "/projects"],
+      ["Applications", "/projects"],
       ["Apps", "/apps"],
       ["Incidents", "/incidents"],
       ["Alerts", "/alerts"]
@@ -40,7 +40,7 @@ const navGroups = [
 
 const navIcons: Record<string, string> = {
   Dashboard: "⌂",
-  Projects: "▣",
+  Applications: "▣",
   Apps: "▦",
   Incidents: "◆",
   Alerts: "!",

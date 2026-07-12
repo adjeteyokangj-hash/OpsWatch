@@ -52,6 +52,8 @@ type RegisterForm = {
   publicUrl: string;
 };
 
+type ClientMode = "none" | "existing" | "new";
+
 const SDK_PACKAGE = "@opswatch/client";
 
 const STEP_LABELS: Record<WizardStep, string> = {
@@ -101,6 +103,8 @@ export function RegisterApplicationWizard({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [step, setStep] = useState<WizardStep>("register");
   const [form, setForm] = useState<RegisterForm>(EMPTY_FORM);
+  const [clientMode, setClientMode] = useState<ClientMode>("none");
+  const [selectedClient, setSelectedClient] = useState("");
   const [org, setOrg] = useState<OrgSummary | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +121,12 @@ export function RegisterApplicationWizard({
     () => [...new Set(knownClients.map((value) => value.trim()).filter(Boolean))].sort(),
     [knownClients]
   );
+
+  const resolvedClientName = useMemo(() => {
+    if (clientMode === "existing") return selectedClient.trim();
+    if (clientMode === "new") return form.clientName.trim();
+    return "";
+  }, [clientMode, form.clientName, selectedClient]);
 
   const setupEnv = useMemo(() => {
     if (!hasCredentials || !credentials?.apiKey || !credentials.signingSecret || !credentials.projectSlug) {
@@ -188,7 +198,7 @@ export function RegisterApplicationWizard({
         method: "POST",
         body: JSON.stringify({
           name: form.name.trim(),
-          clientName: form.clientName.trim() || form.name.trim(),
+          clientName: resolvedClientName || form.name.trim(),
           environment: form.environment,
           frontendUrl: form.publicUrl.trim() || undefined,
           monitoringEnabled: true,
@@ -206,7 +216,7 @@ export function RegisterApplicationWizard({
       }
 
       if (!response.ingestCredentials?.apiKey && !response.ingestCredentials?.reused) {
-        setError("Application created but ingest credentials were not returned. Check API logs and retry from project settings.");
+        setError("Application created but ingest credentials were not returned. Check API logs and retry from application settings.");
       }
 
       setStep("credentials");
@@ -241,9 +251,10 @@ export function RegisterApplicationWizard({
 
   const stepOrder: WizardStep[] = ["register", "credentials", "verification", "finish"];
   const stepIndex = stepOrder.indexOf(step);
+  const visibleSteps = step === "register" ? [] : stepOrder.slice(0, stepIndex + 1);
 
   return (
-    <section className="panel register-wizard">
+    <div className="register-wizard">
       <div className="section-head">
         <div>
           <h2>
@@ -262,7 +273,7 @@ export function RegisterApplicationWizard({
                 ? "Copy these credentials into your application. They are shown only once."
                 : step === "verification"
                   ? "Install the SDK and send a heartbeat. OpsWatch will detect your application automatically."
-                  : "Secure connection established. Topology, health collection, and automation can be configured in project settings."}
+                  : "Secure connection established. Topology, health collection, and automation can be configured in application settings."}
           </p>
         </div>
         <button type="button" className="secondary-button" onClick={closeWizard} data-action="local-ui">
@@ -270,17 +281,23 @@ export function RegisterApplicationWizard({
         </button>
       </div>
 
-      <div className="register-wizard-steps" aria-label="Registration progress">
-        {stepOrder.map((key, index) => (
-          <div
-            key={key}
-            className={`register-wizard-step${index <= stepIndex ? " register-wizard-step--active" : ""}${index < stepIndex ? " register-wizard-step--done" : ""}`}
-          >
-            <span className="register-wizard-step-number">{index < stepIndex ? "✓" : index + 1}</span>
-            <span>{STEP_LABELS[key]}</span>
-          </div>
-        ))}
-      </div>
+      {visibleSteps.length > 0 ? (
+        <div className="register-wizard-steps" aria-label="Registration progress">
+          {visibleSteps.map((key, index) => {
+            const isDone = index < stepIndex;
+            const isCurrent = index === stepIndex;
+            return (
+              <div
+                key={key}
+                className={`register-wizard-step${isCurrent ? " register-wizard-step--active" : ""}${isDone ? " register-wizard-step--done" : ""}`}
+              >
+                <span className="register-wizard-step-number">{isDone ? "✓" : isCurrent ? "▶" : index + 1}</span>
+                <span>{STEP_LABELS[key]}</span>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       {error ? <div className="error-panel" style={{ marginBottom: "1rem" }}>{error}</div> : null}
 
@@ -300,23 +317,55 @@ export function RegisterApplicationWizard({
           <label>
             Organization *
             <input value={org?.name ?? "Loading organization…"} disabled />
-            <span className="field-hint">Applications belong to your OpsWatch organization. Client companies are optional below.</span>
+            <span className="field-hint">Applications belong to your OpsWatch organization.</span>
           </label>
 
           <label>
             Client (optional)
-            <input
-              value={form.clientName}
-              onChange={(event) => setForm((current) => ({ ...current, clientName: event.target.value }))}
-              placeholder="Noble Express Courier Services Ltd"
-              list="known-clients"
-            />
-            <datalist id="known-clients">
-              {clientSuggestions.map((client) => (
-                <option key={client} value={client} />
-              ))}
-            </datalist>
+            <select
+              value={clientMode}
+              onChange={(event) => {
+                const mode = event.target.value as ClientMode;
+                setClientMode(mode);
+                if (mode === "existing" && clientSuggestions.length > 0 && !selectedClient) {
+                  setSelectedClient(clientSuggestions[0]);
+                }
+                if (mode !== "new") {
+                  setForm((current) => ({ ...current, clientName: "" }));
+                }
+              }}
+            >
+              <option value="none">— None —</option>
+              <option value="existing" disabled={clientSuggestions.length === 0}>
+                Select existing…
+              </option>
+              <option value="new">+ New client</option>
+            </select>
           </label>
+
+          {clientMode === "existing" ? (
+            <label>
+              Existing client
+              <select value={selectedClient} onChange={(event) => setSelectedClient(event.target.value)}>
+                {clientSuggestions.map((client) => (
+                  <option key={client} value={client}>
+                    {client}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {clientMode === "new" ? (
+            <label>
+              New client name
+              <input
+                value={form.clientName}
+                onChange={(event) => setForm((current) => ({ ...current, clientName: event.target.value }))}
+                placeholder="Noble Express Courier Services Ltd"
+              />
+            </label>
+          ) : null}
 
           <div className="form-row">
             <label>
@@ -335,14 +384,15 @@ export function RegisterApplicationWizard({
               <input
                 value={form.publicUrl}
                 onChange={(event) => setForm((current) => ({ ...current, publicUrl: event.target.value }))}
-                placeholder="https://example.com"
+                placeholder="https://your-domain.com"
                 type="url"
               />
+              <span className="field-hint">The public URL where users access this application.</span>
             </label>
           </div>
 
           <button className="primary-button" type="submit" disabled={saving || !org} data-action="api" data-endpoint="/projects">
-            {saving ? "Creating…" : "Create application & generate API key"}
+            {saving ? "Registering…" : "Register application"}
           </button>
         </form>
       ) : null}
@@ -428,7 +478,7 @@ export function RegisterApplicationWizard({
                 isConnected
                   ? "Connected — first heartbeat received"
                   : waitingForHeartbeat
-                    ? "Waiting for application…"
+                    ? "Waiting for first heartbeat…"
                     : "Not connected yet"
               }
               readOnly
@@ -498,7 +548,7 @@ export function RegisterApplicationWizard({
               onClick={() => router.push(`/projects/${created.id}`)}
               data-action="local-ui"
             >
-              Open application settings
+              Open application
             </button>
             <button
               type="button"
@@ -511,6 +561,6 @@ export function RegisterApplicationWizard({
           </div>
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }

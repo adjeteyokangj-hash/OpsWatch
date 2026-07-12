@@ -86,7 +86,7 @@ describe("TopologyCanvas", () => {
     expect(screen.getByTestId("topology-canvas")).toBeInTheDocument();
     expect(screen.getByTestId("topology-node-app")).toBeInTheDocument();
     expect(screen.getByTestId("topology-node-redis")).toBeInTheDocument();
-    expect(screen.getAllByText("Awaiting first check").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Waiting for first heartbeat").length).toBeGreaterThan(0);
   });
 
   it("filters nodes by health state", () => {

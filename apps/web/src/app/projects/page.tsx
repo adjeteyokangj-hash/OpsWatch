@@ -23,7 +23,7 @@ function ProjectsPageContent() {
       const rows = await apiFetch<any[]>("/projects");
       setProjects(rows);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load projects");
+      setError(err instanceof Error ? err.message : "Failed to load applications");
     } finally {
       setLoading(false);
     }
@@ -52,20 +52,18 @@ function ProjectsPageContent() {
       <Header
         title="Applications"
         actions={
-          !showWizard ? (
-            <button type="button" className="primary-button" onClick={() => setShowWizard(true)} data-action="local-ui">
-              + Register application
-            </button>
-          ) : null
+          <button type="button" className="primary-button" onClick={() => setShowWizard(true)} data-action="local-ui">
+            + Register application
+          </button>
         }
       />
       {healthFilter ? <section className="panel">Showing only <strong>{healthFilter}</strong> applications.</section> : null}
       <section className="grid-6">
-        <StatCard label="Applications" value={projects.length} href="/projects" />
+        <StatCard label="Registered applications" value={projects.length} href="/projects" />
         <StatCard label="Healthy" value={healthyCount} href="/projects?health=HEALTHY" />
         <StatCard label="Degraded" value={degradedCount} href="/projects?health=DEGRADED" />
         <StatCard label="Down" value={downCount} href="/projects?health=DOWN" />
-        <StatCard label="Awaiting monitoring" value={awaitingCount} href="/projects?health=UNKNOWN" />
+        <StatCard label="Awaiting heartbeat" value={awaitingCount} href="/projects?health=UNKNOWN" />
         <StatCard label="Paused" value={pausedCount} href="/projects?health=PAUSED" />
       </section>
       <section className="grid-6">
@@ -73,13 +71,6 @@ function ProjectsPageContent() {
         <StatCard label="Unresolved incidents" value={unresolvedIncidents} href="/incidents?onlyUnresolved=true" />
       </section>
       {error ? <section className="panel error-panel">{error}</section> : null}
-      {showWizard ? (
-        <RegisterApplicationWizard
-          knownClients={knownClients}
-          onClose={() => setShowWizard(false)}
-          onCreated={load}
-        />
-      ) : null}
       {loading ? (
         <section className="panel">Loading applications...</section>
       ) : filtered.length === 0 ? (
@@ -97,6 +88,17 @@ function ProjectsPageContent() {
       ) : (
         <ProjectsTable rows={filtered} />
       )}
+      {showWizard ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Register application">
+          <section className="modal-panel register-wizard-modal">
+            <RegisterApplicationWizard
+              knownClients={knownClients}
+              onClose={() => setShowWizard(false)}
+              onCreated={load}
+            />
+          </section>
+        </div>
+      ) : null}
     </Shell>
   );
 }

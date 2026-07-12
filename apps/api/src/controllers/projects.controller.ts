@@ -127,7 +127,7 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 				operationalContact: body.operationalContact ? String(body.operationalContact) : null,
 				defaultRegion: body.defaultRegion ? String(body.defaultRegion) : null,
 				status: "UNKNOWN",
-				healthReason: "Awaiting first completed check",
+				healthReason: "Waiting for first heartbeat",
 				healthSource: "project-create",
 				monitoringEnabled: body.monitoringEnabled !== false,
 				monitoringStartedAt: body.monitoringEnabled === false ? null : now,

@@ -168,7 +168,7 @@ describe("TopologyCanvas overlays", () => {
       />
     );
 
-    expect(screen.getByText("Awaiting first check")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for first heartbeat")).toBeInTheDocument();
     expect(screen.queryByText(/Risk:/)).not.toBeInTheDocument();
   });
 });

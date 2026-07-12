@@ -60,7 +60,7 @@ export type ProjectTopologyResponse = {
 export const LAYER_ORDER: TopologyNodeType[] = ["APP", "MODULE", "WORKFLOW", "COMPONENT"];
 
 export const healthLabel = (status: TopologyHealthStatus): string => {
-  if (status === "UNKNOWN") return "Awaiting first check";
+  if (status === "UNKNOWN") return "Waiting for first heartbeat";
   return status.charAt(0) + status.slice(1).toLowerCase();
 };
 

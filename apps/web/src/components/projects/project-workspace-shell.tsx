@@ -7,7 +7,7 @@ import { HealthBadge } from "../health/health-badge";
 import { ProjectWorkspaceNav } from "./project-workspace-nav";
 
 const signalAgeLabel = (receivedAt?: string | null): string => {
-  if (!receivedAt) return "Awaiting first check";
+  if (!receivedAt) return "Waiting for first heartbeat";
   const ageMs = Date.now() - new Date(receivedAt).getTime();
   const ageMin = Math.floor(ageMs / 60000);
   if (ageMin < 2) return "Just now";
@@ -38,7 +38,7 @@ export function ProjectWorkspaceShell({
   children,
   actions
 }: Props) {
-  const healthLabel = project?.healthDisplayLabel ?? (project?.status === "UNKNOWN" ? "Awaiting first check" : project?.status);
+  const healthLabel = project?.healthDisplayLabel ?? (project?.status === "UNKNOWN" ? "Waiting for first heartbeat" : project?.status);
   const latestSignal = project?.lastSignalAt ?? project?.lastCompletedCheckAt ?? project?.heartbeats?.[0]?.receivedAt;
 
   return (
