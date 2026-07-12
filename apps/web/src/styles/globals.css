@@ -1268,6 +1268,44 @@ h1 {
   background: rgba(37, 99, 235, 0.06);
 }
 
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.plan-card__price {
+  font-size: 14px;
+  color: var(--muted, #64748b);
+}
+
+.plan-card__price strong {
+  font-size: 22px;
+  color: var(--text, #0f172a);
+}
+
+.segmented-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.segmented-toggle button {
+  border: none;
+  background: transparent;
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted, #64748b);
+}
+
+.segmented-toggle button.active {
+  background: var(--brand);
+  color: #fff;
+}
+
 .plan-head {
   display: flex;
   justify-content: space-between;

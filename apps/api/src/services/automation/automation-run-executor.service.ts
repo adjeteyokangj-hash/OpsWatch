@@ -21,6 +21,8 @@ import {
   checkCircuitBreaker
 } from "./automation-safeguards.service";
 import { findActiveMaintenanceForService } from "../maintenance-window-policy.service";
+import { assertAutonomousRemediationAllowed } from "../entitlements/remediation-governance.service";
+import { isEntitlementError } from "../entitlements/entitlement.service";
 import {
   completeProjectRecovery,
   enterProjectRecovering,
@@ -840,6 +842,15 @@ export const executeAutonomousRun = async (input: {
   runId: string;
   executedBy: string;
 }): Promise<AutomationRunExecutionResult> => {
+  try {
+    await assertAutonomousRemediationAllowed(input.organizationId);
+  } catch (error) {
+    if (isEntitlementError(error)) {
+      throw error;
+    }
+    throw error;
+  }
+
   const run = await loadRunOrThrow(input.organizationId, input.runId);
   if (run.executionMode !== "AUTONOMOUS") {
     throw new Error("Run is not in autonomous execution mode");
@@ -897,6 +908,11 @@ export const runAutonomousAutomationSweep = async (organizationId?: string): Pro
 
   let attempted = 0;
   for (const run of runs) {
+    try {
+      await assertAutonomousRemediationAllowed(run.organizationId);
+    } catch {
+      continue;
+    }
     try {
       await executeAutonomousRun({
         organizationId: run.organizationId,

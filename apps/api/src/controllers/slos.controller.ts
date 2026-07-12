@@ -2,6 +2,9 @@ import { randomUUID } from "crypto";
 import { Response } from "express";
 import { prisma } from "../lib/prisma";
 import type { AuthRequest } from "../middleware/auth";
+import { handleEntitlementFailure } from "../controllers/subscription.controller";
+import { assertWithinLimit } from "../services/entitlements/entitlement.service";
+import { ENTITLEMENT } from "../services/entitlements/entitlement-keys";
 
 const SLI_TYPES = ["AVAILABILITY", "ERROR_RATE", "LATENCY"] as const;
 const TARGET_TYPES = ["APP", "MODULE", "WORKFLOW", "COMPONENT", "SERVICE"] as const;
@@ -57,6 +60,12 @@ export const listSloDefinitionsByProject = async (req: AuthRequest, res: Respons
 
 export const createSloDefinitionByProject = async (req: AuthRequest, res: Response) => {
   const ctx = await context(req, res); if (!ctx) return;
+  try {
+    await assertWithinLimit(ctx.organizationId, ENTITLEMENT.SLOS_MAX);
+  } catch (error) {
+    if (handleEntitlementFailure(res, error)) return;
+    throw error;
+  }
   const data = await validate(res, req.body ?? {}, ctx.projectId); if (!data) return;
   const duplicate = await prisma.sLODefinition.findFirst({ where: { projectId: ctx.projectId, name: data.name, archivedAt: null }, select: { id: true } });
   if (duplicate) return void fail(res, 409, "DUPLICATE_SLO", "An active SLO with this name already exists");

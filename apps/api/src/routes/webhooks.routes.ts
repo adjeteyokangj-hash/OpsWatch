@@ -1,9 +1,48 @@
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
 import { prisma } from "../lib/prisma";
-import { requireWebhookSignature } from "../middleware/webhook-auth";
+import { requireWebhookSignature, type WebhookRequest } from "../middleware/webhook-auth";
+import { logger } from "../config/logger";
+import {
+  constructStripeEvent,
+  handleStripeEvent,
+  isStripeConfigured
+} from "../services/billing/stripe.service";
 
 export const webhooksRouter = Router();
+
+webhooksRouter.post("/stripe", async (req: Request, res: Response): Promise<void> => {
+  if (!isStripeConfigured() || !process.env.STRIPE_WEBHOOK_SECRET) {
+    res.status(503).json({ error: "Stripe billing is not configured." });
+    return;
+  }
+
+  const signature = req.header("stripe-signature");
+  const rawBody = (req as WebhookRequest).rawBody;
+  if (!signature || !rawBody || rawBody.length === 0) {
+    res.status(400).json({ error: "Missing Stripe signature or body" });
+    return;
+  }
+
+  let event;
+  try {
+    event = constructStripeEvent(rawBody, signature);
+  } catch (error) {
+    logger.warn("Stripe webhook signature verification failed", { error: String(error) });
+    res.status(400).json({ error: "Invalid Stripe signature" });
+    return;
+  }
+
+  try {
+    await handleStripeEvent(event);
+  } catch (error) {
+    logger.error("Stripe webhook handling failed", { error: String(error), type: event.type });
+    res.status(500).json({ error: "Webhook handling failed" });
+    return;
+  }
+
+  res.status(200).json({ received: true });
+});
 
 const findProjectByIntegrationId = async (field: "vercelProjectId" | "renderServiceId", value: string) =>
   prisma.project.findFirst({ where: { [field]: value } });

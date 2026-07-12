@@ -6,6 +6,9 @@ import type { AuthRequest } from "../middleware/auth";
 import { hasPermission } from "../auth/permissions";
 import { requireOrg } from "../lib/require-org";
 import { isPrismaSchemaDriftError, isPrismaUniqueViolation } from "../lib/prisma-errors";
+import { handleEntitlementFailure } from "./subscription.controller";
+import { assertWithinLimit } from "../services/entitlements/entitlement.service";
+import { ENTITLEMENT } from "../services/entitlements/entitlement-keys";
 import {
 	enrichProjectRow,
 	projectInclude,
@@ -104,6 +107,13 @@ export const listProjects = async (req: AuthRequest, res: Response) => {
 export const createProject = async (req: AuthRequest, res: Response) => {
 	const orgId = requireOrg(req, res);
 	if (!orgId) return;
+
+	try {
+		await assertWithinLimit(orgId, ENTITLEMENT.APPLICATIONS_MAX);
+	} catch (error) {
+		if (handleEntitlementFailure(res, error)) return;
+		throw error;
+	}
 
 	const body = req.body ?? {};
 	const name = String(body.name || "Untitled Project").trim();

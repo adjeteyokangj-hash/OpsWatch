@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { getSubscriptionSummary } from "./entitlements/subscription.service";
 
 export type PlanId = "FREE" | "STARTER" | "PRO" | "ENTERPRISE";
 
@@ -17,59 +18,69 @@ export const PLAN_PRICES: Record<PlanId, { monthly: number; currency: string }> 
 };
 
 export const getBillingInfo = async (organizationId: string) => {
+  const subscriptionSummary = await getSubscriptionSummary(organizationId);
   const org = await prisma.organization.findUnique({ where: { id: organizationId } });
   if (!org) throw new Error("Organization not found");
 
-  const [projectCount, userCount] = await Promise.all([
-    prisma.project.count({ where: { organizationId } }),
-    prisma.user.count({ where: { organizationId } })
-  ]);
-
-  const checkCount = await prisma.check.count({
-    where: { Service: { Project: { organizationId } } }
-  });
-
-  const plan = org.plan as PlanId;
-  const limits = PLAN_LIMITS[plan];
-  const price = PLAN_PRICES[plan];
-
   return {
     organization: { id: org.id, name: org.name, plan: org.plan },
-    limits,
-    usage: { projects: projectCount, users: userCount, checks: checkCount },
-    price,
-    plans: Object.entries(PLAN_LIMITS).map(([id, l]) => ({
-      id,
-      limits: l,
-      price: PLAN_PRICES[id as PlanId]
-    }))
+    subscription: subscriptionSummary.subscription,
+    plan: subscriptionSummary.plan,
+    entitlements: subscriptionSummary.entitlements,
+    usage: subscriptionSummary.usage,
+    availablePlans: subscriptionSummary.availablePlans,
+    legacy: {
+      limits: PLAN_LIMITS[org.plan as PlanId],
+      price: PLAN_PRICES[org.plan as PlanId],
+      plans: Object.entries(PLAN_LIMITS).map(([id, limits]) => ({
+        id,
+        limits,
+        price: PLAN_PRICES[id as PlanId]
+      }))
+    }
   };
 };
 
 export const upgradePlan = async (organizationId: string, plan: PlanId) => {
+  const legacyPlanMap = {
+    FREE: "PILOT",
+    STARTER: "STARTER",
+    PRO: "GROWTH",
+    ENTERPRISE: "ENTERPRISE"
+  } as const;
+
+  const { assignSubscriptionPlan } = await import("./entitlements/subscription.service");
+  const subscription = await assignSubscriptionPlan({
+    organizationId,
+    planCode: legacyPlanMap[plan]
+  });
+
   const org = await prisma.organization.update({
     where: { id: organizationId },
     data: { plan }
   });
 
-  return { organization: org, message: `Plan updated to ${plan}. Connect Stripe/Paystack for payment processing.` };
+  return {
+    organization: org,
+    subscription,
+    message: `Plan updated to ${plan}. Payment processing can be connected when checkout is enabled.`
+  };
 };
 
 export const checkPlanLimit = async (organizationId: string, resource: "projects" | "checks" | "users"): Promise<boolean> => {
-  const org = await prisma.organization.findUnique({ where: { id: organizationId } });
-  if (!org) return false;
+  const { getUsageSnapshot } = await import("./entitlements/entitlement.service");
+  const { ENTITLEMENT } = await import("./entitlements/entitlement-keys");
+  const usage = await getUsageSnapshot(organizationId);
 
-  const plan = org.plan as PlanId;
-  const limit = PLAN_LIMITS[plan][resource];
+  const key =
+    resource === "projects"
+      ? ENTITLEMENT.APPLICATIONS_MAX
+      : resource === "checks"
+        ? ENTITLEMENT.MONITORS_MAX
+        : ENTITLEMENT.TEAM_MEMBERS_MAX;
 
-  let count = 0;
-  if (resource === "projects") {
-    count = await prisma.project.count({ where: { organizationId } });
-  } else if (resource === "users") {
-    count = await prisma.user.count({ where: { organizationId } });
-  } else if (resource === "checks") {
-    count = await prisma.check.count({ where: { Service: { Project: { organizationId } } } });
-  }
-
-  return count < limit;
+  const row = usage[key];
+  if (!row || row.unlimited) return true;
+  if (row.limit == null) return true;
+  return row.current < row.limit;
 };

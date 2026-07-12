@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { Response } from "express";
 import { prisma } from "../lib/prisma";
 import type { AuthRequest } from "../middleware/auth";
@@ -7,7 +8,8 @@ import {
 	listIncidentTimeline,
 	mapIncidentDetail
 } from "../services/incidents.service";
-import { randomUUID } from "crypto";
+import { indexIncidentMemory } from "../services/ai/incident-memory.service";
+import { buildIncidentDiagnosis } from "../services/remediation/remediation-suggest.service";
 
 const parseDateQuery = (value: unknown): Date | undefined => {
 	if (typeof value !== "string" || !value.trim()) return undefined;
@@ -208,7 +210,7 @@ export const patchIncident = async (req: AuthRequest, res: Response) => {
 
 	const existing = await prisma.incident.findFirst({
 		where: { id: req.params.incidentId, Project: { organizationId: orgId } },
-		select: { id: true }
+		select: { id: true, title: true, status: true, rootCause: true, resolutionNotes: true }
 	});
 	if (!existing) {
 		res.status(404).json({ error: "Incident not found" });
@@ -227,6 +229,27 @@ export const patchIncident = async (req: AuthRequest, res: Response) => {
 			...(body.status === "RESOLVED" ? { resolvedAt: new Date() } : {})
 		}
 	});
+
+	if (body.status === "RESOLVED") {
+		try {
+			const diagnosis = await buildIncidentDiagnosis(orgId, { incidentId: updated.id });
+			await indexIncidentMemory({
+				organizationId: orgId,
+				incidentId: updated.id,
+				title: updated.title,
+				category: diagnosis.category,
+				diagnosisSummary: diagnosis.diagnosis,
+				rootCause: updated.rootCause ?? diagnosis.rootCauseHypothesis,
+				resolutionSummary: updated.resolutionNotes,
+				resolvedAt: updated.resolvedAt,
+				alerts: diagnosis.evidence
+					.filter((row) => row.type === "ALERT")
+					.map((row) => ({ title: row.summary, message: row.summary, sourceType: "ALERT" }))
+			});
+		} catch (error) {
+			console.error("INCIDENT_MEMORY_INDEX_ERROR", error instanceof Error ? error.message : error);
+		}
+	}
 
 	res.json(updated);
 };

@@ -21,6 +21,9 @@ import {
   serializeUser
 } from "../services/user-management.service";
 import { revokeAllUserSessions } from "../services/session.service";
+import { handleEntitlementFailure } from "./subscription.controller";
+import { assertWithinLimit } from "../services/entitlements/entitlement.service";
+import { ENTITLEMENT } from "../services/entitlements/entitlement-keys";
 
 const isUniqueEmailError = (error: unknown): boolean =>
   error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -107,6 +110,13 @@ export const inviteUser = async (req: AuthRequest, res: Response) => {
     assertPasswordMeetsPolicy(String(password));
   } catch (error) {
     if (handleUserManagementError(res, error)) return;
+    throw error;
+  }
+
+  try {
+    await assertWithinLimit(orgId, ENTITLEMENT.TEAM_MEMBERS_MAX);
+  } catch (error) {
+    if (handleEntitlementFailure(res, error)) return;
     throw error;
   }
 

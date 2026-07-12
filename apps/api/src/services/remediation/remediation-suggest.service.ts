@@ -5,6 +5,8 @@ import {
   type IncidentAnalysisContext
 } from "../ai/incident-analysis.service";
 import { diagnose } from "../ai/incident-ai.service";
+import { ENTITLEMENT } from "../entitlements/entitlement-keys";
+import { isEntitlementEnabled } from "../entitlements/entitlement.service";
 import {
   getActionState,
   REMEDIATION_REGISTRY,
@@ -169,6 +171,7 @@ export const loadAnalysisContext = async (
   ];
 
   return {
+    organizationId,
     incidentId: incident.id,
     title: incident.title,
     severity: incident.severity,
@@ -392,19 +395,38 @@ export const buildIncidentDiagnosis = async (
     message?: string;
   }
 ): Promise<IncidentDiagnosisResponse> => {
+  const [aiEnabled, remediationSuggested, remediationApprovalBased] = await Promise.all([
+    isEntitlementEnabled(organizationId, ENTITLEMENT.DIAGNOSIS_AI),
+    isEntitlementEnabled(organizationId, ENTITLEMENT.REMEDIATION_SUGGESTED),
+    isEntitlementEnabled(organizationId, ENTITLEMENT.REMEDIATION_APPROVAL)
+  ]);
+
   if (input.incidentId) {
     const context = await loadAnalysisContext(organizationId, input.incidentId);
     if (!context) {
       throw new Error("Incident not found");
     }
 
-    const deep = await analyzeIncidentDeep(context);
+    const deep = await analyzeIncidentDeep({
+      ...context,
+      allowLlm: aiEnabled
+    });
     const remediationContext = buildRemediationContext(organizationId, context);
-    const enriched = await Promise.all(
-      deep.suggestedActions.map((action) =>
-        enrichAction(action, remediationContext, deep.confidence, deep.failureClass)
-      )
-    );
+    let enriched = remediationSuggested
+      ? await Promise.all(
+          deep.suggestedActions.map((action) =>
+            enrichAction(action, remediationContext, deep.confidence, deep.failureClass)
+          )
+        )
+      : [];
+
+    if (!remediationApprovalBased) {
+      enriched = enriched.map((action) => ({
+        ...action,
+        autoRunEligible: false,
+        requiresApproval: true
+      }));
+    }
 
     return { ...deep, suggestedActions: enriched };
   }
@@ -422,11 +444,13 @@ export const buildIncidentDiagnosis = async (
     extra: { severity: input.severity }
   };
 
-  const enriched = await Promise.all(
-    shallow.suggestedActions.map((action) =>
-      enrichAction(action, remediationContext, shallow.confidence, shallow.failureClass)
-    )
-  );
+  const enriched = remediationSuggested
+    ? await Promise.all(
+        shallow.suggestedActions.map((action) =>
+          enrichAction(action, remediationContext, shallow.confidence, shallow.failureClass)
+        )
+      )
+    : [];
 
   return {
     ...shallow,

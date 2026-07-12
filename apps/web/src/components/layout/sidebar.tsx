@@ -32,6 +32,7 @@ const navGroups = [
     links: [
       ["Reports", "/reports"],
       ["Members", "/members"],
+      ["Subscription", "/subscription"],
       ["Settings", "/settings"]
     ] as const
   }
@@ -49,6 +50,7 @@ const navIcons: Record<string, string> = {
   Maintenance: "⏸",
   Reports: "▤",
   Members: "⊕",
+  Subscription: "$",
   Settings: "≡"
 };
 

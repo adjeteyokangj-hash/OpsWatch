@@ -20,6 +20,8 @@ import {
   releaseRemediationLock
 } from "./remediation-lock.service";
 import { findActiveMaintenanceForService } from "../maintenance-window-policy.service";
+import { assertPolicyControlledRemediationAllowed } from "../entitlements/remediation-governance.service";
+import { isEntitlementError } from "../entitlements/entitlement.service";
 
 export interface AutoHealAttemptResult {
   incidentId: string;
@@ -136,6 +138,19 @@ const runIncidentAutoHealLocked = async (
   organizationId: string,
   incidentId: string
 ): Promise<AutoHealAttemptResult> => {
+  try {
+    await assertPolicyControlledRemediationAllowed(organizationId);
+  } catch (error) {
+    if (isEntitlementError(error)) {
+      return {
+        incidentId,
+        attempted: false,
+        blockedReason: error.message
+      };
+    }
+    throw error;
+  }
+
   await ensureDefaultPolicy(organizationId);
 
   const incident = await prisma.incident.findFirst({

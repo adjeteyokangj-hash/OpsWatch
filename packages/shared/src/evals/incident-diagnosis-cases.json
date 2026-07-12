@@ -1,0 +1,159 @@
+[
+  {
+    "id": "http-status-mismatch-503",
+    "description": "Homepage returns 503 while monitor expects 200",
+    "input": {
+      "alertType": "HTTP",
+      "title": "Homepage unavailable",
+      "message": "Expected HTTP 200 but received 503",
+      "failureClass": "HTTP_STATUS_MISMATCH",
+      "expectedStatusCode": 200,
+      "actualStatusCode": 503,
+      "severity": "CRITICAL"
+    },
+    "expect": {
+      "category": "RELIABILITY",
+      "minConfidence": 0.9,
+      "actionsInclude": ["RERUN_HTTP_CHECK"]
+    }
+  },
+  {
+    "id": "tls-certificate-expired",
+    "description": "SSL check reports expired certificate",
+    "input": {
+      "alertType": "SSL",
+      "title": "TLS certificate expired",
+      "message": "certificate has expired",
+      "eventTypes": ["SSL_EXPIRY"],
+      "severity": "HIGH"
+    },
+    "expect": {
+      "category": "DEPENDENCY_CHANGE",
+      "minConfidence": 0.9,
+      "actionsInclude": ["RERUN_SSL_CHECK"]
+    }
+  },
+  {
+    "id": "redis-worker-heartbeat-stale",
+    "description": "Worker heartbeat missed for background queue processor",
+    "input": {
+      "alertType": "HEARTBEAT_STALE",
+      "title": "Worker heartbeat stale",
+      "message": "No heartbeat received in 10 minutes",
+      "eventTypes": ["HEARTBEAT_MISSED"],
+      "severity": "HIGH"
+    },
+    "expect": {
+      "category": "AVAILABILITY",
+      "minConfidence": 0.8,
+      "actionsInclude": ["RESTART_WORKER"]
+    }
+  },
+  {
+    "id": "dns-resolution-failure",
+    "description": "Upstream DNS lookup fails for API dependency",
+    "input": {
+      "alertType": "HTTP",
+      "title": "DNS lookup failed",
+      "message": "getaddrinfo ENOTFOUND api.vendor.example",
+      "failureClass": "DNS_FAILURE",
+      "severity": "CRITICAL"
+    },
+    "expect": {
+      "category": "AVAILABILITY",
+      "failureClass": "DNS_FAILURE",
+      "actionsInclude": ["CHECK_PROVIDER_STATUS", "RERUN_HTTP_CHECK"]
+    }
+  },
+  {
+    "id": "webhook-delivery-failure",
+    "description": "Signed webhook delivery repeatedly failing",
+    "input": {
+      "alertType": "EVENT",
+      "title": "Webhook delivery failing",
+      "message": "Webhook delivery failed with 500",
+      "eventTypes": ["WEBHOOK_FAILED"],
+      "severity": "HIGH"
+    },
+    "expect": {
+      "category": "RELIABILITY",
+      "actionsInclude": ["RETRY_WEBHOOKS"]
+    }
+  },
+  {
+    "id": "payment-provider-outage",
+    "description": "Payment failures spike during third-party outage",
+    "input": {
+      "alertType": "EVENT",
+      "title": "Payment failures increasing",
+      "message": "Stripe API returning 503",
+      "eventTypes": ["PAYMENT_FAILED", "THIRD_PARTY_OUTAGE"],
+      "severity": "CRITICAL"
+    },
+    "expect": {
+      "category": "RELIABILITY",
+      "actionsInclude": ["CHECK_PROVIDER_STATUS"]
+    }
+  },
+  {
+    "id": "auth-failure-spike",
+    "description": "Authentication failures spike after deployment",
+    "input": {
+      "alertType": "EVENT",
+      "title": "Auth failure spike",
+      "message": "401 rate increased 400%",
+      "eventTypes": ["AUTH_FAILURE_SPIKE", "DEPLOYMENT_FINISHED"],
+      "severity": "HIGH"
+    },
+    "expect": {
+      "category": "SECURITY",
+      "actionsInclude": ["REQUEST_HUMAN_REVIEW"]
+    }
+  },
+  {
+    "id": "latency-threshold-breach",
+    "description": "Response time threshold exceeded on checkout API",
+    "input": {
+      "alertType": "RESPONSE_TIME",
+      "title": "Checkout latency high",
+      "message": "p95 latency exceeded 3000ms threshold",
+      "failureClass": "LATENCY_THRESHOLD",
+      "severity": "MEDIUM"
+    },
+    "expect": {
+      "category": "PERFORMANCE",
+      "failureClass": "LATENCY_THRESHOLD",
+      "actionsInclude": ["RERUN_HTTP_CHECK"]
+    }
+  },
+  {
+    "id": "connection-refused-database",
+    "description": "Application cannot connect to database port",
+    "input": {
+      "alertType": "HTTP",
+      "title": "Database connection refused",
+      "message": "connect ECONNREFUSED 127.0.0.1:5432",
+      "failureClass": "CONNECTION_REFUSED",
+      "severity": "CRITICAL"
+    },
+    "expect": {
+      "category": "AVAILABILITY",
+      "failureClass": "CONNECTION_REFUSED",
+      "actionsInclude": ["RESTART_SERVICE"]
+    }
+  },
+  {
+    "id": "unknown-signal-low-confidence",
+    "description": "Unclassified alert should stay low confidence",
+    "input": {
+      "alertType": "CUSTOM",
+      "title": "Strange telemetry blip",
+      "message": "Anomaly score 0.42 with no mapped failure class",
+      "severity": "LOW"
+    },
+    "expect": {
+      "maxConfidence": 0.4,
+      "actionsInclude": []
+    }
+  }
+]

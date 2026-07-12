@@ -217,6 +217,9 @@ model Organization {
   User               User[]
   IncidentGroups     OrganizationIncidentGroup[]
   MaintenanceWindows MaintenanceWindow[]
+  Subscription       Subscription?
+  UsageRecord        UsageRecord[]
+  IncidentMemoryEntry IncidentMemoryEntry[]
 }
 
 model OrganizationIncidentGroup {
@@ -958,4 +961,104 @@ model IngestReplayNonce {
   expiresAt DateTime
 
   @@index([expiresAt])
+}
+
+enum BillingInterval {
+  MONTHLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIAL
+  PAST_DUE
+  CANCELLED
+  SUSPENDED
+}
+
+model Plan {
+  id                   String           @id
+  code                 String           @unique
+  name                 String
+  billingInterval      BillingInterval  @default(MONTHLY)
+  monthlyPrice         Float
+  annualPrice          Float?
+  currency             String           @default("GBP")
+  active               Boolean          @default(true)
+  sortOrder            Int              @default(0)
+  stripePriceMonthlyId String?
+  stripePriceAnnualId  String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime
+  PlanEntitlement      PlanEntitlement[]
+  Subscription         Subscription[]
+}
+
+model PlanEntitlement {
+  id            String  @id
+  planId        String
+  featureKey    String
+  enabled       Boolean @default(true)
+  limit         Int?
+  retentionDays Int?
+  configuration Json?
+  Plan          Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureKey])
+  @@index([featureKey])
+}
+
+model Subscription {
+  id                   String             @id
+  organizationId       String             @unique
+  planId               String
+  status               SubscriptionStatus @default(ACTIVE)
+  trialEndsAt          DateTime?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  stripePriceId        String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime
+  Organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Plan                 Plan               @relation(fields: [planId], references: [id])
+
+  @@index([planId])
+  @@index([status])
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
+}
+
+model UsageRecord {
+  id             String   @id
+  organizationId String
+  metricKey      String
+  quantity       Int
+  periodStart    DateTime
+  periodEnd      DateTime
+  createdAt      DateTime @default(now())
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, metricKey, periodStart])
+}
+
+model IncidentMemoryEntry {
+  id                String    @id
+  organizationId    String
+  incidentId        String    @unique
+  title             String
+  category          String?
+  diagnosisSummary  String
+  rootCause         String?
+  resolutionSummary String?
+  signatureText     String
+  embeddingJson     Json?
+  resolvedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime
+  Organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, resolvedAt])
 }

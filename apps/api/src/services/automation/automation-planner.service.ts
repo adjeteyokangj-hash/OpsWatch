@@ -6,6 +6,7 @@ import { selectPlaybookWithLlm } from "./automation-llm-planner.service";
 import { resolveLatestApprovedVersion } from "./playbook-governance.service";
 import { checkAutomationRateLimits, isPlaybookAutonomousEligible } from "./automation-safeguards.service";
 import { executeAutonomousRun } from "./automation-run-executor.service";
+import { clampAutomationExecutionMode } from "../entitlements/remediation-governance.service";
 
 const nobleServiceId = (key: string): string => `svc-ne-${key}`;
 
@@ -100,7 +101,10 @@ export const planAutomationForIncident = async (input: {
       }
     }
   });
-  const executionMode = (policy?.executionMode ?? "OBSERVE") as AutomationPlan["executionMode"];
+  const executionMode = await clampAutomationExecutionMode(
+    input.organizationId,
+    (policy?.executionMode ?? "OBSERVE") as AutomationPlan["executionMode"]
+  );
 
   const diagnosis = await buildIncidentDiagnosis(input.organizationId, {
     incidentId: input.incidentId

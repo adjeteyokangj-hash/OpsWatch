@@ -4,6 +4,12 @@ import { Response } from "express";
 import { prisma } from "../lib/prisma";
 import type { AuthRequest } from "../middleware/auth";
 import { getCheckDetail, listChecksWithSummary } from "../services/checks.service";
+import { handleEntitlementFailure } from "./subscription.controller";
+import {
+	assertCheckIntervalAllowed,
+	assertWithinLimit
+} from "../services/entitlements/entitlement.service";
+import { ENTITLEMENT } from "../services/entitlements/entitlement-keys";
 
 const parseDateQuery = (value: unknown): Date | undefined => {
 	if (typeof value !== "string" || !value.trim()) return undefined;
@@ -140,6 +146,13 @@ export const createCheckByService = async (req: AuthRequest, res: Response) => {
 	const orgId = requireOrg(req, res);
 	if (!orgId) return;
 
+	try {
+		await assertWithinLimit(orgId, ENTITLEMENT.MONITORS_MAX);
+	} catch (error) {
+		if (handleEntitlementFailure(res, error)) return;
+		throw error;
+	}
+
 	const service = await prisma.service.findFirst({
 		where: { id: req.params.serviceId, Project: { organizationId: orgId } },
 		select: { id: true, baseUrl: true }
@@ -151,6 +164,13 @@ export const createCheckByService = async (req: AuthRequest, res: Response) => {
 
 	const body = req.body ?? {};
 	const checkType = body.type || "HTTP";
+	const intervalSeconds = Number(body.intervalSeconds || 60);
+	try {
+		await assertCheckIntervalAllowed(orgId, intervalSeconds);
+	} catch (error) {
+		if (handleEntitlementFailure(res, error)) return;
+		throw error;
+	}
 	if (checkType === "SSL") {
 		const error = validateSslServiceTarget(service.baseUrl);
 		if (error) {
@@ -165,7 +185,7 @@ export const createCheckByService = async (req: AuthRequest, res: Response) => {
 			serviceId: service.id,
 			name: String(body.name || "Untitled Check"),
 			type: checkType,
-			intervalSeconds: Number(body.intervalSeconds || 60),
+			intervalSeconds,
 			timeoutMs: Number(body.timeoutMs || 10000),
 			expectedStatusCode: body.expectedStatusCode ? Number(body.expectedStatusCode) : null,
 			expectedKeyword: body.expectedKeyword ? String(body.expectedKeyword) : null,
@@ -200,6 +220,14 @@ export const patchCheck = async (req: AuthRequest, res: Response) => {
 
 	const body = req.body ?? {};
 	const nextType = body.type !== undefined ? body.type : check.type;
+	if (body.intervalSeconds !== undefined) {
+		try {
+			await assertCheckIntervalAllowed(orgId, Number(body.intervalSeconds));
+		} catch (error) {
+			if (handleEntitlementFailure(res, error)) return;
+			throw error;
+		}
+	}
 	if (nextType === "SSL") {
 		const error = validateSslServiceTarget(check.Service.baseUrl);
 		if (error) {

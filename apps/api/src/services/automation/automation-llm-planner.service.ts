@@ -1,4 +1,5 @@
 import { redactForPrompt } from "../../lib/redact-secrets";
+import { parseAutomationPlaybookLlmSelection } from "@opswatch/shared";
 import { AUTOMATION_PLAYBOOKS } from "./automation-playbooks.seed";
 import { selectPlaybookKey } from "./automation-planner.service";
 
@@ -87,19 +88,16 @@ export const selectPlaybookWithLlm = async (input: {
     const content = payload.choices?.[0]?.message?.content;
     if (!content) return rulesFallback();
 
-    const parsed = JSON.parse(content) as {
-      playbookKey?: string;
-      confidence?: number;
-      reason?: string;
-    };
-    if (!parsed.playbookKey || !REGISTERED_KEYS.includes(parsed.playbookKey)) {
+    const parsed = JSON.parse(content) as unknown;
+    const validated = parseAutomationPlaybookLlmSelection(parsed);
+    if (!validated.success || !REGISTERED_KEYS.includes(validated.data.playbookKey)) {
       return rulesFallback();
     }
 
     return {
-      playbookKey: parsed.playbookKey,
-      confidence: Math.max(0, Math.min(100, Number(parsed.confidence ?? 80))),
-      reason: parsed.reason?.trim() || "LLM selected registered playbook.",
+      playbookKey: validated.data.playbookKey,
+      confidence: validated.data.confidence,
+      reason: validated.data.rationale?.trim() || "LLM selected registered playbook.",
       analysisMode: "LLM"
     };
   } catch {

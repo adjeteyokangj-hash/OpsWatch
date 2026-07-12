@@ -154,6 +154,18 @@ async function main() {
   if (movedUsers.count > 0) {
     console.log(`Moved ${movedUsers.count} user(s) into org ${org.slug}`);
   }
+
+  const {
+    seedPlans,
+    backfillOrganizationSubscriptions,
+    ensureDefaultSubscription
+  } = await import("../src/services/entitlements/subscription.service");
+  await seedPlans();
+  const subscriptionsCreated = await backfillOrganizationSubscriptions();
+  if (subscriptionsCreated > 0) {
+    console.log(`Created ${subscriptionsCreated} default subscription(s)`);
+  }
+  await ensureDefaultSubscription(org.id);
 }
 
 main()
