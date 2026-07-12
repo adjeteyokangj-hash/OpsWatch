@@ -1,5 +1,5 @@
+import { createHmac, randomUUID } from "crypto";
 import { EventPayload } from "@opswatch/shared";
-import { createSignature } from "./signatures";
 import { OpsWatchClientConfig, SendEventInput } from "./types";
 
 const assertOk = async (response: Response): Promise<void> => {
@@ -22,7 +22,11 @@ export const sendEvent = async (
 	};
 
 	const timestamp = new Date().toISOString();
-	const signature = createSignature(payload, timestamp, config.signingSecret);
+	const nonce = randomUUID();
+	const body = JSON.stringify(payload);
+	const signature = createHmac("sha256", config.signingSecret)
+		.update(`${timestamp}.${nonce}.${body}`)
+		.digest("hex");
 
 	const response = await fetch(`${config.baseUrl}/api/ingest/event`, {
 		method: "POST",
@@ -30,10 +34,11 @@ export const sendEvent = async (
 			"Content-Type": "application/json",
 			"x-opswatch-project-key": config.projectKey,
 			"x-opswatch-timestamp": timestamp,
+			"x-opswatch-nonce": nonce,
 			"x-opswatch-signature": signature,
 			"x-opswatch-environment": config.environment
 		},
-		body: JSON.stringify(payload)
+		body
 	});
 
 	await assertOk(response);

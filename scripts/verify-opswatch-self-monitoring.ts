@@ -1,5 +1,5 @@
 import path from "node:path";
-import { randomUUID } from "crypto";
+import { createHmac, randomUUID } from "crypto";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { processHeartbeatStaleJob } from "../apps/worker/src/jobs/process-heartbeat-stale.job";
@@ -116,21 +116,31 @@ async function main() {
   ]);
 
   const heartbeatKey = process.env.OPSWATCH_HEARTBEAT_API_KEY?.trim();
+  const heartbeatSigningSecret = process.env.OPSWATCH_HEARTBEAT_SIGNING_SECRET?.trim();
   const apiUrl = process.env.OPSWATCH_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:4000/api";
-  if (heartbeatKey) {
+  if (heartbeatKey && heartbeatSigningSecret) {
+    const timestamp = new Date().toISOString();
+    const nonce = crypto.randomUUID();
+    const body = JSON.stringify({
+      projectSlug,
+      environment: process.env.OPSWATCH_ENVIRONMENT?.trim() || "production",
+      status: "HEALTHY",
+      message: "Gate verification baseline heartbeat",
+      appVersion: "gate-verify"
+    });
+    const signature = createHmac("sha256", heartbeatSigningSecret)
+      .update(`${timestamp}.${nonce}.${body}`)
+      .digest("hex");
     const heartbeatResponse = await fetch(`${apiUrl}/heartbeat`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": heartbeatKey
+        "x-api-key": heartbeatKey,
+        "x-opswatch-timestamp": timestamp,
+        "x-opswatch-nonce": nonce,
+        "x-opswatch-signature": signature
       },
-      body: JSON.stringify({
-        projectSlug,
-        environment: process.env.OPSWATCH_ENVIRONMENT?.trim() || "production",
-        status: "HEALTHY",
-        message: "Gate verification baseline heartbeat",
-        appVersion: "gate-verify"
-      })
+      body
     });
     probeResults.push({
       name: "Worker heartbeat ingest",
@@ -141,7 +151,7 @@ async function main() {
     probeResults.push({
       name: "Worker heartbeat ingest",
       result: "WARN",
-      detail: "OPSWATCH_HEARTBEAT_API_KEY not configured in worker env"
+      detail: "OPSWATCH_HEARTBEAT_API_KEY or OPSWATCH_HEARTBEAT_SIGNING_SECRET not configured in worker env"
     });
   }
 

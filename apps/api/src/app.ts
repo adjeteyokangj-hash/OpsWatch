@@ -1,5 +1,7 @@
 import "express-async-errors";
 import express from "express";
+import type { Request } from "express";
+import { RawBodyRequest } from "./lib/request-signature";
 import { WebhookRequest } from "./middleware/webhook-auth";
 import cors from "cors";
 import helmet from "helmet";
@@ -72,7 +74,14 @@ app.use(
   })
 );
 app.use(helmet());
-app.use(express.json({ limit: "1mb" }));
+app.use(
+  express.json({
+    limit: "1mb",
+    verify: (req, _res, buf) => {
+      (req as Request & RawBodyRequest).rawBody = buf;
+    }
+  })
+);
 app.use(morgan("dev"));
 app.use(requestId);
 app.use(rateLimit);

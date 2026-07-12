@@ -1,7 +1,5 @@
-import { createHmac } from "crypto";
 import type { NextFunction, Request, Response } from "express";
 import { prisma } from "../lib/prisma";
-import { SIGNATURE_HEADER, TIMESTAMP_HEADER } from "../config/constants";
 import { sha256 } from "../utils/crypto";
 import { verifyJwt } from "../utils/jwt";
 
@@ -125,32 +123,4 @@ export const requireApiKeyReadScope = (requiredScopes: string[], _projectIdParam
 
     res.status(401).json({ error: "Unauthorized" });
   };
-};
-
-export const requireIngestSignature = async (req: AuthRequest, res: Response, next: NextFunction) => {
-  const projectKey = req.header("x-opswatch-project-key");
-  const timestamp = req.header(TIMESTAMP_HEADER);
-  const signature = req.header(SIGNATURE_HEADER);
-
-  if (!projectKey || !timestamp || !signature) {
-    res.status(401).json({ error: "Missing ingest signature headers" });
-    return;
-  }
-
-  const project = await prisma.project.findUnique({ where: { apiKey: projectKey } });
-  if (!project) {
-    res.status(401).json({ error: "Invalid project key" });
-    return;
-  }
-
-  const body = JSON.stringify(req.body ?? {});
-  const payload = `${timestamp}.${body}`;
-  const expected = createHmac("sha256", project.signingSecret).update(payload).digest("hex");
-
-  if (signature !== expected) {
-    res.status(401).json({ error: "Invalid ingest signature" });
-    return;
-  }
-
-  next();
 };

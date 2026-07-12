@@ -10,8 +10,8 @@
 
 - Keep `NODE_ENV=production` so API only trusts configured `OPSWATCH_WEB_URL`.
 - **Webhook ingress:** `/api/webhooks/*` rejects unsigned requests. Provider secrets must be configured; missing secrets return 503 (fail-closed). Signatures are verified against raw request bytes with constant-time comparison.
-- **Not yet implemented:** ingest endpoints do not currently enforce key + timestamp + HMAC signature (API key scope only). Do not claim replay protection until implemented and tested.
-- Reject stale timestamps and invalid signatures (planned — see production-gate-report.md release blockers).
+- **Ingest replay protection:** `/api/event`, `/api/health-snapshot`, and `/api/heartbeat` require API key scope plus signed timestamp, nonce, and HMAC over raw body bytes. Missing project signing configuration returns 503. Replayed nonces return 409. Stale timestamps return 401 with `INGEST_STALE`.
+- Reject stale timestamps and invalid signatures on ingest routes (enforced — see ingest replay protection above).
 
 ## Logging Safety
 

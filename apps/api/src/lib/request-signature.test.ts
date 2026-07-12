@@ -1,7 +1,10 @@
 import crypto from "crypto";
 import { describe, expect, it } from "vitest";
 import {
+  computeIngestSignature,
+  parseIngestTimestampMs,
   verifyGitHubWebhookSignature,
+  verifyIngestSignature,
   verifyRenderWebhookSignature,
   verifyVercelWebhookSignature
 } from "./request-signature";
@@ -69,5 +72,23 @@ describe("request-signature", () => {
         webhookSignature: `v1,${signature}`
       })
     ).toBe(false);
+  });
+
+  it("verifies ingest signatures with nonce and raw body bytes", () => {
+    const secret = "ingest-secret";
+    const rawBody = Buffer.from('{"projectSlug":"demo","type":"SERVICE_DOWN"}', "utf8");
+    const timestamp = new Date().toISOString();
+    const nonce = "nonce-123";
+    const signature = computeIngestSignature(secret, timestamp, nonce, rawBody);
+
+    expect(verifyIngestSignature(secret, rawBody, { timestamp, nonce, signature })).toBe(true);
+    expect(verifyIngestSignature(secret, rawBody, { timestamp, nonce, signature: "deadbeef" })).toBe(false);
+  });
+
+  it("parses ingest timestamps from ISO and unix values", () => {
+    const iso = new Date("2026-07-12T12:00:00.000Z").toISOString();
+    expect(parseIngestTimestampMs(iso)).toBe(Date.parse(iso));
+    expect(parseIngestTimestampMs("1750000000")).toBe(1750000000000);
+    expect(parseIngestTimestampMs("invalid")).toBeNull();
   });
 });

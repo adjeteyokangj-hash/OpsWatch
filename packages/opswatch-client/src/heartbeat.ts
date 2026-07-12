@@ -1,5 +1,5 @@
+import { createHmac, randomUUID } from "crypto";
 import { HeartbeatPayload } from "@opswatch/shared";
-import { createSignature } from "./signatures";
 import { OpsWatchClientConfig, SendHeartbeatInput } from "./types";
 
 const assertOk = async (response: Response): Promise<void> => {
@@ -23,7 +23,11 @@ export const sendHeartbeat = async (
 	};
 
 	const timestamp = new Date().toISOString();
-	const signature = createSignature(payload, timestamp, config.signingSecret);
+	const nonce = randomUUID();
+	const body = JSON.stringify(payload);
+	const signature = createHmac("sha256", config.signingSecret)
+		.update(`${timestamp}.${nonce}.${body}`)
+		.digest("hex");
 
 	const response = await fetch(`${config.baseUrl}/api/ingest/heartbeat`, {
 		method: "POST",
@@ -31,10 +35,11 @@ export const sendHeartbeat = async (
 			"Content-Type": "application/json",
 			"x-opswatch-project-key": config.projectKey,
 			"x-opswatch-timestamp": timestamp,
+			"x-opswatch-nonce": nonce,
 			"x-opswatch-signature": signature,
 			"x-opswatch-environment": payload.environment || config.environment
 		},
-		body: JSON.stringify(payload)
+		body
 	});
 
 	await assertOk(response);

@@ -2,6 +2,10 @@ import crypto from "crypto";
 
 export type HmacAlgorithm = "sha1" | "sha256";
 
+export type RawBodyRequest = {
+  rawBody?: Buffer;
+};
+
 export const timingSafeEqualString = (provided: string, expected: string): boolean => {
   const providedBuf = Buffer.from(provided, "utf8");
   const expectedBuf = Buffer.from(expected, "utf8");
@@ -86,4 +90,37 @@ export const verifyRenderWebhookSignature = (
   }
 
   return false;
+};
+
+export const buildIngestSignedContent = (timestamp: string, nonce: string, rawBody: Buffer): string =>
+  `${timestamp}.${nonce}.${rawBody.toString("utf8")}`;
+
+export const computeIngestSignature = (
+  secret: string,
+  timestamp: string,
+  nonce: string,
+  rawBody: Buffer
+): string => hmacDigest(secret, buildIngestSignedContent(timestamp, nonce, rawBody), "sha256", "hex");
+
+export const verifyIngestSignature = (
+  secret: string,
+  rawBody: Buffer,
+  input: { timestamp: string; nonce: string; signature: string }
+): boolean => {
+  const expected = computeIngestSignature(secret, input.timestamp, input.nonce, rawBody);
+  return timingSafeEqualString(input.signature, expected);
+};
+
+export const parseIngestTimestampMs = (value: string): number | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (/^\d+$/.test(trimmed)) {
+    const numeric = Number(trimmed);
+    if (!Number.isFinite(numeric)) return null;
+    return trimmed.length <= 10 ? numeric * 1000 : numeric;
+  }
+
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
 };

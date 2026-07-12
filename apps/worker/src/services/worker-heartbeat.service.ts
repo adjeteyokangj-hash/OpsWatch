@@ -14,34 +14,44 @@ export const getSchedulerHealthSnapshot = () => ({
     : true
 });
 
+import { createHmac, randomUUID } from "crypto";
+
 export const sendWorkerHeartbeat = async (): Promise<void> => {
   const apiUrl = process.env.OPSWATCH_API_URL?.replace(/\/$/, "");
   const apiKey = process.env.OPSWATCH_HEARTBEAT_API_KEY?.trim();
+  const signingSecret = process.env.OPSWATCH_HEARTBEAT_SIGNING_SECRET?.trim();
   const projectSlug = process.env.OPSWATCH_SELF_MONITOR_SLUG?.trim() || "opswatch-production";
   const environment = process.env.OPSWATCH_ENVIRONMENT?.trim() || process.env.NODE_ENV || "production";
 
-  if (!apiUrl || !apiKey) return;
+  if (!apiUrl || !apiKey || !signingSecret) return;
 
   const scheduler = getSchedulerHealthSnapshot();
   const status = scheduler.stale ? "DEGRADED" : "HEALTHY";
+  const timestamp = new Date().toISOString();
+  const nonce = randomUUID();
+  const body = JSON.stringify({
+    projectSlug,
+    environment,
+    status,
+    message: scheduler.stale ? "Scheduler success signal is stale" : "Worker and scheduler operational",
+    appVersion: process.env.npm_package_version || "worker",
+    payload: {
+      component: "worker",
+      scheduler
+    }
+  });
+  const signature = createHmac("sha256", signingSecret).update(`${timestamp}.${nonce}.${body}`).digest("hex");
 
   const response = await fetch(`${apiUrl}/heartbeat`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": apiKey
+      "x-api-key": apiKey,
+      "x-opswatch-timestamp": timestamp,
+      "x-opswatch-nonce": nonce,
+      "x-opswatch-signature": signature
     },
-    body: JSON.stringify({
-      projectSlug,
-      environment,
-      status,
-      message: scheduler.stale ? "Scheduler success signal is stale" : "Worker and scheduler operational",
-      appVersion: process.env.npm_package_version || "worker",
-      payload: {
-        component: "worker",
-        scheduler
-      }
-    })
+    body
   });
 
   if (!response.ok) {
@@ -51,7 +61,7 @@ export const sendWorkerHeartbeat = async (): Promise<void> => {
 
 export const startWorkerHeartbeat = (): (() => void) => {
   const intervalMs = Number(process.env.OPSWATCH_HEARTBEAT_INTERVAL_MS || 60_000);
-  if (!process.env.OPSWATCH_HEARTBEAT_API_KEY?.trim() || !process.env.OPSWATCH_API_URL?.trim()) {
+  if (!process.env.OPSWATCH_HEARTBEAT_API_KEY?.trim() || !process.env.OPSWATCH_API_URL?.trim() || !process.env.OPSWATCH_HEARTBEAT_SIGNING_SECRET?.trim()) {
     return () => undefined;
   }
 
