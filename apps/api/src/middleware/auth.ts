@@ -184,7 +184,11 @@ export const requireApiKeyScopes = (requiredScopes: string[]) => {
 
 export const requireApiKeyReadScope = (requiredScopes: string[], _projectIdParam?: string) => {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (tryAttachJwt(req)) {
+    if ((await tryAttachSession(req)) || tryAttachJwt(req)) {
+      if (!validateSessionCsrfRequest(req)) {
+        res.status(403).json({ error: "Invalid CSRF token", code: "CSRF_INVALID" });
+        return;
+      }
       next();
       return;
     }
