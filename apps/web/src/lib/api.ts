@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "./constants";
-import { clearAuthCookie } from "./auth";
+import { clearAuthCookies, getCsrfToken } from "./auth";
 
 const LOCAL_API_FALLBACK = "http://localhost:4000/api";
 
@@ -27,28 +27,26 @@ const shouldTryLocalFallback = (status: number, baseUrl: string): boolean => {
   return (isRelativeBase || isSameOriginBase) && !isAlreadyFallback;
 };
 
-const getToken = (): string | undefined => {
-  if (typeof document === "undefined") {
-    return undefined;
+const buildHeaders = (init?: RequestInit): HeadersInit => {
+  const method = (init?.method || "GET").toUpperCase();
+  const csrfToken = getCsrfToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> | undefined)
+  };
+
+  if (csrfToken && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+    headers["x-opswatch-csrf"] = csrfToken;
   }
 
-  const row = document.cookie
-    .split(";")
-    .map((value) => value.trim())
-    .find((value) => value.startsWith("opswatch_token="));
-
-  return row?.split("=")[1];
+  return headers;
 };
 
 export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const token = getToken();
   const requestInit: RequestInit = {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers || {})
-    },
+    headers: buildHeaders(init),
+    credentials: "include",
     cache: "no-store"
   };
 
@@ -59,7 +57,7 @@ export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> 
   }
 
   if (response.status === 401 && typeof window !== "undefined") {
-    clearAuthCookie();
+    clearAuthCookies();
     if (!window.location.pathname.startsWith("/login")) {
       window.location.href = "/login";
     }
@@ -79,15 +77,10 @@ export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> 
       detail = "";
     }
 
-    throw new Error(detail ? `API request failed: ${response.status} - ${detail}` : `API request failed: ${response.status}`);
+    throw new Error(detail || `Request failed with status ${response.status}`);
   }
 
   if (response.status === 204) {
-    return undefined as T;
-  }
-
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
     return undefined as T;
   }
 

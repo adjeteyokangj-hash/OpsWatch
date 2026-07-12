@@ -3,7 +3,9 @@ import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { prisma } from "../lib/prisma";
 import { assertPasswordMeetsPolicy, PasswordPolicyError } from "../utils/password-policy";
-import { signJwt } from "../utils/jwt";
+import { revokeAllUserSessions } from "./session.service";
+import type { CreatedSession, SessionUser } from "./session.service";
+import { createUserSession } from "./session.service";
 
 export class AuthError extends Error {
   constructor(
@@ -15,7 +17,25 @@ export class AuthError extends Error {
   }
 }
 
-export const login = async (email: string, password: string): Promise<{ token: string }> => {
+const toSessionUser = (user: {
+  id: string;
+  email: string;
+  role: string;
+  organizationId: string | null;
+  name: string;
+}): SessionUser => ({
+  id: user.id,
+  email: user.email,
+  role: user.role,
+  organizationId: user.organizationId,
+  name: user.name
+});
+
+export const login = async (
+  email: string,
+  password: string,
+  context: { ipAddress?: string; userAgent?: string } = {}
+): Promise<{ user: SessionUser; session: CreatedSession }> => {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.isActive) {
     throw new Error("Invalid credentials");
@@ -26,30 +46,27 @@ export const login = async (email: string, password: string): Promise<{ token: s
     throw new Error("Invalid credentials");
   }
 
+  await revokeAllUserSessions(user.id, "LOGIN_ROTATION");
+
+  const session = await createUserSession({
+    userId: user.id,
+    ipAddress: context.ipAddress,
+    userAgent: context.userAgent
+  });
+
   return {
-    token: signJwt({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      organizationId: user.organizationId ?? undefined
-    })
+    user: toSessionUser(user),
+    session
   };
 };
 
-export const refreshSession = async (userId: string): Promise<{ token: string } | null> => {
+export const getSessionUser = async (userId: string): Promise<SessionUser | null> => {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || !user.isActive) {
     return null;
   }
 
-  return {
-    token: signJwt({
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      organizationId: user.organizationId ?? undefined
-    })
-  };
+  return toSessionUser(user);
 };
 
 export const changePassword = async (
@@ -86,6 +103,8 @@ export const changePassword = async (
       updatedAt: new Date()
     }
   });
+
+  await revokeAllUserSessions(userId, "PASSWORD_CHANGED");
 
   await prisma.auditLog.create({
     data: {

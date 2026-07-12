@@ -17,11 +17,14 @@ test.describe("automation approval browser flow", () => {
     await page.getByRole("button", { name: /sign in/i }).click();
     await page.waitForURL("**/dashboard**", { timeout: 30_000 });
 
-    const token = (await page.context().cookies()).find((c) => c.name === "opswatch_token")?.value;
-    expect(token).toBeTruthy();
+    const cookies = await page.context().cookies();
+    const sessionCookie = cookies.find((c) => c.name === "opswatch_session")?.value;
+    const csrfCookie = cookies.find((c) => c.name === "opswatch_csrf")?.value;
+    expect(sessionCookie).toBeTruthy();
+    expect(csrfCookie).toBeTruthy();
 
     const incidentsResponse = await page.request.get(`${apiBase}/incidents`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: csrfCookie ? { "x-opswatch-csrf": csrfCookie } : undefined
     });
     expect(incidentsResponse.ok()).toBeTruthy();
     const incidents = (await incidentsResponse.json()) as Array<{ id: string }>;

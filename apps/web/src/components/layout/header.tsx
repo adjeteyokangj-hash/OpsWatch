@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { clearAuthCookie, getAuthToken } from "../../lib/auth";
+import { clearAuthCookies, getCsrfToken } from "../../lib/auth";
 import { API_BASE_URL } from "../../lib/constants";
 
 const pageDescriptions: Record<string, string> = {
@@ -26,18 +26,19 @@ export function Header({ title, actions }: { title: string; actions?: ReactNode 
   const router = useRouter();
 
   const handleLogout = async () => {
-    const token = getAuthToken();
+    const csrfToken = getCsrfToken();
 
     try {
       await fetch(`${API_BASE_URL}/auth/logout`, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        credentials: "include",
+        headers: csrfToken ? { "x-opswatch-csrf": csrfToken } : undefined,
         cache: "no-store"
       });
     } catch {
       // Ignore network failures; local sign-out still clears client auth state.
     } finally {
-      clearAuthCookie();
+      clearAuthCookies();
       router.replace("/login");
     }
   };

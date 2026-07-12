@@ -2,7 +2,6 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { APP_NAME, API_BASE_URL } from "../../lib/constants";
-import { setAuthCookie } from "../../lib/auth";
 
 const DEV_LOGIN_EMAIL =
   process.env.NODE_ENV === "development" ? "adjeteyokangj@gmail.com" : "";
@@ -31,6 +30,7 @@ export default function LoginPage() {
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password })
       });
 
@@ -48,14 +48,12 @@ export default function LoginPage() {
         return;
       }
 
-      const data = (await response.json()) as { token?: string; accessToken?: string };
-      const token = data.token || data.accessToken;
-      if (!token) {
-        setError("Sign-in failed: API response did not include a token.");
+      const data = (await response.json()) as { user?: { email?: string } };
+      if (!data.user?.email) {
+        setError("Sign-in failed: API response did not establish a session.");
         return;
       }
 
-      setAuthCookie(token);
       window.location.href = "/dashboard";
     } catch {
       setError("Sign-in failed: API unavailable. Start the API server and try again.");

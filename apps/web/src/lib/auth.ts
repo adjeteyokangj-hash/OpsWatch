@@ -1,63 +1,67 @@
-export const setAuthCookie = (token: string): void => {
-  document.cookie = `opswatch_token=${token}; path=/; max-age=43200; SameSite=Lax`;
+import { API_BASE_URL } from "./constants";
+
+export type SessionUser = {
+  id: string;
+  email: string;
+  role: string;
+  organizationId?: string | null;
+  name?: string;
 };
 
-export const clearAuthCookie = (): void => {
-  document.cookie = "opswatch_token=; path=/; max-age=0; SameSite=Lax";
-};
+const parseCookie = (name: string): string | null => {
+  if (typeof document === "undefined") {
+    return null;
+  }
 
-export const getAuthToken = (): string | null => {
   const row = document.cookie
     .split(";")
     .map((value) => value.trim())
-    .find((value) => value.startsWith("opswatch_token="));
+    .find((value) => value.startsWith(`${name}=`));
 
-  return row ? row.split("=")[1] ?? null : null;
+  return row ? decodeURIComponent(row.split("=")[1] ?? "") : null;
 };
 
-export const getAuthClaims = (): Record<string, unknown> | null => {
-  const token = getAuthToken();
-  if (!token) return null;
+export const getCsrfToken = (): string | null => parseCookie("opswatch_csrf");
 
-  const parts = token.split(".");
-  const payload = parts[1];
-  if (!payload) return null;
+export const hasSessionCookie = (): boolean => Boolean(parseCookie("opswatch_session"));
 
-  try {
-    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const json = atob(base64);
-    return JSON.parse(json) as Record<string, unknown>;
-  } catch {
-    return null;
+export const clearAuthCookies = (): void => {
+  if (typeof document === "undefined") {
+    return;
   }
+
+  document.cookie = "opswatch_session=; path=/; max-age=0; SameSite=Lax";
+  document.cookie = "opswatch_csrf=; path=/; max-age=0; SameSite=Lax";
 };
 
-export const refreshAuthSession = async (): Promise<boolean> => {
-  const token = getAuthToken();
-  if (!token) return false;
+/** @deprecated Browser JWT cookies are no longer used. */
+export const clearAuthCookie = clearAuthCookies;
 
-  const { API_BASE_URL } = await import("./constants");
+export const refreshAuthSession = async (): Promise<SessionUser | null> => {
   const response = await fetch(`${API_BASE_URL}/auth/session`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json"
-    },
+    credentials: "include",
     cache: "no-store"
   });
 
   if (!response.ok) {
-    clearAuthCookie();
+    clearAuthCookies();
     if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
       window.location.href = "/login";
     }
-    return false;
+    return null;
   }
 
-  const data = (await response.json()) as { token?: string };
-  if (!data.token) {
-    return false;
-  }
-
-  setAuthCookie(data.token);
-  return true;
+  const data = (await response.json()) as { user?: SessionUser };
+  return data.user ?? null;
 };
+
+export const fetchSessionUser = refreshAuthSession;
+
+/** @deprecated Decode JWT claims from browser storage. Use refreshAuthSession instead. */
+export const getAuthClaims = (): Record<string, unknown> | null => null;
+
+/** @deprecated JWT tokens are no longer stored in the browser. */
+export const getAuthToken = (): string | null => null;
+
+/** @deprecated JWT tokens are no longer stored in the browser. */
+export const setAuthCookie = (_token: string): void => undefined;

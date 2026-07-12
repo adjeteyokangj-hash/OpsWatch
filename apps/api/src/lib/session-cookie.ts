@@ -1,0 +1,80 @@
+import type { CookieOptions, Response } from "express";
+import {
+  CSRF_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+  sessionAbsoluteTtlSeconds
+} from "../config/session";
+
+export const parseCookieHeader = (header: string | undefined): Record<string, string> => {
+  if (!header) {
+    return {};
+  }
+
+  return header.split(";").reduce<Record<string, string>>((cookies, part) => {
+    const separator = part.indexOf("=");
+    if (separator <= 0) {
+      return cookies;
+    }
+
+    const name = part.slice(0, separator).trim();
+    const value = part.slice(separator + 1).trim();
+    if (!name) {
+      return cookies;
+    }
+
+    cookies[name] = decodeURIComponent(value);
+    return cookies;
+  }, {});
+};
+
+const baseCookieOptions = (): Pick<CookieOptions, "path" | "sameSite" | "secure"> => ({
+  path: "/",
+  sameSite: "lax",
+  secure: process.env.NODE_ENV === "production"
+});
+
+export const setSessionCookies = (
+  res: Response,
+  sessionToken: string,
+  csrfToken: string
+): void => {
+  const maxAgeMs = sessionAbsoluteTtlSeconds() * 1000;
+  res.cookie(SESSION_COOKIE_NAME, sessionToken, {
+    ...baseCookieOptions(),
+    httpOnly: true,
+    maxAge: maxAgeMs
+  });
+  res.cookie(CSRF_COOKIE_NAME, csrfToken, {
+    ...baseCookieOptions(),
+    httpOnly: false,
+    maxAge: maxAgeMs
+  });
+};
+
+export const clearSessionCookies = (res: Response): void => {
+  const base = baseCookieOptions();
+  res.clearCookie(SESSION_COOKIE_NAME, { ...base, httpOnly: true });
+  res.clearCookie(CSRF_COOKIE_NAME, { ...base, httpOnly: false });
+};
+
+export const readSessionToken = (cookieHeader: string | undefined): string | null =>
+  parseCookieHeader(cookieHeader)[SESSION_COOKIE_NAME]?.trim() || null;
+
+export const readCsrfToken = (cookieHeader: string | undefined): string | null =>
+  parseCookieHeader(cookieHeader)[CSRF_COOKIE_NAME]?.trim() || null;
+
+export const sessionCookieFlags = (): string[] => {
+  const flags = ["HttpOnly", "Path=/", "SameSite=Lax"];
+  if (process.env.NODE_ENV === "production") {
+    flags.push("Secure");
+  }
+  return flags;
+};
+
+export const csrfCookieFlags = (): string[] => {
+  const flags = ["Path=/", "SameSite=Lax"];
+  if (process.env.NODE_ENV === "production") {
+    flags.push("Secure");
+  }
+  return flags;
+};

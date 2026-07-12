@@ -634,8 +634,29 @@ model User {
   Alert          Alert[]
   AuditLog       AuditLog[]
   Organization   Organization? @relation(fields: [organizationId], references: [id])
+  UserSession    UserSession[]
 
   @@index([organizationId])
+}
+
+model UserSession {
+  id            String    @id
+  userId        String
+  tokenHash     String    @unique
+  csrfTokenHash String
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  expiresAt     DateTime
+  idleExpiresAt DateTime
+  revokedAt     DateTime?
+  revokedReason String?
+  ipAddress     String?
+  userAgent     String?
+  User          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@index([idleExpiresAt])
 }
 
 model CoverageTarget {

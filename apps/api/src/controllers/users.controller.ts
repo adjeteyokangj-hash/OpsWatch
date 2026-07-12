@@ -20,6 +20,7 @@ import {
   resolvePreferredDevOrganizationId,
   serializeUser
 } from "../services/user-management.service";
+import { revokeAllUserSessions } from "../services/session.service";
 
 const isUniqueEmailError = (error: unknown): boolean =>
   error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -245,6 +246,7 @@ export const patchUser = async (req: AuthRequest, res: Response) => {
     });
 
     if (body.role !== undefined && body.role !== existing.role) {
+      await revokeAllUserSessions(updated.id, "ROLE_CHANGED");
       await logUserEvent({
         actorUserId: req.user?.sub,
         action: "USER_ROLE_UPDATED",
@@ -254,6 +256,9 @@ export const patchUser = async (req: AuthRequest, res: Response) => {
     }
 
     if (body.isActive !== undefined && body.isActive !== existing.isActive) {
+      if (!body.isActive) {
+        await revokeAllUserSessions(updated.id, "USER_DEACTIVATED");
+      }
       await logUserEvent({
         actorUserId: req.user?.sub,
         action: body.isActive ? "USER_REACTIVATED" : "USER_DEACTIVATED",
@@ -290,6 +295,7 @@ export const resetUserPasswordHandler = async (req: AuthRequest, res: Response) 
         updatedAt: new Date()
       }
     });
+    await revokeAllUserSessions(user.id, "PASSWORD_RESET");
     await logUserEvent({
       actorUserId: req.user?.sub,
       action: "USER_PASSWORD_RESET",
@@ -325,6 +331,7 @@ export const deactivateUserHandler = async (req: AuthRequest, res: Response) => 
       where: { id: user.id },
       data: { isActive: false, updatedAt: new Date() }
     });
+    await revokeAllUserSessions(updated.id, "USER_DEACTIVATED");
     await logUserEvent({
       actorUserId: req.user?.sub,
       action: "USER_DEACTIVATED",

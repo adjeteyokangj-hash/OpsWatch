@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
 import { apiFetch } from "../../lib/api";
-import { getAuthClaims } from "../../lib/auth";
+import { refreshAuthSession } from "../../lib/auth";
 import { generatePassword } from "../../lib/password-generator";
 
 type UserRow = {
@@ -118,11 +118,12 @@ export default function MembersPage() {
   };
 
   useEffect(() => {
-    const claims = getAuthClaims();
-    const admin = claims?.role === "ADMIN";
-    setCurrentUserId(typeof claims?.sub === "string" ? claims.sub : null);
-    setIsAdmin(admin);
-    void load(admin);
+    void refreshAuthSession().then((user) => {
+      const admin = user?.role === "ADMIN";
+      setCurrentUserId(user?.id ?? null);
+      setIsAdmin(admin);
+      void load(admin);
+    });
   }, []);
 
   const reload = async () => load(isAdmin);

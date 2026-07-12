@@ -1,7 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
 import { prisma } from "../lib/prisma";
+import { CSRF_HEADER } from "../config/session";
+import { isSessionAuthEnabled } from "../config/session";
+import { readCsrfToken, readSessionToken } from "../lib/session-cookie";
 import { sha256 } from "../utils/crypto";
 import { verifyJwt } from "../utils/jwt";
+import { verifySessionCsrf, validateSessionToken } from "../services/session.service";
 
 export interface AuthRequest extends Request {
   user?: {
@@ -16,6 +20,9 @@ export interface AuthRequest extends Request {
   apiKeyScopes?: string[];
   apiKeyOrganizationId?: string;
   apiKeyProjectId?: string | null;
+  sessionId?: string;
+  sessionAuth?: boolean;
+  sessionCsrfTokenHash?: string;
 }
 
 const extractBearer = (req: Request): string | null => {
@@ -52,6 +59,60 @@ const tryAttachJwt = (req: AuthRequest): boolean => {
   }
 };
 
+const tryAttachSession = async (req: AuthRequest): Promise<boolean> => {
+  if (!isSessionAuthEnabled()) {
+    return false;
+  }
+
+  const sessionToken = readSessionToken(req.headers.cookie);
+  if (!sessionToken) {
+    return false;
+  }
+
+  const validated = await validateSessionToken(sessionToken);
+  if (!validated) {
+    return false;
+  }
+
+  req.sessionId = validated.sessionId;
+  req.sessionAuth = true;
+  req.sessionCsrfTokenHash = validated.csrfTokenHash;
+  req.user = {
+    sub: validated.user.id,
+    id: validated.user.id,
+    email: validated.user.email,
+    role: validated.user.role,
+    organizationId: validated.user.organizationId ?? undefined
+  };
+  return true;
+};
+
+const validateSessionCsrfRequest = (req: AuthRequest): boolean => {
+  if (!req.sessionAuth || !req.sessionId) {
+    return true;
+  }
+
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method.toUpperCase())) {
+    return true;
+  }
+
+  const cookieToken = readCsrfToken(req.headers.cookie);
+  const headerToken = req.header(CSRF_HEADER)?.trim();
+  if (!cookieToken || !headerToken) {
+    return false;
+  }
+
+  if (cookieToken !== headerToken) {
+    return false;
+  }
+
+  if (req.sessionCsrfTokenHash && !verifySessionCsrf(headerToken, req.sessionCsrfTokenHash)) {
+    return false;
+  }
+
+  return true;
+};
+
 const authorizeApiKey = async (req: AuthRequest, requiredScopes: string[]): Promise<boolean> => {
   const headerKey = req.header("x-api-key") || extractBearer(req);
   const parsed = parseMonitorKey(headerKey);
@@ -79,23 +140,35 @@ const authorizeApiKey = async (req: AuthRequest, requiredScopes: string[]): Prom
   return true;
 };
 
-export const requireAuth = (req: AuthRequest, res: Response, next: NextFunction) => {
-  if (!tryAttachJwt(req)) {
-    res.status(401).json({ error: "Unauthorized" });
+export const requireAuth = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  if ((await tryAttachSession(req)) || tryAttachJwt(req)) {
+    if (!validateSessionCsrfRequest(req)) {
+      res.status(403).json({ error: "Invalid CSRF token", code: "CSRF_INVALID" });
+      return;
+    }
+    next();
     return;
   }
-  next();
+
+  res.status(401).json({ error: "Unauthorized" });
 };
 
-export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
-  if (!tryAttachJwt(req)) {
+export const requireAdmin = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  if (!(await tryAttachSession(req)) && !tryAttachJwt(req)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+
+  if (!validateSessionCsrfRequest(req)) {
+    res.status(403).json({ error: "Invalid CSRF token", code: "CSRF_INVALID" });
+    return;
+  }
+
   if (req.user?.role !== "ADMIN") {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
+
   next();
 };
 
@@ -124,3 +197,5 @@ export const requireApiKeyReadScope = (requiredScopes: string[], _projectIdParam
     res.status(401).json({ error: "Unauthorized" });
   };
 };
+
+export { tryAttachSession, validateSessionCsrfRequest };

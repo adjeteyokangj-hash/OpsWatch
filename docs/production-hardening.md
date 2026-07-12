@@ -11,6 +11,7 @@
 - Keep `NODE_ENV=production` so API only trusts configured `OPSWATCH_WEB_URL`.
 - **Webhook ingress:** `/api/webhooks/*` rejects unsigned requests. Provider secrets must be configured; missing secrets return 503 (fail-closed). Signatures are verified against raw request bytes with constant-time comparison.
 - **Ingest replay protection:** `/api/event`, `/api/health-snapshot`, and `/api/heartbeat` require API key scope plus signed timestamp, nonce, and HMAC over raw body bytes. Missing project signing configuration returns 503. Replayed nonces return 409. Stale timestamps return 401 with `INGEST_STALE`.
+- **Browser sessions:** Authentication uses server-managed sessions in HttpOnly cookies (`opswatch_session`) with CSRF double-submit (`opswatch_csrf` + `x-opswatch-csrf`). Session secrets are stored hashed in PostgreSQL (`tokenHash`, `csrfTokenHash`); raw tokens exist only in cookies. Production sets `Secure` cookies. `SESSION_SIGNING_REQUIRED=true` (default) enables cookie authentication; set `false` only for local bearer-token testing. Next.js middleware treats the session cookie as an access hint; the API is authoritative for validity, expiry, and revocation. Password changes, admin resets, role changes, and deactivation revoke existing sessions.
 - Reject stale timestamps and invalid signatures on ingest routes (enforced — see ingest replay protection above).
 
 ## Logging Safety

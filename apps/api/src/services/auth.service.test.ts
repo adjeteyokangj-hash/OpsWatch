@@ -16,6 +16,10 @@ vi.mock("../lib/prisma", () => ({
   prisma: prismaMock
 }));
 
+vi.mock("./session.service", () => ({
+  revokeAllUserSessions: vi.fn().mockResolvedValue(0)
+}));
+
 describe("changePassword", () => {
   const currentHash = bcrypt.hashSync("CurrentPassword123!", 10);
 
