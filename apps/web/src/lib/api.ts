@@ -42,21 +42,26 @@ const buildHeaders = (init?: RequestInit): HeadersInit => {
   return headers;
 };
 
-export const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const requestInit: RequestInit = {
-    ...init,
-    headers: buildHeaders(init),
+export type ApiFetchOptions = RequestInit & {
+  suppressAuthRedirect?: boolean;
+};
+
+export const apiFetch = async <T>(path: string, init?: ApiFetchOptions): Promise<T> => {
+  const { suppressAuthRedirect, ...requestInit } = init ?? {};
+  const resolvedInit: RequestInit = {
+    ...requestInit,
+    headers: buildHeaders(requestInit),
     credentials: "include",
     cache: "no-store"
   };
 
-  let response = await fetch(`${API_BASE_URL}${path}`, requestInit);
+  let response = await fetch(`${API_BASE_URL}${path}`, resolvedInit);
 
   if (!response.ok && shouldTryLocalFallback(response.status, API_BASE_URL)) {
-    response = await fetch(`${LOCAL_API_FALLBACK}${path}`, requestInit);
+    response = await fetch(`${LOCAL_API_FALLBACK}${path}`, resolvedInit);
   }
 
-  if (response.status === 401 && typeof window !== "undefined") {
+  if (response.status === 401 && !suppressAuthRedirect && typeof window !== "undefined") {
     clearAuthCookies();
     if (!window.location.pathname.startsWith("/login")) {
       window.location.href = "/login";

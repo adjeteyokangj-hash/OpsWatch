@@ -25,6 +25,16 @@ const resolveDevPassword = (adminPassword: string | undefined, existingUser: boo
 };
 
 async function resolveSeedOrganization(isProduction: boolean) {
+  const preferred = await prisma.organization.findFirst({
+    where: { slug: { in: ["okanggroup", "opswatch-default"] } },
+    orderBy: { Project: { _count: "desc" } },
+    include: { _count: { select: { Project: true } } }
+  });
+
+  if (preferred) {
+    return preferred;
+  }
+
   if (isProduction) {
     return prisma.organization.upsert({
       where: { slug: "opswatch-default" },
@@ -36,16 +46,6 @@ async function resolveSeedOrganization(isProduction: boolean) {
         updatedAt: new Date()
       }
     });
-  }
-
-  const preferred = await prisma.organization.findFirst({
-    where: { slug: { in: ["okanggroup", "opswatch-default"] } },
-    orderBy: { Project: { _count: "desc" } },
-    include: { _count: { select: { Project: true } } }
-  });
-
-  if (preferred) {
-    return preferred;
   }
 
   return prisma.organization.create({
@@ -138,23 +138,21 @@ async function main() {
     );
   }
 
-  if (!isProduction) {
-    const [movedProjects, movedUsers] = await Promise.all([
-      prisma.project.updateMany({
-        where: { organizationId: { not: org.id } },
-        data: { organizationId: org.id, updatedAt: new Date() }
-      }),
-      prisma.user.updateMany({
-        where: { organizationId: { not: org.id } },
-        data: { organizationId: org.id, updatedAt: new Date() }
-      })
-    ]);
-    if (movedProjects.count > 0) {
-      console.log(`Moved ${movedProjects.count} project(s) into org ${org.slug}`);
-    }
-    if (movedUsers.count > 0) {
-      console.log(`Moved ${movedUsers.count} user(s) into org ${org.slug}`);
-    }
+  const [movedProjects, movedUsers] = await Promise.all([
+    prisma.project.updateMany({
+      where: { organizationId: { not: org.id } },
+      data: { organizationId: org.id, updatedAt: new Date() }
+    }),
+    prisma.user.updateMany({
+      where: { organizationId: { not: org.id } },
+      data: { organizationId: org.id, updatedAt: new Date() }
+    })
+  ]);
+  if (movedProjects.count > 0) {
+    console.log(`Moved ${movedProjects.count} project(s) into org ${org.slug}`);
+  }
+  if (movedUsers.count > 0) {
+    console.log(`Moved ${movedUsers.count} user(s) into org ${org.slug}`);
   }
 }
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
 import { apiFetch } from "../../lib/api";
+import { fetchSessionUser } from "../../lib/auth";
 import { StatCard } from "../../components/dashboard/stat-card";
 import { HealthOverview } from "../../components/dashboard/health-overview";
 import { RecentAlerts } from "../../components/dashboard/recent-alerts";
@@ -64,6 +65,11 @@ type InsightsProject = {
   recommendations?: InsightsRecommendation[];
 };
 
+const formatLoadFailure = (label: string, reason: unknown): string => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  return `${label} (${message || "failed"})`;
+};
+
 export default function DashboardPage() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
@@ -74,20 +80,27 @@ export default function DashboardPage() {
   const [layerHealth, setLayerHealth] = useState<LayerHealthRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sessionOrgMissing, setSessionOrgMissing] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       setError(null);
+      setSessionOrgMissing(false);
       try {
+        const sessionUser = await fetchSessionUser();
+        if (!sessionUser?.organizationId) {
+          setSessionOrgMissing(true);
+        }
+
         const [projectsResult, alertsResult, incidentsResult, checksResult, insightsResult, layerHealthResult] =
           await Promise.allSettled([
-            apiFetch<ProjectRow[]>('/projects'),
-            apiFetch<AlertRow[]>('/alerts'),
-            apiFetch<IncidentRow[]>('/incidents'),
-            apiFetch<{ items: CheckRow[]; summary: { total: number; pass: number; fail: number; warn: number; pending: number } }>('/checks'),
-            apiFetch<{ projects: InsightsProject[] }>('/insights/product'),
-            apiFetch<LayerHealthRow[]>('/analytics/layer-health')
+            apiFetch<ProjectRow[]>('/projects', { suppressAuthRedirect: true }),
+            apiFetch<AlertRow[]>('/alerts', { suppressAuthRedirect: true }),
+            apiFetch<IncidentRow[]>('/incidents', { suppressAuthRedirect: true }),
+            apiFetch<{ items: CheckRow[]; summary: { total: number; pass: number; fail: number; warn: number; pending: number } }>('/checks', { suppressAuthRedirect: true }),
+            apiFetch<{ projects: InsightsProject[] }>('/insights/product', { suppressAuthRedirect: true }),
+            apiFetch<LayerHealthRow[]>('/analytics/layer-health', { suppressAuthRedirect: true })
           ]);
 
         const failures: string[] = [];
@@ -95,26 +108,26 @@ export default function DashboardPage() {
         if (projectsResult.status === 'fulfilled') {
           setProjects(projectsResult.value);
         } else {
-          failures.push('projects');
+          failures.push(formatLoadFailure('projects', projectsResult.reason));
         }
 
         if (alertsResult.status === 'fulfilled') {
           setAlerts(alertsResult.value);
         } else {
-          failures.push('alerts');
+          failures.push(formatLoadFailure('alerts', alertsResult.reason));
         }
 
         if (incidentsResult.status === 'fulfilled') {
           setIncidents(incidentsResult.value);
         } else {
-          failures.push('incidents');
+          failures.push(formatLoadFailure('incidents', incidentsResult.reason));
         }
 
         if (checksResult.status === 'fulfilled') {
           setChecks(checksResult.value.items);
           setCheckSummary(checksResult.value.summary);
         } else {
-          failures.push('checks');
+          failures.push(formatLoadFailure('checks', checksResult.reason));
         }
 
         if (insightsResult.status === 'fulfilled') {
@@ -129,17 +142,17 @@ export default function DashboardPage() {
             .filter((recommendation) => !/localhost|127\.0\.0\.1|http:\/\//i.test(`${recommendation.title} ${recommendation.description}`));
           setRecommendations(openRecommendations.slice(0, 4));
         } else {
-          failures.push('insights');
+          failures.push(formatLoadFailure('insights', insightsResult.reason));
         }
 
         if (layerHealthResult.status === 'fulfilled') {
           setLayerHealth(layerHealthResult.value);
         } else {
-          failures.push('layer health');
+          failures.push(formatLoadFailure('layer health', layerHealthResult.reason));
         }
 
         if (failures.length > 0) {
-          setError(`Some dashboard data failed to load: ${failures.join(', ')}. Showing available live data only.`);
+          setError(`Some dashboard data failed to load: ${failures.join('; ')}. Showing available live data only.`);
         }
       } catch (err: any) {
         setError(err?.message || "Failed to load dashboard data");
@@ -190,8 +203,14 @@ export default function DashboardPage() {
         <section className="panel error-panel">
           <EmptyState
             title="No monitoring data visible"
-            description="Your login token may be outdated after a database repair. Log out and sign in again to reload organization access."
-            action={<a className="primary-button" href="/login">Go to login</a>}
+            description={
+              sessionOrgMissing
+                ? "Your account is signed in but not linked to an organization. Run the production org reconcile script, then sign in again."
+                : error
+                  ? "Monitoring data could not be loaded for your organization. Check the error below and verify API access."
+                  : "No projects, alerts, or incidents exist for your organization yet. Create a project to start monitoring."
+            }
+            action={<a className="primary-button" href="/projects">Open projects</a>}
           />
         </section>
       ) : null}

@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import { generateApiKey, generateSigningSecret } from "../utils/crypto";
 import type { AuthRequest } from "../middleware/auth";
 import { hasPermission } from "../auth/permissions";
+import { requireOrg } from "../lib/require-org";
 import { enrichProjectRow, projectInclude } from "../services/project-loader.service";
 import { createDefaultProjectBilling, updateProjectBilling } from "../services/project-billing.service";
 
@@ -19,15 +20,6 @@ const normalizeProjectRow = (row: any) => ({
 	billing: row.billing ?? row.ProjectBilling ?? null
 });
 
-const requireOrg = (req: AuthRequest, res: Response): string | null => {
-	const orgId = req.user?.organizationId;
-	if (!orgId) {
-		res.status(403).json({ error: "Organization required" });
-		return null;
-	}
-	return orgId;
-};
-
 export const listProjects = async (req: AuthRequest, res: Response) => {
 	const orgId = requireOrg(req, res);
 	if (!orgId) return;
@@ -38,7 +30,21 @@ export const listProjects = async (req: AuthRequest, res: Response) => {
 		orderBy: { createdAt: "desc" }
 	});
 
-	res.json(await Promise.all(rows.map((row) => enrichProjectRow(row as any).then(normalizeProjectRow))));
+	const enriched = await Promise.all(
+		rows.map(async (row) => {
+			try {
+				return normalizeProjectRow(await enrichProjectRow(row as any));
+			} catch (error) {
+				console.error("PROJECT_ENRICH_ERROR", {
+					projectId: row.id,
+					message: error instanceof Error ? error.message : String(error)
+				});
+				return normalizeProjectRow(row as any);
+			}
+		})
+	);
+
+	res.json(enriched);
 };
 
 export const createProject = async (req: AuthRequest, res: Response) => {
