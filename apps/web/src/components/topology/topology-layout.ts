@@ -4,11 +4,11 @@ import { LAYER_ORDER } from "./topology-types";
 export type NodePosition = { x: number; y: number };
 
 export const LAYOUT = {
-  nodeWidth: 168,
-  nodeHeight: 82,
-  gapX: 24,
-  rowHeight: 108,
-  nodesPerRow: 7,
+  nodeWidth: 228,
+  nodeHeight: 132,
+  gapX: 20,
+  rowHeight: 156,
+  nodesPerRow: 5,
   paddingX: 96,
   paddingY: 88,
   layerGap: 36,
@@ -82,11 +82,24 @@ export const computeLayeredLayout = (nodes: TopologyNode[]): LayeredLayout => {
 export const edgePath = (
   source: NodePosition,
   target: NodePosition,
-  curved = false
+  curved = true
 ): string => {
   if (!curved) {
     return `M ${source.x} ${source.y} L ${target.x} ${target.y}`;
   }
-  const midY = (source.y + target.y) / 2;
-  return `M ${source.x} ${source.y} C ${source.x} ${midY}, ${target.x} ${midY}, ${target.x} ${target.y}`;
+
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const curve = Math.max(48, Math.min(160, Math.abs(dx) * 0.35 + Math.abs(dy) * 0.2));
+  const c1x = source.x + dx * 0.08;
+  const c1y = source.y + curve;
+  const c2x = target.x - dx * 0.08;
+  const c2y = target.y - curve;
+
+  return `M ${source.x} ${source.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${target.x} ${target.y}`;
+};
+
+export const edgeStrokeWidth = (weight: number): number => {
+  const normalized = Math.max(1.5, Math.min(6.5, 1.5 + weight / 4200));
+  return Number(normalized.toFixed(1));
 };

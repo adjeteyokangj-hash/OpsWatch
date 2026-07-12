@@ -13,6 +13,7 @@ import { TopologyNodeDrawer } from "../../../../components/topology/topology-nod
 import { TopologySummaryCards } from "../../../../components/topology/topology-summary-cards";
 import { TopologyFilterBar, type TopologyViewMode } from "../../../../components/topology/topology-filter-bar";
 import { TopologyListView } from "../../../../components/topology/topology-list-view";
+import { TopologyTimeReplay } from "../../../../components/topology/topology-time-replay";
 import type { ProjectTopologyResponse, TopologyHealthStatus, TopologyNodeType } from "../../../../components/topology/topology-types";
 
 const REFRESH_MS = 30_000;
@@ -40,6 +41,7 @@ export default function ProjectTopologyPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [fitToken, setFitToken] = useState(0);
   const [viewMode, setViewMode] = useState<TopologyViewMode>("map");
+  const [replayMinutesAgo, setReplayMinutesAgo] = useState(0);
 
   const load = useCallback(
     async (manual = false) => {
@@ -176,6 +178,7 @@ export default function ProjectTopologyPage() {
               onSearchQueryChange={setSearchQuery}
               onViewModeChange={setViewMode}
             />
+            <TopologyTimeReplay minutesAgo={replayMinutesAgo} onChange={setReplayMinutesAgo} />
             <div className="topology-workspace">
               {viewMode === "map" ? (
                 <TopologyCanvas
@@ -186,6 +189,8 @@ export default function ProjectTopologyPage() {
                   healthFilter={healthFilter}
                   searchQuery={searchQuery}
                   fitToken={fitToken}
+                  replayMinutesAgo={replayMinutesAgo}
+                  traceFocus
                   onInteractingChange={setPaused}
                 />
               ) : (

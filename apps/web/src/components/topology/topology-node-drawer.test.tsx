@@ -52,7 +52,7 @@ describe("TopologyNodeDrawer", () => {
       />
     );
 
-    expect(screen.getAllByText(/awaiting first check/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/waiting for first heartbeat/i).length).toBeGreaterThan(0);
     expect(screen.getByText("Open alerts")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /view details/i })).toHaveAttribute(
       "href",

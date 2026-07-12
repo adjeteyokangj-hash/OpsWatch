@@ -8,7 +8,14 @@ import type {
   TopologyOverlays
 } from "./topology-types";
 import { healthClassName, healthLabel } from "./topology-types";
-import { computeLayeredLayout, edgePath, LAYOUT } from "./topology-layout";
+import { computeLayeredLayout, edgePath, edgeStrokeWidth, LAYOUT } from "./topology-layout";
+import { TopologyNodeCard } from "./topology-node-card";
+import {
+  buildTraceFocusIds,
+  countHierarchyChildren,
+  getCollapsedDescendantIds
+} from "./topology-focus";
+import { edgeTrafficWeight, replayNodeStatus } from "./topology-metrics";
 
 type Props = {
   topology: ProjectTopologyResponse;
@@ -22,12 +29,21 @@ type Props = {
   showChangeEvents?: boolean;
   showCorrelatedIncidents?: boolean;
   dimUnrelated?: boolean;
+  traceFocus?: boolean;
+  replayMinutesAgo?: number;
   searchQuery?: string;
   fitToken?: number;
 };
 
 const NODE_WIDTH = LAYOUT.nodeWidth;
 const NODE_HEIGHT = LAYOUT.nodeHeight;
+
+const trafficTone = (status: TopologyHealthStatus): string => {
+  if (status === "HEALTHY") return "healthy";
+  if (status === "DEGRADED") return "degraded";
+  if (status === "CRITICAL") return "critical";
+  return "unknown";
+};
 
 export const TopologyCanvas = ({
   topology,
@@ -41,6 +57,8 @@ export const TopologyCanvas = ({
   showChangeEvents = true,
   showCorrelatedIncidents = true,
   dimUnrelated = false,
+  traceFocus = true,
+  replayMinutesAgo = 0,
   searchQuery = "",
   fitToken = 0
 }: Props) => {
@@ -48,9 +66,10 @@ export const TopologyCanvas = ({
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [referenceScale, setReferenceScale] = useState(1);
   const [dragging, setDragging] = useState(false);
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
   const dragOrigin = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
 
-  const focusNodeIds = useMemo(() => {
+  const overlayFocusIds = useMemo(() => {
     const ids = new Set<string>(overlays?.affectedNodeIds ?? []);
     for (const root of overlays?.rootCauses ?? []) ids.add(root.nodeId);
     for (const edge of overlays?.propagationEdges ?? []) {
@@ -61,12 +80,28 @@ export const TopologyCanvas = ({
     return ids;
   }, [overlays]);
 
-  const baseNodes = useMemo(() => {
-    if (!subgraphOnly || focusNodeIds.size === 0) return topology.nodes;
-    return topology.nodes.filter((node) => focusNodeIds.has(node.id));
-  }, [topology.nodes, subgraphOnly, focusNodeIds]);
+  const traceFocusIds = useMemo(
+    () => (traceFocus && selectedNodeId ? buildTraceFocusIds(selectedNodeId, topology) : new Set<string>()),
+    [traceFocus, selectedNodeId, topology]
+  );
 
-  const layoutKey = baseNodes.map((row) => row.id).sort().join("|");
+  const focusNodeIds = overlayFocusIds.size > 0 ? overlayFocusIds : traceFocusIds;
+  const shouldDim = dimUnrelated || (traceFocus && selectedNodeId != null && overlayFocusIds.size === 0);
+
+  const hiddenDescendants = useMemo(
+    () => getCollapsedDescendantIds(collapsedNodeIds, topology.edges),
+    [collapsedNodeIds, topology.edges]
+  );
+
+  const baseNodes = useMemo(() => {
+    let rows = topology.nodes.filter((node) => !hiddenDescendants.has(node.id));
+    if (subgraphOnly && focusNodeIds.size > 0) {
+      rows = rows.filter((node) => focusNodeIds.has(node.id));
+    }
+    return rows;
+  }, [topology.nodes, hiddenDescendants, subgraphOnly, focusNodeIds]);
+
+  const layoutKey = `${baseNodes.map((row) => row.id).sort().join("|")}|${[...collapsedNodeIds].sort().join(",")}`;
 
   const graphLayout = useMemo(() => {
     const base = computeLayeredLayout(baseNodes);
@@ -92,11 +127,18 @@ export const TopologyCanvas = ({
 
   const zoomPercent = Math.max(25, Math.min(250, Math.round((viewport.scale / referenceScale) * 100)));
 
+  const displayStatusFor = (nodeId: string, status: TopologyHealthStatus): TopologyHealthStatus => {
+    const node = topology.nodes.find((row) => row.id === nodeId);
+    if (!node) return status;
+    return replayNodeStatus(node, replayMinutesAgo);
+  };
+
   const visibleNodes = useMemo(
     () =>
       baseNodes.filter((node) => {
+        const status = displayStatusFor(node.id, node.status);
         if (typeFilter !== "ALL" && node.type !== typeFilter) return false;
-        if (healthFilter !== "ALL" && node.status !== healthFilter) return false;
+        if (healthFilter !== "ALL" && status !== healthFilter) return false;
         if (searchQuery.trim()) {
           const query = searchQuery.trim().toLowerCase();
           if (!node.name.toLowerCase().includes(query) && !node.type.toLowerCase().includes(query)) {
@@ -105,7 +147,7 @@ export const TopologyCanvas = ({
         }
         return true;
       }),
-    [baseNodes, typeFilter, healthFilter, searchQuery]
+    [baseNodes, typeFilter, healthFilter, searchQuery, replayMinutesAgo]
   );
 
   const visibleNodeIds = new Set(visibleNodes.map((row) => row.id));
@@ -137,7 +179,7 @@ export const TopologyCanvas = ({
     const width = maxX - minX;
     const height = maxY - minY;
     const scale = Math.min(container.clientWidth / width, container.clientHeight / height, 1.2);
-    const nextScale = Math.max(scale, 0.6);
+    const nextScale = Math.max(scale, 0.45);
     setReferenceScale(nextScale);
     setViewport({
       scale: nextScale,
@@ -171,18 +213,13 @@ export const TopologyCanvas = ({
     window.setTimeout(() => onInteractingChange?.(false), 800);
   };
 
-  const statusDotColor = (status: string): string => {
-    if (status === "HEALTHY") return "#16a34a";
-    if (status === "DEGRADED") return "#d97706";
-    if (status === "CRITICAL") return "#dc2626";
-    return "#94a3b8";
-  };
-
-  const statusStrokeColor = (status: string): string => {
-    if (status === "HEALTHY") return "#86efac";
-    if (status === "DEGRADED") return "#fcd34d";
-    if (status === "CRITICAL") return "#fca5a5";
-    return "#cbd5e1";
+  const toggleCollapse = (nodeId: string) => {
+    setCollapsedNodeIds((current) => {
+      const next = new Set(current);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -217,7 +254,6 @@ export const TopologyCanvas = ({
   };
 
   const onWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    // Let normal scroll pass through; zoom only with Ctrl/Cmd (or trackpad pinch).
     if (!event.ctrlKey && !event.metaKey) return;
 
     event.preventDefault();
@@ -254,7 +290,7 @@ export const TopologyCanvas = ({
   return (
     <div
       ref={containerRef}
-      className={`topology-canvas-wrap${dragging ? " is-dragging" : ""}`}
+      className={`topology-canvas-wrap${dragging ? " is-dragging" : ""}${shouldDim && focusNodeIds.size > 0 ? " topology-canvas-wrap--focus" : ""}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
@@ -270,6 +306,19 @@ export const TopologyCanvas = ({
         width={graphLayout.width}
         height={graphLayout.height}
       >
+        <defs>
+          <marker id="topology-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" />
+          </marker>
+          <filter id="topology-edge-glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
         <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
           {graphLayout.layerBands.map((band) => (
             <text key={`label-${band.layer}`} x={36} y={band.y + 24} className="topology-layer-label">
@@ -293,18 +342,43 @@ export const TopologyCanvas = ({
             const source = graphLayout.positions.get(edge.sourceId);
             const target = graphLayout.positions.get(edge.targetId);
             if (!source || !target) return null;
+
+            const replayStatus = displayStatusFor(edge.targetId, edge.status);
             const propagation = propagationKeys.has(`${edge.targetId}->${edge.sourceId}`)
               ? overlays?.propagationEdges?.find((row) => row.sourceId === edge.targetId && row.targetId === edge.sourceId)
               : propagationKeys.has(`${edge.sourceId}->${edge.targetId}`)
                 ? overlays?.propagationEdges?.find((row) => row.sourceId === edge.sourceId && row.targetId === edge.targetId)
                 : null;
+            const pathId = `edge-path-${edge.id}`;
+            const pathD = edgePath(source, target, true);
+            const weight = edgeTrafficWeight(edge, topology.nodes);
+            const edgeDimmed =
+              shouldDim && focusNodeIds.size > 0 && (!focusNodeIds.has(edge.sourceId) || !focusNodeIds.has(edge.targetId));
+
             return (
-              <g key={edge.id} className={`topology-edge topology-edge-${edge.type.toLowerCase()}${propagation ? " topology-propagation-edge" : ""}`}>
+              <g
+                key={edge.id}
+                className={`topology-edge topology-edge-${edge.type.toLowerCase()}${propagation ? " topology-propagation-edge" : ""}${edgeDimmed ? " dimmed" : ""}`}
+              >
                 <path
-                  d={edgePath(source, target, edge.type === "DEPENDENCY")}
-                  className={`topology-edge-line ${healthClassName(edge.status)}${edge.critical ? " critical" : ""}${propagation ? " propagation" : ""}`}
+                  id={pathId}
+                  d={pathD}
+                  className={`topology-edge-line ${healthClassName(replayStatus)}${edge.critical ? " critical" : ""}${propagation ? " propagation" : ""}`}
                   markerEnd={edge.type === "DEPENDENCY" ? "url(#topology-arrow)" : undefined}
+                  strokeWidth={edgeStrokeWidth(weight)}
+                  filter="url(#topology-edge-glow)"
                 />
+                {!edgeDimmed && replayMinutesAgo === 0
+                  ? [0, 1.1, 2.3].map((delay, index) => (
+                      <circle
+                        key={`${edge.id}-packet-${index}`}
+                        r={edge.critical ? 3.5 : 2.8}
+                        className={`topology-traffic-packet topology-traffic-packet--${trafficTone(replayStatus)}`}
+                      >
+                        <animateMotion dur={`${2.2 + index * 0.35}s`} repeatCount="indefinite" begin={`${delay}s`} path={pathD} />
+                      </circle>
+                    ))
+                  : null}
                 {propagation ? (
                   <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2 - 6} className="topology-propagation-order">
                     {propagation.order}
@@ -315,22 +389,22 @@ export const TopologyCanvas = ({
           })}
 
           {(overlays?.propagationEdges ?? []).map((edge) => {
-            if (visibleEdges.some((row) =>
-              (row.sourceId === edge.sourceId && row.targetId === edge.targetId) ||
-              (row.sourceId === edge.targetId && row.targetId === edge.sourceId)
-            )) {
+            if (
+              visibleEdges.some(
+                (row) =>
+                  (row.sourceId === edge.sourceId && row.targetId === edge.targetId) ||
+                  (row.sourceId === edge.targetId && row.targetId === edge.sourceId)
+              )
+            ) {
               return null;
             }
             const source = graphLayout.positions.get(edge.sourceId);
             const target = graphLayout.positions.get(edge.targetId);
             if (!source || !target) return null;
+            const pathD = edgePath(source, target, true);
             return (
               <g key={`prop-${edge.order}`} className="topology-edge topology-propagation-edge">
-                <path
-                  d={edgePath(source, target, true)}
-                  className="topology-edge-line propagation"
-                  markerEnd="url(#topology-arrow)"
-                />
+                <path d={pathD} className="topology-edge-line propagation" markerEnd="url(#topology-arrow)" />
                 <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2 - 6} className="topology-propagation-order">
                   {edge.order}
                 </text>
@@ -338,22 +412,20 @@ export const TopologyCanvas = ({
             );
           })}
 
-          <defs>
-            <marker id="topology-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-              <path d="M0,0 L6,3 L0,6 Z" fill="currentColor" />
-            </marker>
-          </defs>
-
           {visibleNodes.map((node) => {
             const position = graphLayout.positions.get(node.id);
             if (!position) return null;
             const selected = selectedNodeId === node.id;
             const rootCause = rootCauseByNode.get(node.id);
-            const dimmed = dimUnrelated && focusNodeIds.size > 0 && !focusNodeIds.has(node.id);
+            const displayStatus = displayStatusFor(node.id, node.status);
+            const dimmed = shouldDim && focusNodeIds.size > 0 && !focusNodeIds.has(node.id);
+            const childCount = countHierarchyChildren(node.id, topology.edges, topology.nodes);
+            const collapsed = collapsedNodeIds.has(node.id);
+
             return (
               <g
                 key={node.id}
-                className={`topology-node ${healthClassName(node.status)}${selected ? " selected" : ""}${overlays?.affectedNodeIds?.includes(node.id) ? " affected" : ""}${overlays?.incidentNodeIds?.includes(node.id) ? " incident-linked" : ""}${rootCause ? " root-cause" : ""}${dimmed ? " dimmed" : ""}`}
+                className={`topology-node ${healthClassName(displayStatus)}${selected ? " selected" : ""}${overlays?.affectedNodeIds?.includes(node.id) ? " affected" : ""}${overlays?.incidentNodeIds?.includes(node.id) ? " incident-linked" : ""}${rootCause ? " root-cause" : ""}${dimmed ? " dimmed" : ""}${selected && traceFocus ? " trace-focus" : ""}`}
                 transform={`translate(${position.x - NODE_WIDTH / 2} ${position.y - NODE_HEIGHT / 2})`}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -361,15 +433,11 @@ export const TopologyCanvas = ({
                 }}
                 data-testid={`topology-node-${node.id}`}
                 data-root-cause-rank={rootCause?.rank}
+                aria-label={`${node.name}, ${healthLabel(displayStatus)}`}
+                role="button"
+                tabIndex={0}
               >
-                <rect
-                  width={NODE_WIDTH}
-                  height={NODE_HEIGHT}
-                  rx={14}
-                  stroke={statusStrokeColor(node.status)}
-                  fill="#ffffff"
-                />
-                <circle cx={18} cy={NODE_HEIGHT - 18} r={5} fill={statusDotColor(node.status)} />
+                <rect width={NODE_WIDTH} height={NODE_HEIGHT} rx={14} className="topology-node-surface" />
                 {rootCause ? (
                   <g className="topology-root-badge">
                     <rect x={NODE_WIDTH - 34} y={8} width={26} height={18} rx={9} />
@@ -378,15 +446,18 @@ export const TopologyCanvas = ({
                     </text>
                   </g>
                 ) : null}
-                <text x={12} y={18} className="topology-node-type">
-                  {node.type}
-                </text>
-                <text x={12} y={38} className="topology-node-name">
-                  {node.name.length > 20 ? `${node.name.slice(0, 20)}…` : node.name}
-                </text>
-                <text x={30} y={NODE_HEIGHT - 14} className="topology-node-status">
-                  {healthLabel(node.status)}
-                </text>
+                <foreignObject x={0} y={0} width={NODE_WIDTH} height={NODE_HEIGHT}>
+                  <TopologyNodeCard
+                    node={node}
+                    displayStatus={displayStatus}
+                    childCount={childCount}
+                    collapsed={collapsed}
+                    onToggleCollapse={() => toggleCollapse(node.id)}
+                  />
+                </foreignObject>
+                <title>
+                  {node.name} · {healthLabel(displayStatus)}
+                </title>
               </g>
             );
           })}
@@ -444,12 +515,12 @@ export const TopologyCanvas = ({
 
       <div className="topology-canvas-footer" onPointerDown={(event) => event.stopPropagation()}>
         <div className="topology-legend-v2">
-          <span><i className="dot healthy" /> Healthy</span>
-          <span><i className="dot degraded" /> Degraded</span>
-          <span><i className="dot critical" /> Critical</span>
+          <span><i className="dot healthy" /> Healthy traffic</span>
+          <span><i className="dot degraded" /> Slow traffic</span>
+          <span><i className="dot critical" /> Failing traffic</span>
           <span><i className="dot unknown" /> Unknown</span>
           <span><i className="line dependency" /> Dependency</span>
-          <span><i className="line indirect" /> Indirect</span>
+          <span><i className="line indirect" /> Hierarchy</span>
         </div>
         <div className="topology-zoom-controls">
           <button type="button" className="secondary-button" onClick={() => zoomBy(0.88)} aria-label="Zoom out">

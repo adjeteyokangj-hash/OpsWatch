@@ -3787,7 +3787,48 @@ button {
 .topology-edge-line {
   fill: none;
   stroke-width: 2;
-  opacity: 0.8;
+  opacity: 0.88;
+  transition: opacity 0.25s ease, stroke-width 0.25s ease;
+}
+
+.topology-edge.dimmed .topology-edge-line,
+.topology-edge.dimmed .topology-traffic-packet {
+  opacity: 0.12;
+}
+
+.topology-traffic-packet {
+  pointer-events: none;
+}
+
+.topology-traffic-packet--healthy {
+  fill: #22c55e;
+  filter: drop-shadow(0 0 4px rgba(34, 197, 94, 0.65));
+}
+
+.topology-traffic-packet--degraded {
+  fill: #f59e0b;
+  animation: topology-packet-pulse 1.2s ease-in-out infinite;
+}
+
+.topology-traffic-packet--critical {
+  fill: #ef4444;
+  animation: topology-packet-pulse 0.8s ease-in-out infinite;
+}
+
+.topology-traffic-packet--unknown {
+  fill: #94a3b8;
+}
+
+@keyframes topology-packet-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    r: 2.5;
+  }
+  50% {
+    opacity: 1;
+    r: 4;
+  }
 }
 
 .topology-edge-line.critical {
@@ -3904,7 +3945,164 @@ button {
 }
 
 .topology-node.dimmed {
-  opacity: 0.35;
+  opacity: 0.15;
+}
+
+.topology-node.trace-focus .topology-node-surface {
+  stroke: #2563eb;
+  stroke-width: 3;
+  filter: drop-shadow(0 10px 22px rgba(37, 99, 235, 0.22));
+}
+
+.topology-node-surface {
+  fill: #ffffff;
+  stroke-width: 2;
+  stroke: #dbeafe;
+}
+
+.topology-node-card {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px 8px;
+  display: grid;
+  gap: 4px;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  color: var(--ink);
+  background: transparent;
+}
+
+.topology-node-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.topology-node-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.topology-node-card-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.topology-node-card-dot--healthy { background: #22c55e; }
+.topology-node-card-dot--degraded { background: #f59e0b; }
+.topology-node-card-dot--critical { background: #ef4444; }
+.topology-node-card-dot--neutral { background: #94a3b8; }
+
+.topology-node-card-title-wrap {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.topology-node-card-type {
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.topology-node-card-name {
+  font-size: 0.82rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topology-node-card-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.68rem;
+}
+
+.topology-node-card-health--healthy { color: #15803d; }
+.topology-node-card-health--degraded { color: #b45309; }
+.topology-node-card-health--critical { color: #b91c1c; }
+.topology-node-card-health--neutral { color: #64748b; }
+
+.topology-node-card-metric {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.topology-node-card .topology-kpi-sparkline {
+  width: 100%;
+  height: 22px;
+}
+
+.topology-node-card-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 8px;
+  font-size: 0.62rem;
+  color: var(--ink-soft);
+}
+
+.topology-node-card-expand {
+  justify-self: start;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #1d4ed8;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.topology-node-card-expand:hover {
+  background: #eff6ff;
+}
+
+.topology-time-replay {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.topology-time-replay-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.topology-time-replay-clock {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.topology-time-replay-slider {
+  width: 100%;
+}
+
+.topology-time-replay-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.topology-canvas-wrap--focus .topology-layer-band {
+  opacity: 0.55;
 }
 
 .topology-root-badge rect {
