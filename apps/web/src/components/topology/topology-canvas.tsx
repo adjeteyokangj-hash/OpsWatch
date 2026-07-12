@@ -50,6 +50,55 @@ type Props = {
 const NODE_WIDTH = LAYOUT.nodeWidth;
 const NODE_HEIGHT = LAYOUT.nodeHeight;
 
+const trafficTone = (status: TopologyHealthStatus): string => {
+  if (status === "HEALTHY") return "healthy";
+  if (status === "DEGRADED") return "degraded";
+  if (status === "CRITICAL") return "critical";
+  return "unknown";
+};
+
+const TRAFFIC_PACKET_DELAYS = [0, 1.1, 2.3];
+
+const TrafficPackets = ({
+  pathD,
+  edgeKey,
+  tone,
+  critical = false,
+  dimmed = false,
+  live = true,
+  fill
+}: {
+  pathD: string;
+  edgeKey: string;
+  tone: string;
+  critical?: boolean;
+  dimmed?: boolean;
+  live?: boolean;
+  fill?: string;
+}) => {
+  if (dimmed || !live) return null;
+
+  return (
+    <>
+      {TRAFFIC_PACKET_DELAYS.map((delay, index) => (
+        <circle
+          key={`${edgeKey}-packet-${index}`}
+          r={critical ? 3.5 : 2.8}
+          fill={fill}
+          className={`topology-traffic-packet topology-traffic-packet--${tone}`}
+        >
+          <animateMotion
+            dur={`${2.2 + index * 0.35}s`}
+            repeatCount="indefinite"
+            begin={`${delay}s`}
+            path={pathD}
+          />
+        </circle>
+      ))}
+    </>
+  );
+};
+
 export const TopologyCanvas = ({
   topology,
   selectedNodeId,
@@ -405,18 +454,28 @@ export const TopologyCanvas = ({
               shouldDim &&
               focusNodeIds.size > 0 &&
               (!focusNodeIds.has(link.childId) || !focusNodeIds.has(link.parentId));
+            const layerColor = layerEdgeColor(link.parentLayer);
 
             return (
               <g
                 key={link.key}
                 className={`topology-edge topology-edge-hierarchy${edgeDimmed ? " dimmed" : ""}`}
-                style={{ color: layerEdgeColor(link.parentLayer) }}
+                style={{ color: layerColor }}
               >
                 <path
                   d={pathD}
                   className="topology-edge-line topology-edge-line--hierarchy"
-                  stroke={layerEdgeColor(link.parentLayer)}
+                  stroke={layerColor}
                   strokeWidth={2.5}
+                  filter="url(#topology-edge-glow)"
+                />
+                <TrafficPackets
+                  pathD={pathD}
+                  edgeKey={link.key}
+                  tone="hierarchy-flow"
+                  dimmed={edgeDimmed}
+                  live={replayMinutesAgo === 0}
+                  fill={layerColor}
                 />
               </g>
             );
@@ -446,6 +505,15 @@ export const TopologyCanvas = ({
                   markerEnd="url(#topology-arrow)"
                   strokeWidth={edgeStrokeWidth(weight)}
                   opacity={0.55}
+                  filter="url(#topology-edge-glow)"
+                />
+                <TrafficPackets
+                  pathD={pathD}
+                  edgeKey={link.key}
+                  tone={trafficTone(replayStatus)}
+                  critical={link.edge.critical}
+                  dimmed={edgeDimmed}
+                  live={replayMinutesAgo === 0}
                 />
               </g>
             );

@@ -3819,6 +3819,11 @@ button {
   fill: #94a3b8;
 }
 
+.topology-traffic-packet--hierarchy-flow {
+  animation: topology-packet-pulse 2.2s ease-in-out infinite;
+  filter: drop-shadow(0 0 5px rgba(72, 187, 120, 0.55));
+}
+
 @keyframes topology-packet-pulse {
   0%,
   100% {
