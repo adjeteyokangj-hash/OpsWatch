@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../lib/api";
 import { API_BASE_URL } from "../../lib/constants";
-import { formatApplicationId, maskSecret } from "../../lib/application-id";
+import { formatApplicationId } from "../../lib/application-id";
 
 type WizardStep = "register" | "success" | "credentials" | "verification" | "finish";
 
@@ -55,15 +55,15 @@ type RegisterForm = {
 
 type ClientMode = "none" | "existing" | "new";
 
+type JourneyStep = {
+  id: string;
+  label: string;
+  status: "done" | "current" | "upcoming";
+};
+
 const SDK_PACKAGE = "@opswatch/client";
 
-const STEP_LABELS: Record<WizardStep, string> = {
-  register: "Register",
-  success: "Registered",
-  credentials: "Connect",
-  verification: "Verify",
-  finish: "Finish"
-};
+const JOURNEY_LABELS = ["Register", "Connect", "Heartbeat", "Discover", "Configure", "Monitoring"] as const;
 
 const EMPTY_FORM: RegisterForm = {
   name: "",
@@ -89,6 +89,36 @@ const buildSetupEnv = (input: {
   }
   return `${lines.join("\n")}\n`;
 };
+
+const getJourneySteps = (step: WizardStep, isConnected: boolean): JourneyStep[] => {
+  let activeIndex = 0;
+  if (step === "success" || step === "credentials") activeIndex = 1;
+  else if (step === "verification") activeIndex = 2;
+  else if (step === "finish") activeIndex = isConnected ? 3 : 2;
+
+  return JOURNEY_LABELS.map((label, index) => ({
+    id: label.toLowerCase(),
+    label,
+    status: index < activeIndex ? "done" : index === activeIndex ? "current" : "upcoming"
+  }));
+};
+
+function ApiKeyCopyField({ apiKey, onCopy }: { apiKey: string; onCopy: () => void | Promise<void> }) {
+  return (
+    <label>
+      API key
+      <div className="api-key-copy-row">
+        <input value={apiKey} readOnly className="api-key-copy-input" />
+        <button type="button" className="secondary-button api-key-copy-button" onClick={() => void onCopy()} data-action="local-ui">
+          Copy
+        </button>
+      </div>
+      <span className="warn-text api-key-once-warning">
+        This API key is shown only once. Copy it now. You won&apos;t be able to view it again.
+      </span>
+    </label>
+  );
+}
 
 type RegisterApplicationWizardProps = {
   onClose: () => void;
@@ -119,6 +149,7 @@ export function RegisterApplicationWizard({
   const latestHeartbeat = connection?.heartbeats?.[0] ?? null;
   const isConnected = Boolean(latestHeartbeat);
   const applicationId = created ? formatApplicationId(created.id) : "";
+  const journeySteps = getJourneySteps(step, isConnected);
 
   const clientSuggestions = useMemo(
     () => [...new Set(knownClients.map((value) => value.trim()).filter(Boolean))].sort(),
@@ -257,10 +288,6 @@ export function RegisterApplicationWizard({
     onClose();
   };
 
-  const stepOrder: WizardStep[] = ["register", "success", "credentials", "verification", "finish"];
-  const stepIndex = stepOrder.indexOf(step);
-  const visibleSteps = step === "register" ? [] : stepOrder.slice(0, stepIndex + 1);
-
   const stepTitle =
     step === "register"
       ? "Register application"
@@ -276,7 +303,7 @@ export function RegisterApplicationWizard({
     step === "register"
       ? "Register a new application with OpsWatch. Everything else is configured after the first heartbeat."
       : step === "success"
-        ? "Your application is ready. Copy the API key when you are ready to connect."
+        ? "Copy your API key now, then connect your application to OpsWatch."
         : step === "credentials"
           ? "Use these credentials to wire up the SDK and start sending heartbeats."
           : step === "verification"
@@ -297,21 +324,19 @@ export function RegisterApplicationWizard({
         ) : null}
       </div>
 
-      {visibleSteps.length > 0 ? (
-        <div className="register-wizard-steps" aria-label="Registration progress">
-          {visibleSteps.map((key, index) => {
-            const isDone = index < stepIndex;
-            const isCurrent = index === stepIndex;
-            return (
-              <div
-                key={key}
-                className={`register-wizard-step${isCurrent ? " register-wizard-step--active" : ""}${isDone ? " register-wizard-step--done" : ""}`}
-              >
-                <span className="register-wizard-step-number">{isDone ? "✓" : isCurrent ? "▶" : index + 1}</span>
-                <span>{STEP_LABELS[key]}</span>
-              </div>
-            );
-          })}
+      {step !== "register" ? (
+        <div className="register-wizard-journey" aria-label="Onboarding journey">
+          {journeySteps.map((journeyStep) => (
+            <div
+              key={journeyStep.id}
+              className={`register-wizard-step register-wizard-step--${journeyStep.status}`}
+            >
+              <span className="register-wizard-step-number">
+                {journeyStep.status === "done" ? "✓" : journeyStep.status === "current" ? "▶" : "○"}
+              </span>
+              <span>{journeyStep.label}</span>
+            </div>
+          ))}
         </div>
       ) : null}
 
@@ -425,7 +450,7 @@ export function RegisterApplicationWizard({
       {step === "success" && created ? (
         <div className="stack-form">
           <div className="register-wizard-success-banner">
-            <strong>✓ {created.name} has been registered</strong>
+            <strong>✓ {created.name} is ready to connect</strong>
           </div>
 
           <label>
@@ -434,29 +459,23 @@ export function RegisterApplicationWizard({
           </label>
 
           {hasCredentials && credentials?.apiKey ? (
-            <>
-              <label>
-                API key
-                <input value={maskSecret(credentials.apiKey)} readOnly />
-              </label>
-              <div className="register-wizard-form-actions">
-                <button type="button" className="secondary-button" onClick={() => void copyApiKey()} data-action="local-ui">
-                  Copy API key
-                </button>
-              </div>
-            </>
+            <ApiKeyCopyField apiKey={credentials.apiKey} onCopy={copyApiKey} />
           ) : (
             <p className="warn-text">No new API key was issued. You can create one under Organization settings.</p>
           )}
 
-          <div className="hint-panel">
+          <div className="hint-panel register-wizard-next-step">
             <strong>Next step</strong>
-            <p>Connect your application to OpsWatch to begin sending heartbeats.</p>
+            <p>Connect your application using the API key above.</p>
+            <p>
+              Once the first heartbeat is received, OpsWatch will automatically begin discovering modules, workflows,
+              and services.
+            </p>
           </div>
 
           <div className="register-wizard-form-actions">
             <button type="button" className="primary-button" onClick={() => setStep("credentials")} data-action="local-ui">
-              Continue
+              Continue →
             </button>
           </div>
         </div>
@@ -470,10 +489,7 @@ export function RegisterApplicationWizard({
           </label>
 
           {hasCredentials && credentials?.apiKey ? (
-            <label>
-              API key
-              <input value={credentials.apiKey} readOnly />
-            </label>
+            <ApiKeyCopyField apiKey={credentials.apiKey} onCopy={copyApiKey} />
           ) : null}
 
           {credentials?.signingSecret ? (
@@ -519,11 +535,9 @@ export function RegisterApplicationWizard({
               </>
             ) : null}
             <button type="button" className="primary-button" onClick={() => setStep("verification")} data-action="local-ui">
-              Continue
+              Continue →
             </button>
           </div>
-
-          <p className="warn-text">Store credentials securely. The API key is shown only once.</p>
         </div>
       ) : null}
 
@@ -580,7 +594,7 @@ export function RegisterApplicationWizard({
               }}
               data-action="local-ui"
             >
-              {isConnected ? "Continue" : "Skip for now"}
+              {isConnected ? "Continue →" : "Skip for now"}
             </button>
           </div>
         </div>
