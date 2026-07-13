@@ -297,6 +297,7 @@ model ProjectIntegration {
   secretRef         String?
   validationStatus  IntegrationValidationStatus @default(UNKNOWN)
   validationMessage String?
+  validationDetails Json?
   lastValidatedAt   DateTime?
   createdAt         DateTime                    @default(now())
   updatedAt         DateTime
@@ -304,6 +305,26 @@ model ProjectIntegration {
 
   @@unique([projectId, type])
   @@index([projectId, enabled])
+}
+
+model PlatformStripeSettings {
+  id                      String                      @id
+  secretKeyCiphertext     String?
+  secretKeyIv             String?
+  secretKeyAuthTag      String?
+  webhookSecretCiphertext String?
+  webhookSecretIv         String?
+  webhookSecretAuthTag    String?
+  publishableKey          String?
+  stripeAccountId         String?
+  apiBase                 String                      @default("https://api.stripe.com")
+  mode                    String?
+  validationStatus        IntegrationValidationStatus @default(UNKNOWN)
+  validationMessage       String?
+  validationDetails       Json?
+  lastValidatedAt         DateTime?
+  createdAt               DateTime                    @default(now())
+  updatedAt               DateTime
 }
 
 model RemediationLog {

@@ -6,13 +6,15 @@ import { logger } from "../config/logger";
 import {
   constructStripeEvent,
   handleStripeEvent,
-  isStripeConfigured
+  isStripeConfiguredSync
 } from "../services/billing/stripe.service";
+import { resolvePlatformWebhookSecret } from "../services/billing/platform-stripe-settings.service";
 
 export const webhooksRouter = Router();
 
 webhooksRouter.post("/stripe", async (req: Request, res: Response): Promise<void> => {
-  if (!isStripeConfigured() || !process.env.STRIPE_WEBHOOK_SECRET) {
+  const webhookSecret = (await resolvePlatformWebhookSecret()) ?? process.env.STRIPE_WEBHOOK_SECRET?.trim();
+  if (!isStripeConfiguredSync() && !webhookSecret) {
     res.status(503).json({ error: "Stripe billing is not configured." });
     return;
   }
@@ -26,7 +28,7 @@ webhooksRouter.post("/stripe", async (req: Request, res: Response): Promise<void
 
   let event;
   try {
-    event = constructStripeEvent(rawBody, signature);
+    event = await constructStripeEvent(rawBody, signature);
   } catch (error) {
     logger.warn("Stripe webhook signature verification failed", { error: String(error) });
     res.status(400).json({ error: "Invalid Stripe signature" });

@@ -18,11 +18,21 @@ const pageDescriptions: Record<string, string> = {
   Insights: "Turn monitoring gaps and correlations into actionable improvements.",
   Members: "Manage OpsWatch login accounts, roles, and organization membership.",
   Billing: "Review plan limits, usage, and subscription options.",
+  "Stripe Billing Infrastructure":
+    "Configure the platform Stripe account used to process subscription payments for every customer organization.",
   Organization: "Manage organization identity, API access, and public status pages.",
   Onboarding: "Complete the steps required for reliable production monitoring."
 };
 
-export function Header({ title, actions }: { title: string; actions?: ReactNode }) {
+export function Header({
+  title,
+  description,
+  actions
+}: {
+  title: string;
+  description?: string;
+  actions?: ReactNode;
+}) {
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -48,7 +58,7 @@ export function Header({ title, actions }: { title: string; actions?: ReactNode 
       <div className="page-header-main">
         <span className="page-eyebrow">Operations workspace</span>
         <h1>{title}</h1>
-        <p>{pageDescriptions[title] || "Monitor, investigate, and improve application reliability."}</p>
+        <p>{description ?? pageDescriptions[title] ?? "Monitor, investigate, and improve application reliability."}</p>
       </div>
       <div className="page-header-actions">
         {actions}

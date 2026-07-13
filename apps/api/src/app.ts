@@ -36,6 +36,7 @@ import maintenanceWindowsRouter from "./routes/maintenance-windows.routes";
 import automationRouter from "./routes/automation.routes";
 import { internalRouter } from "./routes/internal.routes";
 import { webhooksRouter } from "./routes/webhooks.routes";
+import { adminBillingRouter } from "./routes/admin-billing.routes";
 
 const webhookJsonParser = express.json({
   limit: "1mb",
@@ -107,6 +108,7 @@ app.use(API_PREFIX, requireAuth, productInsightsRouter);
 app.use(API_PREFIX, requireAuth, usersRouter);
 app.use(API_PREFIX, requireAuth, billingRouter);
 app.use(API_PREFIX, requireAuth, subscriptionRouter);
+app.use(API_PREFIX, requireAuth, adminBillingRouter);
 app.use(API_PREFIX, requireAuth, orgRouter);
 app.use(API_PREFIX, requireAuth, onboardingRouter);
 app.use(API_PREFIX, requireAuth, analyticsRouter);

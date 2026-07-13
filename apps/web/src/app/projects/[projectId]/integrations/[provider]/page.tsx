@@ -2,25 +2,19 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { ProviderConfigForm } from "../../../../../components/integrations/provider-config-form";
+import { ProviderDashboard } from "../../../../../components/integrations/provider-dashboard";
 import { ProjectWorkspaceShell } from "../../../../../components/projects/project-workspace-shell";
 import { useProjectWorkspace } from "../../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../../lib/api";
-
-type IntegrationValidationStatus = "UNKNOWN" | "VALID" | "INVALID";
-
-type ProjectIntegration = {
-  id: string;
-  projectId: string;
-  type: string;
-  name: string | null;
-  enabled: boolean;
-  configJson: Record<string, unknown> | null;
-  secretRef: string | null;
-  validationStatus: IntegrationValidationStatus;
-  validationMessage: string | null;
-  lastValidatedAt: string | null;
-};
+import {
+  parseIntegrationType,
+  providerDisplayName,
+  PROVIDER_PRESETS,
+  type IntegrationType,
+  type ProjectIntegration
+} from "../../../../../lib/integrations";
 
 type IntegrationDraft = {
   enabled: boolean;
@@ -29,64 +23,18 @@ type IntegrationDraft = {
   configJson: Record<string, unknown>;
 };
 
-const PROVIDER_PRESETS: Record<string, Record<string, unknown>> = {
-  WEBHOOK: {
-    WEBHOOK_URL: "",
-    WEBHOOK_TIMEOUT_MS: 5000,
-    WEBHOOK_SIGNING_HEADER: "X-OpsWatch-Signature"
-  },
-  EMAIL: {
-    EMAIL_PROVIDER_HEALTHCHECK_URL: "",
-    EMAIL_FROM: "alerts@opswatch.app",
-    EMAIL_REPLY_TO: ""
-  },
-  STRIPE: {
-    STRIPE_API_KEY: "",
-    STRIPE_API_BASE: "https://api.stripe.com",
-    STRIPE_WEBHOOK_SECRET: ""
-  },
-  WORKER_PROVIDER: {
-    WORKER_RESTART_WEBHOOK_URL: "",
-    WORKER_PROVIDER_TIMEOUT_MS: 5000
-  },
-  SERVICE_PROVIDER: {
-    SERVICE_RESTART_WEBHOOK_URL: "",
-    SERVICE_PROVIDER_TIMEOUT_MS: 5000
-  },
-  DEPLOYMENT_PROVIDER: {
-    DEPLOYMENT_ROLLBACK_WEBHOOK_URL: "",
-    DEPLOYMENT_PROVIDER_TIMEOUT_MS: 5000
-  },
-  STATUS_PROVIDER: {
-    PROVIDER_STATUS_URL: "",
-    STATUS_PAGE_COMPONENT: "",
-    STATUS_PAGE_ENV: ""
-  },
-  RUNBOOK_PROVIDER: {
-    RUNBOOK_BASE_URL: "",
-    RUNBOOK_DEFAULT_OWNER: "platform",
-    RUNBOOK_TEMPLATE: "incident-standard"
-  }
-};
-
-const providerTitle = (provider: string) =>
-  provider
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-
-const statusClass = (status?: IntegrationValidationStatus) => {
-  if (status === "VALID") return "pass";
-  if (status === "INVALID") return "fail";
-  return "unknown";
-};
-
 export default function ProviderIntegrationDetailPage() {
   const params = useParams<{ projectId: string; provider: string }>();
+  const router = useRouter();
   const { project, loading: projectLoading, error: projectError } = useProjectWorkspace(params.projectId);
-  const providerType = useMemo(() => (params.provider || "webhook").toUpperCase(), [params.provider]);
+  const providerType = useMemo(() => parseIntegrationType(params.provider || "webhook"), [params.provider]);
   const preset = useMemo(() => PROVIDER_PRESETS[providerType] ?? {}, [providerType]);
+
+  useEffect(() => {
+    if (providerType === "STRIPE") {
+      router.replace("/admin/billing/stripe");
+    }
+  }, [providerType, router]);
 
   const [integration, setIntegration] = useState<ProjectIntegration | null>(null);
   const [draft, setDraft] = useState<IntegrationDraft>({
@@ -95,6 +43,8 @@ export default function ProviderIntegrationDetailPage() {
     secretRef: "",
     configJson: preset
   });
+  const [advancedJson, setAdvancedJson] = useState(JSON.stringify(preset, null, 2));
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -115,16 +65,19 @@ export default function ProviderIntegrationDetailPage() {
           (row) => row.projectId === params.projectId && row.type.toUpperCase() === providerType
         );
 
+        const mergedConfig = {
+          ...preset,
+          ...(match?.configJson ?? {})
+        };
+
         setIntegration(match || null);
         setDraft({
           enabled: match?.enabled ?? true,
-          name: match?.name ?? `${providerTitle(providerType)} integration`,
+          name: match?.name ?? `${providerDisplayName(providerType)} integration`,
           secretRef: match?.secretRef ?? "",
-          configJson: {
-            ...preset,
-            ...(match?.configJson ?? {})
-          }
+          configJson: mergedConfig
         });
+        setAdvancedJson(JSON.stringify(mergedConfig, null, 2));
       } catch (loadError: any) {
         setError(loadError?.message || "Failed to load integration");
       } finally {
@@ -135,48 +88,63 @@ export default function ProviderIntegrationDetailPage() {
     void load();
   }, [params.projectId, providerType, preset]);
 
-  const setConfigValue = (key: string, value: unknown) => {
-    setDraft((current) => ({
-      ...current,
-      configJson: {
+  const setConfigValue = (key: string, value: string) => {
+    setDraft((current) => {
+      const nextConfig = {
         ...current.configJson,
         [key]: value
-      }
-    }));
+      };
+      setAdvancedJson(JSON.stringify(nextConfig, null, 2));
+      return {
+        ...current,
+        configJson: nextConfig
+      };
+    });
   };
 
-  const persistIntegration = async () => {
+  const persistIntegration = async (configJson = draft.configJson) => {
     const saved = await apiFetch<ProjectIntegration>(`/settings/integrations/${params.projectId}/${providerType}`, {
       method: "PUT",
       body: JSON.stringify({
         enabled: draft.enabled,
         name: draft.name || undefined,
         secretRef: draft.secretRef || undefined,
-        configJson: draft.configJson
+        configJson
       })
     });
 
     setIntegration(saved);
+    setDraft((current) => ({
+      ...current,
+      enabled: saved.enabled,
+      name: saved.name ?? current.name,
+      secretRef: saved.secretRef ?? current.secretRef,
+      configJson: {
+        ...preset,
+        ...(saved.configJson ?? configJson)
+      }
+    }));
+    setAdvancedJson(JSON.stringify({ ...preset, ...(saved.configJson ?? configJson) }, null, 2));
     return saved;
   };
 
-  const saveIntegration = async (event: FormEvent) => {
-    event.preventDefault();
+  const saveConfiguration = async (event?: FormEvent) => {
+    event?.preventDefault();
     setSaving(true);
     setError(null);
     setMessage(null);
 
     try {
       await persistIntegration();
-      setMessage("Integration saved.");
+      setMessage("Configuration saved. Validate the connection to confirm health.");
     } catch (saveError: any) {
-      setError(saveError?.message || "Failed to save integration");
+      setError(saveError?.message || "Failed to save configuration");
     } finally {
       setSaving(false);
     }
   };
 
-  const validateIntegration = async () => {
+  const validateConnection = async () => {
     setValidating(true);
     setError(null);
     setMessage(null);
@@ -188,86 +156,71 @@ export default function ProviderIntegrationDetailPage() {
         { method: "POST" }
       );
       setIntegration(validated);
-      setDraft((current) => ({
-        ...current,
-        enabled: validated.enabled,
-        name: validated.name ?? current.name,
-        secretRef: validated.secretRef ?? current.secretRef,
-        configJson: {
-          ...preset,
-          ...(validated.configJson ?? current.configJson)
-        }
-      }));
-      setMessage(validated.validationStatus === "VALID" ? "Integration validated." : "Validation failed. Review the message below.");
+      setMessage(
+        validated.validationStatus === "VALID"
+          ? validated.validationMessage || "Successfully connected."
+          : validated.validationMessage || "Validation failed. Review the missing fields and try again."
+      );
     } catch (validateError: any) {
-      setError(validateError?.message || "Failed to validate integration");
+      setError(validateError?.message || "Failed to validate connection");
     } finally {
       setValidating(false);
     }
   };
 
-  const renderProviderFields = () => {
-    if (providerType === "WEBHOOK") {
-      return (
-        <>
-          <label>
-            Webhook URL
-            <input
-              value={String(draft.configJson.WEBHOOK_URL ?? "")}
-              onChange={(event) => setConfigValue("WEBHOOK_URL", event.target.value)}
-              placeholder="https://client.example.com/opswatch/webhook"
-              required
-            />
-          </label>
-          <div className="form-row">
-            <label>
-              Timeout ms
-              <input
-                type="number"
-                min={1000}
-                step={500}
-                value={Number(draft.configJson.WEBHOOK_TIMEOUT_MS ?? 5000)}
-                onChange={(event) => setConfigValue("WEBHOOK_TIMEOUT_MS", Number(event.target.value))}
-              />
-            </label>
-            <label>
-              Signing header
-              <input
-                value={String(draft.configJson.WEBHOOK_SIGNING_HEADER ?? "X-OpsWatch-Signature")}
-                onChange={(event) => setConfigValue("WEBHOOK_SIGNING_HEADER", event.target.value)}
-              />
-            </label>
-          </div>
-        </>
-      );
-    }
+  const disconnectIntegration = async () => {
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const clearedPreset = { ...preset };
+      setDraft((current) => ({
+        ...current,
+        secretRef: "",
+        configJson: clearedPreset
+      }));
+      setAdvancedJson(JSON.stringify(clearedPreset, null, 2));
 
-    return (
-      <label>
-        Config JSON
-        <textarea
-          rows={10}
-          value={JSON.stringify(draft.configJson, null, 2)}
-          onChange={(event) => {
-            try {
-              const parsed = JSON.parse(event.target.value);
-              if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-                setDraft((current) => ({ ...current, configJson: parsed as Record<string, unknown> }));
-              }
-            } catch {
-              setError("Config JSON is not valid yet.");
-            }
-          }}
-        />
-      </label>
-    );
+      const saved = await apiFetch<ProjectIntegration>(`/settings/integrations/${params.projectId}/${providerType}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          enabled: false,
+          name: draft.name || undefined,
+          secretRef: undefined,
+          configJson: clearedPreset
+        })
+      });
+      setIntegration(saved);
+      setMessage("Integration disconnected.");
+    } catch (disconnectError: any) {
+      setError(disconnectError?.message || "Failed to disconnect integration");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const handleAdvancedJsonChange = (value: string) => {
+    setAdvancedJson(value);
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        setDraft((current) => ({ ...current, configJson: parsed as Record<string, unknown> }));
+        setError(null);
+      }
+    } catch {
+      setError("Advanced JSON is not valid yet.");
+    }
+  };
+
+  if (providerType === "STRIPE") {
+    return null;
+  }
 
   return (
     <ProjectWorkspaceShell
       projectId={params.projectId}
-      title={project ? `${project.name} — ${providerTitle(providerType)}` : `Integration: ${providerTitle(providerType)}`}
-      subtitle="Configure provider connectivity and validate integration health."
+      title={project ? `${project.name} — ${providerDisplayName(providerType)}` : `Integration: ${providerDisplayName(providerType)}`}
+      subtitle="Configure provider connectivity, validate health, and monitor connection status."
       project={project}
       loading={projectLoading}
       error={projectError}
@@ -275,93 +228,86 @@ export default function ProviderIntegrationDetailPage() {
       {error ? <section className="panel error-panel">{error}</section> : null}
       {message ? <section className="panel success-panel">{message}</section> : null}
 
-      <section className="two-col settings-grid">
+      <section className="two-col settings-grid provider-layout">
         <section className="panel">
           <div className="section-head">
             <div>
-              <h2>{providerTitle(providerType)} setup</h2>
-              <p>{loading ? "Loading integration..." : "Save provider details, then validate connectivity."}</p>
+              <h2>Connection settings</h2>
+              <p>{loading ? "Loading integration..." : "Save credentials and provider settings, then validate the connection."}</p>
             </div>
-            <span className={`result-pill ${statusClass(integration?.validationStatus)}`}>
-              {integration?.validationStatus ?? "UNKNOWN"}
-            </span>
           </div>
 
-          <form className="stack-form" onSubmit={saveIntegration}>
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={draft.enabled}
-                onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
-              />
-              Enabled
-            </label>
+          <form className="stack-form" onSubmit={saveConfiguration}>
+            <ProviderConfigForm
+              type={providerType as IntegrationType}
+              enabled={draft.enabled}
+              name={draft.name}
+              secretRef={draft.secretRef}
+              configJson={draft.configJson}
+              showAdvanced={showAdvanced}
+              advancedJson={advancedJson}
+              onEnabledChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
+              onNameChange={(name) => setDraft((current) => ({ ...current, name }))}
+              onSecretRefChange={(secretRef) => setDraft((current) => ({ ...current, secretRef }))}
+              onConfigValueChange={setConfigValue}
+              onAdvancedJsonChange={handleAdvancedJsonChange}
+              onToggleAdvanced={() => setShowAdvanced((current) => !current)}
+            />
 
-            <label>
-              Display name
-              <input
-                value={draft.name}
-                onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-                placeholder={`${providerType.toLowerCase()} integration`}
-              />
-            </label>
-
-            <label>
-              Secret reference
-              <input
-                value={draft.secretRef}
-                onChange={(event) => setDraft((current) => ({ ...current, secretRef: event.target.value }))}
-                placeholder="vault://opswatch/sparkle/webhook"
-              />
-            </label>
-
-            {renderProviderFields()}
+            <div className="provider-flow">
+              <div className="provider-flow__step">1. Save configuration</div>
+              <div className="provider-flow__arrow">↓</div>
+              <div className="provider-flow__step provider-flow__step--primary">2. Validate connection</div>
+              <div className="provider-flow__arrow">↓</div>
+              <div className="provider-flow__step">3. Connected</div>
+            </div>
 
             <div className="channel-actions">
-              <button type="submit" className="secondary-button" disabled={saving || validating} data-action="api" data-endpoint="/settings/integrations/:projectId/:provider">
-                {saving ? "Saving..." : "Save integration"}
+              <button type="submit" className="secondary-button" disabled={saving || validating}>
+                {saving ? "Saving..." : "Save configuration"}
               </button>
-              <button type="button" className="primary-button" onClick={() => void validateIntegration()} disabled={saving || validating} data-action="api" data-endpoint="/settings/integrations/:projectId/:provider/validate">
-                {validating ? "Validating..." : "Save and validate"}
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => void validateConnection()}
+                disabled={saving || validating}
+              >
+                {validating ? "Validating..." : "Validate connection"}
               </button>
             </div>
           </form>
         </section>
 
-        <aside className="panel">
-          <h2>Client fix guide</h2>
-          {providerType === "WEBHOOK" ? (
-            <>
-              <p>Ask the client for a public HTTPS webhook URL that accepts OpsWatch events.</p>
-              <ol className="client-fix-list">
-                <li>Paste the endpoint into Webhook URL.</li>
-                <li>Store any shared secret in your vault and put the reference in Secret reference.</li>
-                <li>Click Save and validate. OpsWatch will call the URL and show the result here.</li>
-              </ol>
-            </>
-          ) : (
-            <p>Fill in the provider config and validate it before relying on the integration for alerts or automation.</p>
-          )}
+        <div className="provider-layout__aside">
+          <ProviderDashboard
+            providerName={providerDisplayName(providerType)}
+            integration={integration}
+            validating={validating}
+            onValidate={() => void validateConnection()}
+            onDisconnect={() => void disconnectIntegration()}
+            disableActions={saving || validating}
+          />
 
-          <dl className="detail-list">
-            <div>
-              <dt>Last validated</dt>
-              <dd>{integration?.lastValidatedAt ? new Date(integration.lastValidatedAt).toLocaleString() : "-"}</dd>
-            </div>
-            <div>
-              <dt>Validation message</dt>
-              <dd>{integration?.validationMessage || "-"}</dd>
-            </div>
-            <div>
-              <dt>Project</dt>
-              <dd>{params.projectId}</dd>
-            </div>
-          </dl>
+          <aside className="panel">
+            <h2>Setup guide</h2>
+            {providerType === "WEBHOOK" ? (
+              <>
+                <p>Ask the client for a public HTTPS webhook URL that accepts OpsWatch events.</p>
+                <ol className="client-fix-list">
+                  <li>Paste the endpoint into Webhook URL.</li>
+                  <li>Save configuration, then validate connectivity.</li>
+                  <li>Use Advanced configuration only if you manage secrets in an external vault.</li>
+                </ol>
+              </>
+            ) : (
+              <p>Fill in the connection settings and validate before relying on this provider for alerts or automation.</p>
+            )}
 
-          <Link className="secondary-button" href={`/projects/${params.projectId}`}>
-            Back to project
-          </Link>
-        </aside>
+            <Link className="secondary-button" href={`/projects/${params.projectId}`}>
+              Back to project
+            </Link>
+          </aside>
+        </div>
       </section>
     </ProjectWorkspaceShell>
   );

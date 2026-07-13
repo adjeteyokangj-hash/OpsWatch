@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { fetchSessionUser, type SessionUser } from "../../lib/auth";
 
-const navGroups = [
+const baseNavGroups = [
   {
     label: "Overview",
     links: [["Dashboard", "/dashboard"]] as const
@@ -20,6 +21,7 @@ const navGroups = [
   {
     label: "Platform",
     links: [
+      ["Integrations", "/integrations"],
       ["Workflows", "/workflows"],
       ["Services", "/services"],
       ["Automation", "/automation"],
@@ -38,11 +40,20 @@ const navGroups = [
   }
 ] as const;
 
+const platformAdminGroup = {
+  label: "Platform Administration",
+  links: [
+    ["Subscription Plans", "/subscription"],
+    ["Stripe", "/admin/billing/stripe"]
+  ] as const
+};
+
 const navIcons: Record<string, string> = {
   Dashboard: "⌂",
   Applications: "▣",
   Incidents: "◆",
   Alerts: "!",
+  Integrations: "⇄",
   Workflows: "↻",
   Services: "◎",
   Automation: "⚙",
@@ -51,12 +62,36 @@ const navIcons: Record<string, string> = {
   Reports: "▤",
   Members: "⊕",
   Subscription: "$",
-  Settings: "≡"
+  "Subscription Plans": "$",
+  Settings: "≡",
+  Stripe: "◈"
 };
 
 export function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+
+  useEffect(() => {
+    void fetchSessionUser().then(setSessionUser);
+  }, []);
+
+  const groups = useMemo(() => {
+    if (!sessionUser?.isPlatformSuperAdmin) {
+      return baseNavGroups;
+    }
+
+    const adminWithoutSubscription = baseNavGroups.map((group) =>
+      group.label === "Admin"
+        ? {
+            ...group,
+            links: group.links.filter(([label]) => label !== "Subscription")
+          }
+        : group
+    );
+
+    return [...adminWithoutSubscription, platformAdminGroup];
+  }, [sessionUser?.isPlatformSuperAdmin]);
 
   return (
     <aside className="sidebar">
@@ -82,12 +117,12 @@ export function Sidebar() {
         <span aria-hidden="true">{open ? "×" : "☰"}</span>
       </button>
       <nav id="primary-navigation" className={open ? "mobile-nav-open" : ""}>
-        {navGroups.map((group) => (
+        {groups.map((group) => (
           <div className="sidebar-group" key={group.label}>
             <span className="sidebar-group-label">{group.label}</span>
             {group.links.map(([label, href]) => (
               <Link
-                key={href}
+                key={`${group.label}-${label}`}
                 href={href}
                 onClick={() => setOpen(false)}
                 className={pathname.startsWith(href) ? "active" : ""}

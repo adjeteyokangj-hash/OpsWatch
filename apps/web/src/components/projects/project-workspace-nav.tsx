@@ -16,7 +16,7 @@ const tabs = [
   ["Alerts", "/alerts"],
   ["Incidents", "/incidents"],
   ["Automation", "/automation"],
-  ["Integrations", "/integrations/webhook"],
+  ["Integrations", "/integrations"],
   ["Policies", "/policies"],
   ["Contacts", "/contacts"],
   ["Billing", "/billing"],
@@ -47,7 +47,9 @@ export function ProjectWorkspaceNav({ projectId }: { projectId: string }) {
           ? `/alerts?projectId=${projectId}`
           : path.startsWith("/incidents")
             ? `/incidents?projectId=${projectId}`
-            : `${base}${path}`;
+            : path === "/integrations"
+              ? `/integrations/${projectId}`
+              : `${base}${path}`;
         const active =
           path === ""
             ? pathname === base || pathname === `${base}/`
@@ -55,7 +57,9 @@ export function ProjectWorkspaceNav({ projectId }: { projectId: string }) {
               ? pathname.startsWith("/alerts")
               : path === "/incidents"
                 ? pathname.startsWith("/incidents")
-                : pathname.startsWith(`${base}${path}`);
+                : path === "/integrations"
+                  ? pathname.startsWith(`/integrations/${projectId}`)
+                  : pathname.startsWith(`${base}${path}`);
         return (
           <Link
             key={label}

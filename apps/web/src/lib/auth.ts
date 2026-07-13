@@ -7,6 +7,7 @@ export type SessionUser = {
   role: string;
   organizationId?: string | null;
   name?: string;
+  isPlatformSuperAdmin?: boolean;
 };
 
 const parseCookie = (name: string): string | null => {

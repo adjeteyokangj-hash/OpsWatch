@@ -16,15 +16,26 @@ export class StripeWebhookProcessingError extends Error {
 }
 
 let stripeClient: Stripe | null = null;
+let stripeClientKey: string | null = null;
 
-export const isStripeConfigured = (): boolean => Boolean(process.env.STRIPE_SECRET_KEY);
+export const isStripeConfigured = async (): Promise<boolean> => {
+  const { resolvePlatformStripeCredentials } = await import("./platform-stripe-settings.service");
+  const credentials = await resolvePlatformStripeCredentials();
+  return Boolean(credentials?.secretKey);
+};
 
-export const getStripe = (): Stripe => {
-  if (!isStripeConfigured()) {
-    throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY.");
+export const isStripeConfiguredSync = (): boolean => Boolean(process.env.STRIPE_SECRET_KEY?.trim());
+
+export const getStripe = async (): Promise<Stripe> => {
+  const { resolvePlatformStripeCredentials } = await import("./platform-stripe-settings.service");
+  const credentials = await resolvePlatformStripeCredentials();
+  const secretKey = credentials?.secretKey;
+  if (!secretKey) {
+    throw new Error("Stripe is not configured. Add platform Stripe settings or set STRIPE_SECRET_KEY.");
   }
-  if (!stripeClient) {
-    stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY as string);
+  if (!stripeClient || stripeClientKey !== secretKey) {
+    stripeClient = new Stripe(secretKey);
+    stripeClientKey = secretKey;
   }
   return stripeClient;
 };
@@ -68,7 +79,7 @@ const ensureStripeCustomer = async (input: {
   organizationId: string;
   email?: string;
 }): Promise<string> => {
-  const stripe = getStripe();
+  const stripe = await getStripe();
   const subscription = await prisma.subscription.findUnique({
     where: { organizationId: input.organizationId }
   });
@@ -105,7 +116,7 @@ export const createCheckoutSession = async (input: {
   email?: string;
 }): Promise<{ url: string; reusedPortal?: boolean }> => {
   await seedPlans();
-  const stripe = getStripe();
+  const stripe = await getStripe();
 
   const existingSubscription = await prisma.subscription.findUnique({
     where: { organizationId: input.organizationId }
@@ -160,7 +171,7 @@ export const createCheckoutSession = async (input: {
 export const createBillingPortalSession = async (input: {
   organizationId: string;
 }): Promise<{ url: string }> => {
-  const stripe = getStripe();
+  const stripe = await getStripe();
   const subscription = await prisma.subscription.findUnique({
     where: { organizationId: input.organizationId }
   });
@@ -269,12 +280,14 @@ const markPastDue = async (
   });
 };
 
-export const constructStripeEvent = (rawBody: Buffer, signature: string): Stripe.Event => {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+export const constructStripeEvent = async (rawBody: Buffer, signature: string): Promise<Stripe.Event> => {
+  const { resolvePlatformWebhookSecret } = await import("./platform-stripe-settings.service");
+  const secret = (await resolvePlatformWebhookSecret()) ?? process.env.STRIPE_WEBHOOK_SECRET?.trim();
   if (!secret) {
     throw new Error("STRIPE_WEBHOOK_SECRET is not configured.");
   }
-  return getStripe().webhooks.constructEvent(rawBody, signature, secret);
+  const stripe = await getStripe();
+  return stripe.webhooks.constructEvent(rawBody, signature, secret);
 };
 
 const beginWebhookEvent = async (event: Stripe.Event): Promise<{ duplicate: boolean; recordId: string }> => {
@@ -319,7 +332,7 @@ const processStripeEvent = async (event: Stripe.Event): Promise<void> => {
           typeof session.subscription === "string"
             ? session.subscription
             : session.subscription.id;
-        const stripeSubscription = await getStripe().subscriptions.retrieve(subscriptionId);
+        const stripeSubscription = await (await getStripe()).subscriptions.retrieve(subscriptionId);
         await syncSubscriptionFromStripe(stripeSubscription);
       }
       break;

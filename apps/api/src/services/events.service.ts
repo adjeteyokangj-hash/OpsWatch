@@ -88,7 +88,7 @@ const integrationTypeForEvent = (type: EventType): IntegrationType | undefined =
     case "EMAIL_FAILED":
       return "EMAIL";
     case "PAYMENT_FAILED":
-      return "STRIPE";
+      return undefined;
     default:
       return undefined;
   }

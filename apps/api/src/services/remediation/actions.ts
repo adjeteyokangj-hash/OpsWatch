@@ -96,11 +96,7 @@ export const REMEDIATION_REGISTRY: Record<RemediationAction, ActionDef> = {
     impactTier: "LOW",
     kind: "fix",
     requiredContextFields: [],
-    requiredEnvVars: ["PAYMENT_VERIFICATION_ENDPOINT"],
-    requiredIntegration: {
-      type: "STRIPE",
-      requiredConfigKeys: ["PAYMENT_VERIFICATION_ENDPOINT"]
-    }
+    requiredEnvVars: ["PAYMENT_VERIFICATION_ENDPOINT"]
   },
   REQUEUE_FAILED_JOB: {
     label: "Requeue failed jobs",

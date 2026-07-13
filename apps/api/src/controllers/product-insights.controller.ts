@@ -440,7 +440,7 @@ const buildProjectInsight = (project: any) => {
   const coverage = [
     coverageItem("public_site", "Public site monitored", serviceTypes.has("FRONTEND") && validHttpChecks.length > 0, "HTTP check", "Add an HTTP or keyword check for the main public URL."),
     coverageItem("admin_flow", "Admin flow monitored", checks.some((check: any) => check.name.toUpperCase().includes("ADMIN")), "Synthetic journey", "Add a synthetic login/dashboard journey for the admin path."),
-    coverageItem("payment_flow", "Payment flow monitored", integrations.has("STRIPE") || meaningfulEvents.some((event: any) => event.type === "PAYMENT_FAILED"), "Stripe/event signal", "Attach Stripe profile and add a test-mode payment journey."),
+    coverageItem("payment_flow", "Payment flow monitored", meaningfulEvents.some((event: any) => event.type === "PAYMENT_FAILED"), "Payment event signal", "Add a test-mode payment journey and ingest PAYMENT_FAILED events."),
     coverageItem("webhook_health", "Webhook health monitored", integrations.has("WEBHOOK") || meaningfulEvents.some((event: any) => event.type === "WEBHOOK_FAILED"), "Webhook integration", "Add webhook delivery monitoring and signature failure events."),
     coverageItem("ssl", "SSL monitored", validSslChecks.length > 0, "SSL check", "Add SSL expiry checks only for public https:// origins."),
     coverageItem("domain_expiry", "Domain expiry monitored", meaningfulEvents.some((event: any) => event.type === "DOMAIN_EXPIRING"), "Domain event", "Add domain expiry monitoring for production domains."),
@@ -1002,8 +1002,7 @@ export const applyRecommendationById = async (req: Request, res: Response) => {
         details.journeyId = journey.id;
         details.created = created;
       } else if (rec.type === "COVERAGE_TARGET" && rec.targetKey === "payment_flow") {
-        const integration = await ensureProjectIntegration(tx, project.id, "STRIPE");
-        details.integrationId = integration.id;
+        details.note = "Payment monitoring uses PAYMENT_FAILED events. Configure Stripe billing under Subscription → Stripe.";
       } else if (rec.type === "COVERAGE_TARGET" && rec.targetKey === "webhook_health") {
         const integration = await ensureProjectIntegration(tx, project.id, "WEBHOOK");
         details.integrationId = integration.id;

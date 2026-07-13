@@ -64,7 +64,7 @@ export const createSubscriptionCheckout = async (req: AuthRequest, res: Response
     return;
   }
 
-  if (!isStripeConfigured()) {
+  if (!(await isStripeConfigured())) {
     res.status(503).json({ error: "Stripe billing is not configured on this deployment." });
     return;
   }
@@ -99,7 +99,7 @@ export const createSubscriptionPortal = async (req: AuthRequest, res: Response) 
     return;
   }
 
-  if (!isStripeConfigured()) {
+  if (!(await isStripeConfigured())) {
     res.status(503).json({ error: "Stripe billing is not configured on this deployment." });
     return;
   }

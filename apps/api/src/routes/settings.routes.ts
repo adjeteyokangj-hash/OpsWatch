@@ -4,6 +4,10 @@ import { z } from "zod";
 import { IntegrationType, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { AuthRequest } from "../middleware/auth";
+import {
+  buildSavedIntegrationDetails,
+  validateIntegrationConnectivity
+} from "../services/integration-validation.service";
 
 export const settingsRouter = Router();
 
@@ -69,108 +73,6 @@ const integrationConfigSchema = z.object({
   validationStatus: z.enum(["UNKNOWN", "VALID", "INVALID"]).optional(),
   validationMessage: z.string().max(500).optional()
 });
-
-const INTEGRATION_REQUIRED_KEYS: Record<IntegrationType, string[]> = {
-  WEBHOOK: ["WEBHOOK_URL"],
-  EMAIL: ["EMAIL_PROVIDER_HEALTHCHECK_URL"],
-  STRIPE: ["STRIPE_API_KEY"],
-  WORKER_PROVIDER: ["WORKER_RESTART_WEBHOOK_URL"],
-  SERVICE_PROVIDER: ["SERVICE_RESTART_WEBHOOK_URL"],
-  DEPLOYMENT_PROVIDER: ["DEPLOYMENT_ROLLBACK_WEBHOOK_URL"],
-  STATUS_PROVIDER: ["PROVIDER_STATUS_URL"],
-  RUNBOOK_PROVIDER: ["RUNBOOK_BASE_URL"]
-};
-
-const readConfigValue = (config: Record<string, unknown> | null | undefined, key: string): string | undefined => {
-  const fromConfig = config?.[key];
-  if (typeof fromConfig === "string" && fromConfig.trim().length > 0) {
-    return fromConfig;
-  }
-  const fromEnv = process.env[key];
-  if (fromEnv && fromEnv.trim().length > 0) {
-    return fromEnv;
-  }
-  return undefined;
-};
-
-const connectivityProbe = async (url: string): Promise<{ ok: boolean; message: string }> => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  try {
-    const response = await fetch(url, { method: "GET", signal: controller.signal });
-    if (response.ok) {
-      return { ok: true, message: `Connectivity probe succeeded (${response.status}).` };
-    }
-    return { ok: false, message: `Connectivity probe failed (${response.status}).` };
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, message: `Connectivity probe error: ${message}` };
-  } finally {
-    clearTimeout(timeout);
-  }
-};
-
-const validateIntegrationConnectivity = async (row: {
-  type: IntegrationType;
-  enabled: boolean;
-  configJson: Record<string, unknown> | null;
-}): Promise<{ status: "VALID" | "INVALID"; message: string }> => {
-  if (!row.enabled) {
-    return { status: "INVALID", message: "Integration is disabled." };
-  }
-
-  const requiredKeys = INTEGRATION_REQUIRED_KEYS[row.type] ?? [];
-  const missing = requiredKeys.filter((key) => !readConfigValue(row.configJson, key));
-  if (missing.length > 0) {
-    return { status: "INVALID", message: `Missing required config: ${missing.join(", ")}` };
-  }
-
-  if (row.type === "STRIPE") {
-    const key = readConfigValue(row.configJson, "STRIPE_API_KEY") as string;
-    const base = readConfigValue(row.configJson, "STRIPE_API_BASE") ?? "https://api.stripe.com";
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    try {
-      const response = await fetch(`${base}/v1/balance`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${key}` },
-        signal: controller.signal
-      });
-      if (response.ok) {
-        return { status: "VALID", message: "Stripe connectivity validated." };
-      }
-      return { status: "INVALID", message: `Stripe validation failed (${response.status}).` };
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { status: "INVALID", message: `Stripe validation error: ${message}` };
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
-  const urlKeys = [
-    "WEBHOOK_URL",
-    "WORKER_RESTART_WEBHOOK_URL",
-    "SERVICE_RESTART_WEBHOOK_URL",
-    "DEPLOYMENT_ROLLBACK_WEBHOOK_URL",
-    "PROVIDER_STATUS_URL",
-    "RUNBOOK_BASE_URL",
-    "EMAIL_PROVIDER_HEALTHCHECK_URL"
-  ];
-  const url = urlKeys
-    .map((key) => readConfigValue(row.configJson, key))
-    .find((value): value is string => Boolean(value));
-
-  if (!url) {
-    return { status: "VALID", message: "Required config present; no connectivity URL provided for active probe." };
-  }
-
-  const probe = await connectivityProbe(url);
-  return {
-    status: probe.ok ? "VALID" : "INVALID",
-    message: probe.message
-  };
-};
 
 settingsRouter.get("/settings", (_req, res) => {
   res.json({ ok: true });
@@ -377,6 +279,19 @@ settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRe
     return;
   }
 
+  if (parsed.type === "STRIPE") {
+    res.status(410).json({
+      error: "Stripe is configured at the organization level under Subscription → Stripe.",
+      redirectTo: "/admin/billing/stripe"
+    });
+    return;
+  }
+
+  const savedDetails =
+    parsed.configJson !== undefined
+      ? buildSavedIntegrationDetails(parsed.type, parsed.configJson)
+      : undefined;
+
   const row = await prisma.projectIntegration.upsert({
     where: {
       projectId_type: {
@@ -393,6 +308,14 @@ settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRe
       ...(parsed.secretRef !== undefined ? { secretRef: parsed.secretRef } : {}),
       ...(parsed.validationStatus !== undefined ? { validationStatus: parsed.validationStatus } : {}),
       ...(parsed.validationMessage !== undefined ? { validationMessage: parsed.validationMessage } : {}),
+      ...(savedDetails
+        ? {
+            validationStatus: "UNKNOWN",
+            validationMessage: "Configuration saved. Validate the connection to confirm health.",
+            validationDetails: savedDetails as Prisma.InputJsonValue,
+            lastValidatedAt: null
+          }
+        : {}),
       ...(parsed.validationStatus !== undefined || parsed.validationMessage !== undefined
         ? { lastValidatedAt: new Date() }
         : {})
@@ -407,6 +330,7 @@ settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRe
       secretRef: parsed.secretRef,
       validationStatus: parsed.validationStatus ?? "UNKNOWN",
       validationMessage: parsed.validationMessage,
+      validationDetails: (savedDetails ?? undefined) as Prisma.InputJsonValue | undefined,
       updatedAt: new Date(),
       lastValidatedAt:
         parsed.validationStatus !== undefined || parsed.validationMessage !== undefined
@@ -426,6 +350,14 @@ settingsRouter.post("/settings/integrations/:projectId/:type/validate", async (r
     projectId: req.params.projectId,
     type: req.params.type
   });
+
+  if (parsed.type === "STRIPE") {
+    res.status(410).json({
+      error: "Stripe is configured at the organization level under Subscription → Stripe.",
+      redirectTo: "/admin/billing/stripe"
+    });
+    return;
+  }
 
   const row = await prisma.projectIntegration.findFirst({
     where: {
@@ -457,6 +389,7 @@ settingsRouter.post("/settings/integrations/:projectId/:type/validate", async (r
     data: {
       validationStatus: result.status,
       validationMessage: result.message,
+      validationDetails: result.details as Prisma.InputJsonValue,
       lastValidatedAt: new Date()
     }
   });
