@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { resolveOpswatchApiOrigin } from "./lib/api-origin";
 import { resolveSessionCookieDomain } from "./lib/cookie-domain";
 
 const clearSessionCookies = (response: NextResponse, hostname: string): void => {
@@ -20,23 +19,47 @@ const clearSessionCookies = (response: NextResponse, hostname: string): void => 
 const hasSessionCookie = (request: NextRequest): boolean =>
   Boolean(request.cookies.get("opswatch_session")?.value);
 
-const validateSession = async (request: NextRequest): Promise<boolean> => {
+type SessionCheck = "valid" | "invalid" | "unavailable";
+
+const checkSession = async (request: NextRequest): Promise<SessionCheck> => {
   if (!hasSessionCookie(request)) {
-    return false;
+    return "invalid";
   }
 
   try {
-    const sessionUrl = `${resolveOpswatchApiOrigin()}/api/auth/session`;
+    const sessionUrl = new URL("/api/auth/session", request.url);
     const response = await fetch(sessionUrl, {
       headers: {
         cookie: request.headers.get("cookie") ?? ""
       },
       cache: "no-store"
     });
-    return response.ok;
+
+    if (response.ok) {
+      return "valid";
+    }
+
+    if (response.status === 401) {
+      return "invalid";
+    }
+
+    return "unavailable";
   } catch {
-    return false;
+    return "unavailable";
   }
+};
+
+const canAccessProtectedRoute = (request: NextRequest, sessionCheck: SessionCheck): boolean => {
+  if (sessionCheck === "valid") {
+    return true;
+  }
+
+  // API proxy or upstream temporarily unavailable — do not destroy a valid browser session.
+  if (sessionCheck === "unavailable" && hasSessionCookie(request)) {
+    return true;
+  }
+
+  return false;
 };
 
 export async function middleware(request: NextRequest) {
@@ -48,14 +71,15 @@ export async function middleware(request: NextRequest) {
 
   const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/register");
   const isPublicRoute = isAuthRoute || pathname.startsWith("/status") || pathname.startsWith("/status-page");
-  const sessionValid = hasSessionCookie(request) ? await validateSession(request) : false;
+  const sessionCheck = await checkSession(request);
+  const sessionValid = sessionCheck === "valid";
 
   if (isAuthRoute && sessionValid) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   if (isPublicRoute) {
-    if (isAuthRoute && hasSessionCookie(request) && !sessionValid) {
+    if (isAuthRoute && hasSessionCookie(request) && sessionCheck === "invalid") {
       const response = NextResponse.next();
       clearSessionCookies(response, request.nextUrl.hostname);
       return response;
@@ -63,7 +87,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!sessionValid) {
+  if (!canAccessProtectedRoute(request, sessionCheck)) {
     const response = NextResponse.redirect(new URL("/login", request.url));
     clearSessionCookies(response, request.nextUrl.hostname);
     return response;

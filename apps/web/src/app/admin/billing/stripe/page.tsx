@@ -210,8 +210,10 @@ export default function PlatformStripeAdminPage() {
     setError(null);
     try {
       const [data, legacyData] = await Promise.all([
-        apiFetch<StripeSettings>("/admin/billing/stripe"),
-        apiFetch<{ integrations: LegacyIntegration[] }>("/admin/billing/stripe/legacy-integrations")
+        apiFetch<StripeSettings>("/admin/billing/stripe", { suppressAuthRedirect: true }),
+        apiFetch<{ integrations: LegacyIntegration[] }>("/admin/billing/stripe/legacy-integrations", {
+          suppressAuthRedirect: true
+        })
       ]);
       setSettings(data);
       setLegacy(legacyData.integrations ?? []);
@@ -238,6 +240,7 @@ export default function PlatformStripeAdminPage() {
     try {
       const saved = await apiFetch<StripeSettings>("/admin/billing/stripe", {
         method: "PUT",
+        suppressAuthRedirect: true,
         body: JSON.stringify({
           publishableKey: publishableKey || null,
           secretKey: secretKey || null,
@@ -262,7 +265,10 @@ export default function PlatformStripeAdminPage() {
     setMessage(null);
     try {
       await saveConfiguration();
-      const validated = await apiFetch<StripeSettings>("/admin/billing/stripe/validate", { method: "POST" });
+      const validated = await apiFetch<StripeSettings>("/admin/billing/stripe/validate", {
+        method: "POST",
+        suppressAuthRedirect: true
+      });
       setSettings(validated);
       setMessage(validated.validationMessage || "Validation complete.");
     } catch (validateError: any) {
@@ -290,7 +296,10 @@ export default function PlatformStripeAdminPage() {
     setError(null);
     setMessage(null);
     try {
-      const disconnected = await apiFetch<StripeSettings>("/admin/billing/stripe/disconnect", { method: "POST" });
+      const disconnected = await apiFetch<StripeSettings>("/admin/billing/stripe/disconnect", {
+        method: "POST",
+        suppressAuthRedirect: true
+      });
       setSettings(disconnected);
       setPublishableKey(disconnected.publishableKey ?? "");
       setSecretKey("");

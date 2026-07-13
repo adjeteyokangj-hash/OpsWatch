@@ -49,9 +49,11 @@ export const refreshAuthSession = async (): Promise<SessionUser | null> => {
   });
 
   if (!response.ok) {
-    clearAuthCookies();
-    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-      window.location.href = "/login";
+    if (response.status === 401) {
+      clearAuthCookies();
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login";
+      }
     }
     return null;
   }
