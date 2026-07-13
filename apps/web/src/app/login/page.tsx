@@ -54,6 +54,15 @@ export default function LoginPage() {
         return;
       }
 
+      const sessionCheck = await fetch(`${API_BASE_URL}/auth/session`, {
+        credentials: "include",
+        cache: "no-store"
+      });
+      if (!sessionCheck.ok) {
+        setError("Sign-in succeeded but the session cookie was not established. Clear site cookies and try again.");
+        return;
+      }
+
       window.location.href = "/dashboard";
     } catch {
       setError("Sign-in failed: API unavailable. Start the API server and try again.");

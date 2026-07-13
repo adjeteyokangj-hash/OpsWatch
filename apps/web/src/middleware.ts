@@ -16,29 +16,53 @@ const clearSessionCookies = (response: NextResponse, hostname: string): void => 
   }
 };
 
-export function middleware(request: NextRequest) {
+const hasSessionCookie = (request: NextRequest): boolean =>
+  Boolean(request.cookies.get("opswatch_session")?.value);
+
+const validateSession = async (request: NextRequest): Promise<boolean> => {
+  if (!hasSessionCookie(request)) {
+    return false;
+  }
+
+  try {
+    const sessionUrl = new URL("/api/auth/session", request.url);
+    const response = await fetch(sessionUrl, {
+      headers: {
+        cookie: request.headers.get("cookie") ?? ""
+      },
+      cache: "no-store"
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Proxied API routes — auth is enforced by the API, not Next.js middleware.
   if (pathname.startsWith("/api/")) {
     return NextResponse.next();
   }
 
-  // Presence of opswatch_session is an access hint only; the API validates session state.
-  const sessionCookie = request.cookies.get("opswatch_session")?.value;
-  const hasSession = Boolean(sessionCookie);
   const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/register");
   const isPublicRoute = isAuthRoute || pathname.startsWith("/status") || pathname.startsWith("/status-page");
+  const sessionValid = hasSessionCookie(request) ? await validateSession(request) : false;
 
-  if (isAuthRoute && hasSession) {
+  if (isAuthRoute && sessionValid) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   if (isPublicRoute) {
+    if (isAuthRoute && hasSessionCookie(request) && !sessionValid) {
+      const response = NextResponse.next();
+      clearSessionCookies(response, request.nextUrl.hostname);
+      return response;
+    }
     return NextResponse.next();
   }
 
-  if (!hasSession) {
+  if (!sessionValid) {
     const response = NextResponse.redirect(new URL("/login", request.url));
     clearSessionCookies(response, request.nextUrl.hostname);
     return response;
