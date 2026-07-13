@@ -3,6 +3,11 @@
 	"version": "0.1.0",
 	"private": true,
 	"main": "dist/index.js",
+	"exports": {
+		".": "./dist/index.js",
+		"./app": "./src/app.ts",
+		"./bootstrap": "./src/bootstrap.ts"
+	},
 	"scripts": {
 		"dev": "tsx watch src/server.ts",
 		"build": "pnpm --filter @opswatch/shared build && prisma generate && tsc -p tsconfig.json",

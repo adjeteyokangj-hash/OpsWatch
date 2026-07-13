@@ -35,6 +35,7 @@ If Vercel reports **No Output Directory named "public" found**, the project is s
 | `JWT_SECRET` | Auth signing (≥32 chars, production-only value) |
 | `WORKER_INTERNAL_SECRET` | Secured internal routes (≥16 chars) |
 | `OPSWATCH_WEB_URL` | `https://opswatch.okanggroup.com` |
+| `PLATFORM_SUPER_ADMIN_EMAILS` | Comma-separated platform super admins (e.g. `admin@okanggroup.com`) — unlocks `/admin/billing/stripe` |
 | `NODE_ENV` | `production` |
 | `SEED_ADMIN_PASSWORD` | Required if running seed in production |
 | `SMTP_*` | Optional email delivery |

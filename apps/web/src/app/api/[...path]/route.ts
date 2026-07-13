@@ -1,6 +1,13 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { resolveOpswatchApiOrigin } from "../../../lib/api-origin";
+import {
+  handleEmbeddedOpswatchApi,
+  shouldUseEmbeddedOpswatchApi
+} from "../../../server/opswatch-api-handler";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const hopByHopHeaders = new Set([
   "connection",
@@ -52,9 +59,11 @@ const forwardResponseHeaders = (upstream: Response): Headers => {
   return headers;
 };
 
-async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }): Promise<NextResponse> {
-  const { path } = await context.params;
-  const upstreamUrl = buildUpstreamUrl(request, path);
+async function proxyToExternalApi(
+  request: NextRequest,
+  pathSegments: string[]
+): Promise<NextResponse> {
+  const upstreamUrl = buildUpstreamUrl(request, pathSegments);
   const method = request.method.toUpperCase();
   const headers = forwardRequestHeaders(request);
   const body =
@@ -71,12 +80,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    const configHint =
-      process.env.NODE_ENV === "production" && !process.env.OPSWATCH_API_ORIGIN
-        ? " Set OPSWATCH_API_ORIGIN on the web project (or keep NEXT_PUBLIC_OPSWATCH_API_URL as the absolute API URL)."
-        : "";
     return NextResponse.json(
-      { error: "API unavailable", detail: `${detail}${configHint}` },
+      { error: "API unavailable", detail },
       { status: 502 }
     );
   }
@@ -87,9 +92,30 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   });
 }
 
-export const GET = proxy;
-export const POST = proxy;
-export const PUT = proxy;
-export const PATCH = proxy;
-export const DELETE = proxy;
-export const OPTIONS = proxy;
+async function handleOpswatchApi(
+  request: NextRequest,
+  context: { params: Promise<{ path: string[] }> }
+): Promise<NextResponse> {
+  const { path } = await context.params;
+
+  if (shouldUseEmbeddedOpswatchApi()) {
+    try {
+      return await handleEmbeddedOpswatchApi(request, path);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return NextResponse.json(
+        { error: "API unavailable", detail },
+        { status: 500 }
+      );
+    }
+  }
+
+  return proxyToExternalApi(request, path);
+}
+
+export const GET = handleOpswatchApi;
+export const POST = handleOpswatchApi;
+export const PUT = handleOpswatchApi;
+export const PATCH = handleOpswatchApi;
+export const DELETE = handleOpswatchApi;
+export const OPTIONS = handleOpswatchApi;

@@ -4,6 +4,14 @@ import path from "path";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: path.resolve(__dirname, "..", ".."),
+  transpilePackages: ["@opswatch/api", "@opswatch/shared"],
+  serverExternalPackages: [
+    "@prisma/client",
+    "bcryptjs",
+    "express",
+    "nodemailer",
+    "stripe"
+  ],
   async redirects() {
     return [
       {

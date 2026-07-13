@@ -15,6 +15,11 @@ apps/worker/src/**/*.js
 .env
 .env.local
 .env.*.local
+.env.api.production
+.env*.production
+
+# Vercel local link
+.vercel/
 
 # Logs
 *.log
