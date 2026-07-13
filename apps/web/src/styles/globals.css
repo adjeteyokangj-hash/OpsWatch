@@ -863,6 +863,17 @@ h1 {
   gap: 8px;
 }
 
+.member-role-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.member-role-cell select {
+  min-width: 10rem;
+}
+
 .table-actions .secondary-button,
 .table-actions .danger-button {
   width: auto;

@@ -12,6 +12,7 @@ type UserRow = {
   name: string;
   email: string;
   role: string;
+  isPlatformSuperAdmin?: boolean;
   isActive: boolean;
   createdAt: string;
 };
@@ -426,7 +427,29 @@ export default function MembersPage() {
                     </td>
                     <td>{user.email}</td>
                     <td>
-                      {isAdmin ? (
+                      {user.isPlatformSuperAdmin ? (
+                        <div className="member-role-cell">
+                          <span className="result-pill pass">Super Admin</span>
+                          {isAdmin ? (
+                            <select
+                              aria-label={`Organization role for ${user.email}`}
+                              value={user.role}
+                              disabled={lastAdmin}
+                              onChange={(event) => void updateRole(user.id, event.target.value)}
+                            >
+                              {ROLE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  Org: {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="dashboard-subtle">
+                              Org: {ROLE_LABELS[user.role] ?? user.role}
+                            </span>
+                          )}
+                        </div>
+                      ) : isAdmin ? (
                         <select
                           aria-label={`Role for ${user.email}`}
                           value={user.role}

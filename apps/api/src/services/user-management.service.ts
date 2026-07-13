@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { prisma } from "../lib/prisma";
+import { isPlatformSuperAdmin } from "../middleware/require-platform-super-admin";
 
 export class UserManagementError extends Error {
   constructor(message: string) {
@@ -34,6 +35,7 @@ export const serializeUser = (user: {
   name: user.name,
   email: user.email,
   role: user.role,
+  isPlatformSuperAdmin: isPlatformSuperAdmin(user.email),
   isActive: user.isActive,
   createdAt: user.createdAt.toISOString()
 });
