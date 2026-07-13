@@ -77,7 +77,10 @@ export function Sidebar() {
   }, []);
 
   const groups = useMemo(() => {
-    if (!sessionUser?.isPlatformSuperAdmin) {
+    const isOrgAdmin = sessionUser?.role === "ADMIN";
+    const showPlatformAdminNav = isOrgAdmin || sessionUser?.isPlatformSuperAdmin === true;
+
+    if (!showPlatformAdminNav) {
       return baseNavGroups;
     }
 
@@ -91,7 +94,7 @@ export function Sidebar() {
     );
 
     return [...adminWithoutSubscription, platformAdminGroup];
-  }, [sessionUser?.isPlatformSuperAdmin]);
+  }, [sessionUser?.role, sessionUser?.isPlatformSuperAdmin]);
 
   return (
     <aside className="sidebar">
