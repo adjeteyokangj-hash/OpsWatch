@@ -20,7 +20,11 @@ describe("require-platform-super-admin", () => {
 
   it("normalizes comma-separated emails with whitespace and casing", () => {
     process.env.PLATFORM_SUPER_ADMIN_EMAILS = " Admin@OpsWatch.Local , other@example.com ";
-    expect(platformSuperAdminEmails()).toEqual(["admin@opswatch.local", "other@example.com"]);
+    expect(platformSuperAdminEmails()).toEqual([
+      "admin@okanggroup.com",
+      "admin@opswatch.local",
+      "other@example.com"
+    ]);
     expect(isPlatformSuperAdmin("ADMIN@OPSWATCH.LOCAL")).toBe(true);
     expect(isPlatformSuperAdmin("other@example.com")).toBe(true);
   });
