@@ -81,8 +81,12 @@ Local long-running server: `pnpm --filter @opswatch/api dev` → `src/server.ts`
 On Vercel **web** project (`opswatch-production`):
 
 ```
-NEXT_PUBLIC_OPSWATCH_API_URL=https://YOUR-API-PROJECT.vercel.app/api
+OPSWATCH_API_ORIGIN=https://YOUR-API-PROJECT.vercel.app
 ```
+
+The browser always calls same-origin `/api` so HttpOnly session cookies stay on `opswatch.okanggroup.com`. The web app proxies those requests to `OPSWATCH_API_ORIGIN`.
+
+**Legacy config (still supported):** if `OPSWATCH_API_ORIGIN` is unset, the proxy derives the upstream host from an absolute `NEXT_PUBLIC_OPSWATCH_API_URL` (e.g. `https://YOUR-API-PROJECT.vercel.app/api`).
 
 Remove unused legacy vars if present:
 

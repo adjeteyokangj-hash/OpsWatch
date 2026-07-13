@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { resolveOpswatchApiOrigin } from "./lib/api-origin";
 import { resolveSessionCookieDomain } from "./lib/cookie-domain";
 
 const clearSessionCookies = (response: NextResponse, hostname: string): void => {
@@ -25,7 +26,7 @@ const validateSession = async (request: NextRequest): Promise<boolean> => {
   }
 
   try {
-    const sessionUrl = new URL("/api/auth/session", request.url);
+    const sessionUrl = `${resolveOpswatchApiOrigin()}/api/auth/session`;
     const response = await fetch(sessionUrl, {
       headers: {
         cookie: request.headers.get("cookie") ?? ""

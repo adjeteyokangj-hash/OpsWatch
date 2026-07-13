@@ -1,7 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-
-const API_ORIGIN = (process.env.OPSWATCH_API_ORIGIN ?? "http://127.0.0.1:4000").replace(/\/+$/, "");
+import { resolveOpswatchApiOrigin } from "../../../lib/api-origin";
 
 const hopByHopHeaders = new Set([
   "connection",
@@ -19,7 +18,7 @@ const hopByHopHeaders = new Set([
 const buildUpstreamUrl = (request: NextRequest, pathSegments: string[]): string => {
   const path = pathSegments.join("/");
   const search = request.nextUrl.search;
-  return `${API_ORIGIN}/api/${path}${search}`;
+  return `${resolveOpswatchApiOrigin()}/api/${path}${search}`;
 };
 
 const forwardRequestHeaders = (request: NextRequest): Headers => {
@@ -71,8 +70,13 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       cache: "no-store"
     });
   } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const configHint =
+      process.env.NODE_ENV === "production" && !process.env.OPSWATCH_API_ORIGIN
+        ? " Set OPSWATCH_API_ORIGIN on the web project (or keep NEXT_PUBLIC_OPSWATCH_API_URL as the absolute API URL)."
+        : "";
     return NextResponse.json(
-      { error: "API unavailable", detail: error instanceof Error ? error.message : String(error) },
+      { error: "API unavailable", detail: `${detail}${configHint}` },
       { status: 502 }
     );
   }
