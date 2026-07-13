@@ -1,16 +1,23 @@
 import type { NextFunction, Response } from "express";
 import type { AuthRequest } from "./auth";
 
-export const platformSuperAdminEmails = (): string[] =>
-  process.env.PLATFORM_SUPER_ADMIN_EMAILS?.split(",")
+/** Built-in platform operators (always allowlisted; env can add more). */
+const DEFAULT_PLATFORM_SUPER_ADMIN_EMAILS = ["admin@okanggroup.com"] as const;
+
+const normalizeEmails = (raw: string | undefined): string[] =>
+  raw
+    ?.split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean) ?? [];
 
+export const platformSuperAdminEmails = (): string[] => {
+  const fromEnv = normalizeEmails(process.env.PLATFORM_SUPER_ADMIN_EMAILS);
+  return Array.from(new Set([...DEFAULT_PLATFORM_SUPER_ADMIN_EMAILS, ...fromEnv]));
+};
+
 export const isPlatformSuperAdmin = (userEmail?: string | null): boolean => {
-  const allowlist = platformSuperAdminEmails();
-  if (allowlist.length === 0) return false;
   if (!userEmail) return false;
-  return allowlist.includes(userEmail.trim().toLowerCase());
+  return platformSuperAdminEmails().includes(userEmail.trim().toLowerCase());
 };
 
 export const requirePlatformSuperAdmin = (

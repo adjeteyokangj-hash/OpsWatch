@@ -25,14 +25,24 @@ describe("require-platform-super-admin", () => {
     expect(isPlatformSuperAdmin("other@example.com")).toBe(true);
   });
 
-  it("denies access when allowlist is empty or missing", () => {
+  it("always allowlists the built-in platform operator even when env is empty", () => {
     delete process.env.PLATFORM_SUPER_ADMIN_EMAILS;
-    expect(platformSuperAdminEmails()).toEqual([]);
-    expect(isPlatformSuperAdmin("admin@opswatch.local")).toBe(false);
+    expect(platformSuperAdminEmails()).toEqual(["admin@okanggroup.com"]);
+    expect(isPlatformSuperAdmin("admin@okanggroup.com")).toBe(true);
+    expect(isPlatformSuperAdmin("ADMIN@OKANGGROUP.COM")).toBe(true);
 
     process.env.PLATFORM_SUPER_ADMIN_EMAILS = " , , ";
-    expect(platformSuperAdminEmails()).toEqual([]);
+    expect(isPlatformSuperAdmin("admin@okanggroup.com")).toBe(true);
     expect(isPlatformSuperAdmin("admin@opswatch.local")).toBe(false);
+  });
+
+  it("merges env allowlist with the built-in platform operator", () => {
+    process.env.PLATFORM_SUPER_ADMIN_EMAILS = "other@example.com";
+    expect(platformSuperAdminEmails()).toEqual([
+      "admin@okanggroup.com",
+      "other@example.com"
+    ]);
+    expect(isPlatformSuperAdmin("other@example.com")).toBe(true);
   });
 
   it("does not treat organization ADMIN role as platform super admin", () => {
