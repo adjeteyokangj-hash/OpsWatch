@@ -21,7 +21,7 @@ describe("run-incident-auto-heal.job", () => {
 
   it("calls internal auto-heal endpoint when enabled", async () => {
     process.env.OPSWATCH_API_URL = "http://127.0.0.1:4000/api";
-    process.env.WORKER_INTERNAL_SECRET = "test-secret";
+    process.env.WORKER_INTERNAL_SECRET = " test-secret ";
 
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -40,5 +40,9 @@ describe("run-incident-auto-heal.job", () => {
         })
       })
     );
+  });
+
+  it("fails fast when worker internal secret is missing", async () => {
+    await expect(runIncidentAutoHealJob()).rejects.toThrow("WORKER_INTERNAL_SECRET is not configured");
   });
 });

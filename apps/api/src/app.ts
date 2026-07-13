@@ -95,6 +95,7 @@ app.use(API_PREFIX, trueNumerisRouter);
 app.use(API_PREFIX, eventsRouter);
 app.use(API_PREFIX, heartbeatsRouter);
 app.use(`${API_PREFIX}/webhooks`, webhookJsonParser, webhooksRouter);
+app.use(API_PREFIX, internalRouter);
 
 app.use(API_PREFIX, requireAuth, projectsRouter);
 app.use(API_PREFIX, requireAuth, servicesRouter);
@@ -111,7 +112,6 @@ app.use(API_PREFIX, requireAuth, onboardingRouter);
 app.use(API_PREFIX, requireAuth, analyticsRouter);
 app.use(API_PREFIX, requireAuth, maintenanceWindowsRouter);
 app.use(API_PREFIX, requireAuth, automationRouter);
-app.use(API_PREFIX, internalRouter);
 app.use(`${API_PREFIX}/remediation`, requireAuth, remediationRouter);
 
 app.use(errorHandler);

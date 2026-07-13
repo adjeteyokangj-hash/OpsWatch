@@ -7,8 +7,8 @@ export const requireWorkerInternal = (req: Request, res: Response, next: NextFun
     return;
   }
 
-  const provided = req.header("x-opswatch-worker-secret");
-  if (provided !== configured) {
+  const provided = req.header("x-opswatch-worker-secret")?.trim();
+  if (!provided || provided !== configured) {
     res.status(401).json({ error: "Unauthorized worker request" });
     return;
   }
