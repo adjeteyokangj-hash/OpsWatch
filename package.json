@@ -32,6 +32,7 @@
 		"gate:backup-drill": "powershell -ExecutionPolicy Bypass -File scripts/db-backup-drill.ps1",
 		"gate:verify-self-monitoring": "tsx scripts/verify-opswatch-self-monitoring.ts",
 		"monitoring:seed-noble-express": "tsx scripts/seed-noble-express-graph.ts",
+		"monitoring:set-customer-portal-url": "tsx scripts/set-customer-portal-url.ts",
 		"monitoring:setup-noble": "tsx scripts/setup-noble-production.ts",
 		"monitoring:noble-live": "tsx scripts/noble-live-heartbeat.ts",
 		"monitoring:cleanup-demo": "tsx scripts/cleanup-noble-demo-data.ts",

@@ -125,9 +125,9 @@ export function ProjectLayerPage({ layerKey }: { layerKey: LayerKey }) {
             ) : null}
 
             {config.layout === "cards" ? (
-              <ServiceCardGrid rows={filteredServices} projectId={projectId} />
+              <ServiceCardGrid rows={filteredServices} projectId={projectId} onUpdated={() => void reload()} />
             ) : (
-              <ServiceList rows={filteredServices} projectId={projectId} />
+              <ServiceList rows={filteredServices} projectId={projectId} onUpdated={() => void reload()} />
             )}
           </section>
         </>

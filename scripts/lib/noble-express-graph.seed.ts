@@ -48,7 +48,7 @@ const services: ServiceSeed[] = [
   { key: "postgresql", name: "PostgreSQL", layer: "COMPONENT", isCritical: true },
   { key: "redis", name: "Redis", layer: "COMPONENT", isCritical: true, baseUrl: "http://127.0.0.1:4999/redis" },
   { key: "email-service", name: "Email Service", layer: "COMPONENT" },
-  { key: "customer-portal", name: "Customer Portal", layer: "COMPONENT" },
+  { key: "customer-portal", name: "Customer Portal", layer: "COMPONENT", baseUrl: "https://www.noblexp.com" },
   { key: "integration-outbox", name: "Integration Outbox", layer: "COMPONENT" },
   { key: "truenumeris-api", name: "TrueNumeris API", layer: "COMPONENT" }
 ];

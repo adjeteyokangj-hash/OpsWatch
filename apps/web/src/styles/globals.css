@@ -6283,6 +6283,15 @@ button {
   font-weight: 600;
 }
 
+button.text-link {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
 .table-empty {
   text-align: center;
   color: var(--ink-soft);

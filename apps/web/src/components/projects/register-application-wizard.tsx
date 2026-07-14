@@ -89,7 +89,7 @@ const SDK_PACKAGE = "@opswatch/client";
 const HEARTBEAT_POLL_MS = 5000;
 const DISCOVERY_POLL_MS = 3000;
 
-const JOURNEY_LABELS = ["Register", "Connect", "Heartbeat", "Discover", "Configure", "Monitoring"] as const;
+const JOURNEY_LABELS = ["Register", "Connect", "Heartbeat", "Topology", "Configure", "Monitoring"] as const;
 
 const DISCOVERY_TARGETS = ["API", "Database", "Redis", "Queue", "Background workers", "Modules", "Workflows"] as const;
 
@@ -442,21 +442,21 @@ export function RegisterApplicationWizard({
           : step === "verification"
             ? "Waiting for heartbeat"
             : step === "discover"
-              ? "Discovering your application"
+              ? "Review topology"
               : "Application connected successfully";
 
   const stepDescription =
     step === "register"
-      ? "Register a new application with OpsWatch. Everything else is configured after the first heartbeat."
+      ? "Register a new application with OpsWatch. After the first heartbeat it is Connected."
       : step === "success"
         ? "Copy your API key now, then connect your application to OpsWatch."
         : step === "credentials"
           ? "Use these credentials to wire up the SDK and start sending heartbeats."
           : step === "verification"
-            ? "OpsWatch will detect your application automatically once the SDK starts sending heartbeats."
+            ? "After the first heartbeat, this application is Connected."
             : step === "discover"
-              ? "OpsWatch is mapping modules, workflows, services, and dependencies as telemetry arrives."
-              : "Your application is now securely connected to OpsWatch.";
+              ? "Topology comes from a discovery payload, seed data, or services you add — not from the heartbeat alone."
+              : "Your application is connected to OpsWatch.";
 
   const healthStatus = connection?.status ?? created?.status ?? topology?.project.status ?? "UNKNOWN";
   const healthLabel =
@@ -658,8 +658,8 @@ export function RegisterApplicationWizard({
             <strong>Next step</strong>
             <p>Connect your application using the API key above.</p>
             <p>
-              Once the first heartbeat is received, OpsWatch will automatically begin discovering modules, workflows,
-              and services.
+              The first heartbeat marks the app Connected. Modules and workflows come from a discovery payload, seed,
+              or services you add — not from the heartbeat alone.
             </p>
           </div>
 
@@ -738,7 +738,7 @@ export function RegisterApplicationWizard({
           {isConnected ? (
             <div className="register-heartbeat-connected">
               <strong>✓ First heartbeat received</strong>
-              <p>OpsWatch detected your application. Continuing to discovery…</p>
+              <p>Your application is Connected.</p>
             </div>
           ) : (
             <div className="register-heartbeat-waiting">
@@ -747,7 +747,7 @@ export function RegisterApplicationWizard({
               </span>
               <div>
                 <strong>Waiting for heartbeat…</strong>
-                <p>We&apos;ll automatically detect your application as soon as the SDK starts sending heartbeats.</p>
+                <p>Send a heartbeat from the SDK to mark this application Connected.</p>
                 <p className="field-hint">Checking every 5 seconds…</p>
               </div>
             </div>
@@ -773,7 +773,7 @@ export function RegisterApplicationWizard({
                 Install <code>{SDK_PACKAGE}</code> and configure the env snippet from the previous step.
               </li>
               <li>Send a heartbeat from your application startup or cron.</li>
-              <li>OpsWatch will discover modules, services, and dependencies after connection.</li>
+              <li>Add topology via discovery payload, seed, or Modules / Components pages.</li>
             </ol>
           </div>
 
@@ -803,8 +803,11 @@ export function RegisterApplicationWizard({
               ●
             </span>
             <div>
-              <strong>Discovering your application…</strong>
-              <p>OpsWatch is building your service topology as telemetry arrives.</p>
+              <strong>Topology so far</strong>
+              <p>
+                Showing modules, workflows, and services already registered (discovery payload, seed, or added in the
+                UI). Heartbeat alone does not invent this graph.
+              </p>
             </div>
           </div>
 
@@ -850,12 +853,10 @@ export function RegisterApplicationWizard({
           <div className="hint-panel register-wizard-next-step">
             <strong>Next</strong>
             <ul className="register-wizard-inline-list">
-              <li>✓ Health monitoring</li>
-              <li>✓ Module discovery</li>
-              <li>✓ Workflow discovery</li>
-              <li>✓ Service topology</li>
+              <li>✓ Health monitoring from heartbeats and checks</li>
+              <li>✓ Topology from discovery payload, seed, or added services</li>
             </ul>
-            <p>These begin automatically as telemetry arrives.</p>
+            <p>Attach checks on services that have a Base URL when you need HTTP/SSL coverage.</p>
           </div>
 
           <div className="register-monitoring-preview">
@@ -864,7 +865,7 @@ export function RegisterApplicationWizard({
               <strong>{healthLabel}</strong>
             </div>
             <div className="register-monitoring-row">
-              <span>Modules discovered</span>
+              <span>Modules</span>
               <strong>{discovery.modules}</strong>
             </div>
             <div className="register-monitoring-row">

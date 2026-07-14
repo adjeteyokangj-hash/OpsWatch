@@ -1,5 +1,9 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 import { HealthBadge } from "../health/health-badge";
+import { EditServiceForm } from "./edit-service-form";
 
 const layerIcon = (type: string): string => {
   if (type === "MODULE") return "▣";
@@ -19,37 +23,73 @@ const statusHint = (status: string): string => {
   return "Waiting for first heartbeat";
 };
 
-export function ServiceCardGrid({ rows, projectId }: { rows: Array<any>; projectId: string }) {
+export function ServiceCardGrid({
+  rows,
+  projectId,
+  onUpdated
+}: {
+  rows: Array<any>;
+  projectId: string;
+  onUpdated?: () => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   if (rows.length === 0) {
     return (
       <div className="workspace-empty-inline">
         <p>No items in this layer yet.</p>
-        <p className="dashboard-subtle">Use <strong>Add service</strong> above to register the first one.</p>
+        <p className="dashboard-subtle">
+          Use <strong>Add service</strong> above to register the first one.
+        </p>
       </div>
     );
   }
 
+  const editing = editingId ? rows.find((row) => row.id === editingId) : null;
+
   return (
-    <div className="service-card-grid">
-      {rows.map((row) => (
-        <article className="service-card" key={row.id}>
-          <div className="service-card-top">
-            <span className="service-card-icon" aria-hidden="true">
-              {layerIcon(row.type)}
-            </span>
-            <HealthBadge status={row.status} />
-          </div>
-          <h3>{row.name}</h3>
-          <p className="service-card-meta">
-            <span>{row.type}</span>
-            {row.isCritical ? <span className="criticality-tag">Critical</span> : null}
-          </p>
-          <p className="service-card-hint">{statusHint(row.status)}</p>
-          <Link className="service-card-link" href={`/checks?projectId=${projectId}&serviceId=${row.id}`}>
-            View details →
-          </Link>
-        </article>
-      ))}
+    <div>
+      {editing ? (
+        <div style={{ marginBottom: "1rem" }}>
+          <EditServiceForm
+            serviceId={editing.id}
+            name={editing.name}
+            baseUrl={editing.baseUrl}
+            onCancel={() => setEditingId(null)}
+            onUpdated={() => {
+              setEditingId(null);
+              onUpdated?.();
+            }}
+          />
+        </div>
+      ) : null}
+      <div className="service-card-grid">
+        {rows.map((row) => (
+          <article className="service-card" key={row.id}>
+            <div className="service-card-top">
+              <span className="service-card-icon" aria-hidden="true">
+                {layerIcon(row.type)}
+              </span>
+              <HealthBadge status={row.status} />
+            </div>
+            <h3>{row.name}</h3>
+            <p className="service-card-meta">
+              <span>{row.type}</span>
+              {row.isCritical ? <span className="criticality-tag">Critical</span> : null}
+            </p>
+            <p className="service-card-hint">{row.baseUrl || "No target URL"}</p>
+            <p className="service-card-hint">{statusHint(row.status)}</p>
+            <div className="table-actions">
+              <button type="button" className="text-link" onClick={() => setEditingId(row.id)} data-action="local-ui">
+                Edit
+              </button>
+              <Link className="service-card-link" href={`/checks?projectId=${projectId}&serviceId=${row.id}`}>
+                View details →
+              </Link>
+            </div>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }
