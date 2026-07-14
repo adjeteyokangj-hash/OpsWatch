@@ -109,21 +109,21 @@ export default function ProjectDetailPage() {
 					<section className="panel quick-links-panel">
 						<h2>Quick links</h2>
 						<div className="quick-link-grid">
-							<Link className="quick-link-card" href={`/projects/${project.id}/monitored-areas`}>
-								<strong>Monitored areas</strong>
-								<span>Layer health across app, modules, workflows, and components.</span>
-							</Link>
 							<Link className="quick-link-card" href={`/projects/${project.id}/topology`}>
-								<strong>Service map</strong>
-								<span>Dependency graph and topology for this application.</span>
+								<strong>Topology</strong>
+								<span>Dependency graph and live operations timeline.</span>
 							</Link>
-							<Link className="quick-link-card" href={`/projects/${project.id}/billing`}>
-								<strong>Billing</strong>
-								<span>Plan, pricing, and usage limits for this project.</span>
+							<Link className="quick-link-card" href={`/projects/${project.id}/incidents`}>
+								<strong>Incidents</strong>
+								<span>Severity, scope, and evidence for this application.</span>
 							</Link>
-							<Link className="quick-link-card" href={`/projects/${project.id}/contacts`}>
-								<strong>Contacts</strong>
-								<span>Operational owners and notification contacts.</span>
+							<Link className="quick-link-card" href={`/projects/${project.id}/insights`}>
+								<strong>AI Insights</strong>
+								<span>Evidence-backed patterns — predictions stay gated off.</span>
+							</Link>
+							<Link className="quick-link-card" href={`/projects/${project.id}/automation`}>
+								<strong>Automation</strong>
+								<span>Run history and playbook controls for this app.</span>
 							</Link>
 						</div>
 					</section>

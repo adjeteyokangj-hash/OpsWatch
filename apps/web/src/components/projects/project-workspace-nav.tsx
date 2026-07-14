@@ -4,22 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
+/** Application workspace tabs — Overview through Settings. */
 const tabs = [
   ["Overview", ""],
-  ["Monitored Areas", "/monitored-areas"],
-  ["Service Map", "/topology"],
+  ["Topology", "/topology"],
   ["Modules", "/modules"],
   ["Workflows", "/workflows"],
-  ["Components", "/components"],
-  ["Checks", "/checks"],
-  ["Dependencies & SLOs", "/reliability"],
-  ["Alerts", "/alerts"],
+  ["Services", "/services"],
   ["Incidents", "/incidents"],
+  ["Alerts", "/alerts"],
+  ["Deployments", "/deployments"],
   ["Automation", "/automation"],
-  ["Integrations", "/integrations"],
-  ["Policies", "/policies"],
-  ["Contacts", "/contacts"],
-  ["Billing", "/billing"],
+  ["Metrics", "/metrics"],
+  ["Logs", "/logs"],
+  ["AI Insights", "/insights"],
   ["Settings", "/settings"]
 ] as const;
 
@@ -43,23 +41,11 @@ export function ProjectWorkspaceNav({ projectId }: { projectId: string }) {
   return (
     <nav ref={navRef} className="pill-row project-workspace-nav" aria-label="Project workspace">
       {tabs.map(([label, path]) => {
-        const href = path.startsWith("/alerts")
-          ? `/alerts?projectId=${projectId}`
-          : path.startsWith("/incidents")
-            ? `/incidents?projectId=${projectId}`
-            : path === "/integrations"
-              ? `/integrations/${projectId}`
-              : `${base}${path}`;
+        const href = `${base}${path}`;
         const active =
           path === ""
             ? pathname === base || pathname === `${base}/`
-            : path === "/alerts"
-              ? pathname.startsWith("/alerts")
-              : path === "/incidents"
-                ? pathname.startsWith("/incidents")
-                : path === "/integrations"
-                  ? pathname.startsWith(`/integrations/${projectId}`)
-                  : pathname.startsWith(`${base}${path}`);
+            : pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link
             key={label}
