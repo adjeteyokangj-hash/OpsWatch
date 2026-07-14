@@ -7068,3 +7068,42 @@ label {
   padding-left: 1.1rem;
 }
 
+.incident-quick-drawer {
+  position: sticky;
+  bottom: 12px;
+  margin-top: 12px;
+  z-index: 5;
+  border-left: 4px solid #1d4ed8;
+}
+
+.row-selected {
+  outline: 2px solid #93c5fd;
+  background: #f8fbff;
+}
+
+.portfolio-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  font-size: 0.82rem;
+}
+
+.topology-intel-slot {
+  padding: 12px 14px;
+}
+
+.topology-intel-slot h3 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 1100px) {
+  .topology-side-stack {
+    max-height: none;
+  }
+
+  .incident-quick-drawer {
+    position: static;
+  }
+}
+

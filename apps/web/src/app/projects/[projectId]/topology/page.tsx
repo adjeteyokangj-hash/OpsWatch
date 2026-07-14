@@ -15,7 +15,9 @@ import { TopologyFilterBar, type TopologyViewMode } from "../../../../components
 import { TopologyListView } from "../../../../components/topology/topology-list-view";
 import { TopologyTimeReplay } from "../../../../components/topology/topology-time-replay";
 import { TopologyLiveOpsFeed } from "../../../../components/topology/topology-live-ops-feed";
+import { TopologyApplicationPanel } from "../../../../components/topology/topology-application-panel";
 import { TopologyRefreshBanner } from "../../../../components/topology/topology-error-banner";
+import { EmptyState } from "../../../../components/ui/empty-state";
 import { classifyTopologyError, type ClassifiedTopologyError } from "../../../../components/topology/topology-error-classify";
 import type { ProjectTopologyResponse, TopologyHealthStatus, TopologyNodeType } from "../../../../components/topology/topology-types";
 
@@ -177,7 +179,27 @@ export default function ProjectTopologyPage() {
           </section>
         ) : null}
 
-        {topology ? (
+        {!loading && !topology && !error ? (
+          <section className="panel">
+            <EmptyState
+              title="No topology data"
+              description="Register services and dependencies to build the live service map."
+              action={<Link className="primary-button" href={`/projects/${projectId}/services`}>Open services</Link>}
+            />
+          </section>
+        ) : null}
+
+        {topology && topology.nodes.length === 0 ? (
+          <section className="panel">
+            <EmptyState
+              title="Topology is empty"
+              description="This application has no monitored nodes yet. Add modules, workflows, or services to populate the map."
+              action={<Link className="primary-button" href={`/projects/${projectId}/modules`}>Add modules</Link>}
+            />
+          </section>
+        ) : null}
+
+        {topology && topology.nodes.length > 0 ? (
           <>
             {viewMode === "list" ? <TopologySummaryCards topology={topology} /> : null}
             <TopologyFilterBar
@@ -223,13 +245,26 @@ export default function ProjectTopologyPage() {
                   selectedNode={selectedNode}
                   paused={paused}
                 />
-                <TopologyNodeDrawer
-                  topology={topology}
-                  node={selectedNode}
-                  projectId={projectId}
-                  project={project}
-                  onClose={() => setSelectedNodeId(null)}
-                />
+                {selectedNode ? (
+                  <TopologyNodeDrawer
+                    topology={topology}
+                    node={selectedNode}
+                    projectId={projectId}
+                    project={project}
+                    onClose={() => setSelectedNodeId(null)}
+                  />
+                ) : (
+                  <TopologyApplicationPanel topology={topology} projectId={projectId} project={project} />
+                )}
+                <section className="panel topology-intel-slot">
+                  <h3>Intelligence</h3>
+                  <p className="dashboard-subtle">
+                    Predictions stay disabled. Patterns and deploy correlation live on the AI Insights tab when evidence exists.
+                  </p>
+                  <Link className="text-link" href={`/projects/${projectId}/insights`}>
+                    Open AI Insights →
+                  </Link>
+                </section>
               </div>
             </div>
           </>

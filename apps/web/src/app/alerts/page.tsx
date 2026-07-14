@@ -7,25 +7,12 @@ import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
 import { apiFetch } from "../../lib/api";
 import { AlertsTable } from "../../components/alerts/alerts-table";
+import { groupAlertsBySignature, type AlertListRow } from "../../components/alerts/alert-grouping";
 import { FilterPresets, type FilterPreset } from "../../components/ui/filter-presets";
 import { CopyFilterLink } from "../../components/ui/copy-filter-link";
 import { StatCard } from "../../components/dashboard/stat-card";
 
-type AlertListItemDto = {
-  id: string;
-  title: string;
-  message: string;
-  severity: string;
-  status: string;
-  category: string;
-  sourceType: string;
-  firstSeenAt: string;
-  lastSeenAt: string;
-  acknowledgedAt: string | null;
-  resolvedAt: string | null;
-  project: { id: string; name: string };
-  service: { id: string; name: string } | null;
-};
+type AlertListItemDto = AlertListRow;
 
 const ALERT_PRESETS: FilterPreset[] = [
   { label: "Critical open", params: { severity: "CRITICAL", status: "OPEN" } },
@@ -43,6 +30,7 @@ function AlertsPageContent() {
   const [services, setServices] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [groupMode, setGroupMode] = useState(true);
 
   useEffect(() => {
     const loadMeta = async () => {
@@ -125,17 +113,25 @@ function AlertsPageContent() {
     if (byStatus !== 0) return byStatus;
     return new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime();
   });
+  const groups = groupAlertsBySignature(displayAlerts);
 
   return (
     <Shell>
-      <Header title="Alerts" />
+      <Header
+        title="Alerts"
+        actions={
+          <button type="button" className="secondary-button" onClick={() => setGroupMode((value) => !value)}>
+            {groupMode ? "Show flat list" : "Group similar"}
+          </button>
+        }
+      />
       <section className="grid-6">
         <StatCard label="Alerts loaded" value={alerts.length} href="/alerts" />
         <StatCard label="Open" value={openCount} href="/alerts?status=OPEN" />
         <StatCard label="Acknowledged" value={acknowledgedCount} href="/alerts?status=ACKNOWLEDGED" />
         <StatCard label="Unresolved" value={unresolvedCount} href="/alerts?onlyUnresolved=true" />
         <StatCard label="Resolved" value={resolvedCount} href="/alerts?status=RESOLVED" />
-        <StatCard label="Critical open" value={alerts.filter((a) => a.status !== "RESOLVED" && a.severity === "CRITICAL").length} href="/alerts?severity=CRITICAL&onlyUnresolved=true" />
+        <StatCard label="Groups" value={groups.length} href="/alerts" />
       </section>
 
       <section className="panel alerts-filter-panel">
@@ -223,10 +219,39 @@ function AlertsPageContent() {
         <>
           <section className="panel">
             <p>
-              Showing active alerts first. Historical resolved alerts are listed after unresolved signals.
+              {groupMode
+                ? "Grouped by exact title + source + service signature (deterministic dedup). No invented recommendations."
+                : "Showing active alerts first. Historical resolved alerts are listed after unresolved signals."}
             </p>
           </section>
-          <AlertsTable rows={displayAlerts} />
+          {groupMode ? (
+            <div className="activity-feed panel">
+              {groups.map((group) => (
+                <article className="activity-feed-item" key={group.key}>
+                  <div className="activity-feed-head">
+                    <span className="meta-chip">{group.severity}</span>
+                    <span className="meta-chip">{group.count}×</span>
+                    {group.linkedIncident ? (
+                      <Link href={`/incidents/${group.linkedIncident.id}`} className="meta-chip">
+                        Linked incident
+                      </Link>
+                    ) : null}
+                  </div>
+                  <div className="activity-feed-title">
+                    <Link href={`/alerts/${group.latestId}`}>{group.title}</Link>
+                  </div>
+                  <p className="activity-feed-meta">
+                    {group.sourceType}
+                    {group.serviceName ? ` · ${group.serviceName}` : ""} · first{" "}
+                    {new Date(group.firstSeenAt).toLocaleString()} · last{" "}
+                    {new Date(group.lastSeenAt).toLocaleString()}
+                  </p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <AlertsTable rows={displayAlerts} />
+          )}
         </>
       )}
     </Shell>

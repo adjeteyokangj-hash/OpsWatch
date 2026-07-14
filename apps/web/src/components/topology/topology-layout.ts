@@ -10,17 +10,17 @@ import {
 export type NodePosition = { x: number; y: number };
 
 export const LAYOUT = {
-  nodeWidth: 196,
-  nodeHeight: 108,
-  gapX: 18,
-  rowHeight: 128,
+  nodeWidth: 200,
+  nodeHeight: 112,
+  gapX: 28,
+  rowHeight: 136,
   nodesPerRow: 4,
   previewCount: 3,
-  labelGutter: 128,
-  bandStartX: 132,
-  paddingX: 148,
-  paddingY: 72,
-  layerGap: 28,
+  labelGutter: 136,
+  bandStartX: 140,
+  paddingX: 160,
+  paddingY: 80,
+  layerGap: 36,
   minCanvasWidth: 1180,
   minCanvasHeight: 820
 } as const;

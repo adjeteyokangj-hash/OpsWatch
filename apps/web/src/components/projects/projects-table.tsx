@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { formatRelativeTime } from "../../lib/relative-time";
 import { healthLabel, healthTone } from "../../lib/health-tones";
+import { StatusBadge } from "../ui/status-badge";
 
 const statusEmoji = (status: string): string => {
   if (status === "HEALTHY") return "🟢";
@@ -36,8 +37,32 @@ const moduleCount = (row: any): number => {
   return row.monitoredAreaCount ?? 0;
 };
 
+const serviceCount = (row: any): number => (row.services ?? row.Service ?? []).length;
+
 const unresolvedIncidents = (row: any): number =>
   (row.incidents || []).filter((incident: any) => incident.status !== "RESOLVED").length;
+
+const openAlerts = (row: any): number =>
+  (row.alerts || []).filter((alert: any) => alert.status === "OPEN" || alert.status === "ACKNOWLEDGED").length;
+
+/**
+ * Risk column only when there is live evidence (open alerts / unresolved incidents).
+ * Never invents a predictive risk score.
+ */
+const evidenceRisk = (row: any): { label: string; tone: "danger" | "warning" | "success" | "muted" } => {
+  const alerts = openAlerts(row);
+  const incidents = unresolvedIncidents(row);
+  if (row.status === "DOWN" || incidents > 0) {
+    return { label: `${incidents} incident(s) · ${alerts} alert(s)`, tone: "danger" };
+  }
+  if (row.status === "DEGRADED" || alerts > 0) {
+    return { label: `${alerts} open alert(s)`, tone: "warning" };
+  }
+  if (row.status === "UNKNOWN") {
+    return { label: "Insufficient evidence", tone: "muted" };
+  }
+  return { label: "No open risk signals", tone: "success" };
+};
 
 export function ProjectsTable({ rows }: { rows: Array<any> }) {
   return (
@@ -47,12 +72,15 @@ export function ProjectsTable({ rows }: { rows: Array<any> }) {
           <tr>
             <th>Application</th>
             <th>Client</th>
-            <th>Environment</th>
-            <th>Status</th>
-            <th>Last heartbeat</th>
+            <th>Env</th>
+            <th>Health</th>
+            <th>Risk (evidence)</th>
+            <th>Heartbeat</th>
             <th>Modules</th>
+            <th>Services</th>
             <th>Alerts</th>
             <th>Incidents</th>
+            <th>Links</th>
           </tr>
         </thead>
         <tbody>
@@ -60,6 +88,7 @@ export function ProjectsTable({ rows }: { rows: Array<any> }) {
             const heartbeat = lastHeartbeatAt(row);
             const label = displayHealth(row);
             const tone = healthTone(row.status);
+            const risk = evidenceRisk(row);
 
             return (
               <tr key={row.id}>
@@ -67,24 +96,33 @@ export function ProjectsTable({ rows }: { rows: Array<any> }) {
                   <Link href={`/projects/${row.id}`}>{row.name}</Link>
                 </td>
                 <td data-label="Client">{row.clientName || "—"}</td>
-                <td data-label="Environment">{row.environment}</td>
-                <td data-label="Status">
+                <td data-label="Env">{row.environment}</td>
+                <td data-label="Health">
                   <div className="application-health-cell">
                     <span className={`result-pill pill ${tone}`}>
                       {statusEmoji(row.status)} {label}
                     </span>
-                    <span className="application-health-meta">
-                      Last heartbeat {formatRelativeTime(heartbeat)}
-                    </span>
                   </div>
                 </td>
-                <td data-label="Last heartbeat">{formatRelativeTime(heartbeat)}</td>
+                <td data-label="Risk">
+                  <StatusBadge label={risk.label} tone={risk.tone} />
+                </td>
+                <td data-label="Heartbeat">{formatRelativeTime(heartbeat)}</td>
                 <td data-label="Modules">{moduleCount(row)}</td>
+                <td data-label="Services">{serviceCount(row)}</td>
                 <td data-label="Alerts">
-                  <Link href={`/alerts?projectId=${row.id}&status=OPEN`}>{row.alerts?.length || 0}</Link>
+                  <Link href={`/projects/${row.id}/alerts`}>{openAlerts(row)}</Link>
                 </td>
                 <td data-label="Incidents">
-                  <Link href={`/incidents?projectId=${row.id}&onlyUnresolved=true`}>{unresolvedIncidents(row)}</Link>
+                  <Link href={`/projects/${row.id}/incidents`}>{unresolvedIncidents(row)}</Link>
+                </td>
+                <td data-label="Links">
+                  <div className="portfolio-links">
+                    <Link href={`/projects/${row.id}/topology`}>Topology</Link>
+                    <Link href={`/projects/${row.id}/automation`}>Automation</Link>
+                    <Link href={`/projects/${row.id}/deployments`}>Deploys</Link>
+                    <Link href={`/projects/${row.id}/insights`}>Insights</Link>
+                  </div>
                 </td>
               </tr>
             );

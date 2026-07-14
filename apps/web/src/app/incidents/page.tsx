@@ -7,6 +7,7 @@ import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
 import { apiFetch } from "../../lib/api";
 import { IncidentsTable } from "../../components/incidents/incidents-table";
+import { IncidentQuickDrawer } from "../../components/incidents/incident-quick-drawer";
 import { FilterPresets, type FilterPreset } from "../../components/ui/filter-presets";
 import { CopyFilterLink } from "../../components/ui/copy-filter-link";
 import { StatCard } from "../../components/dashboard/stat-card";
@@ -19,7 +20,12 @@ type IncidentListItemDto = {
   openedAt: string;
   acknowledgedAt: string | null;
   resolvedAt: string | null;
-  project: { id: string; name: string };
+  rootCause?: string | null;
+  owner?: string | null;
+  alertCount?: number;
+  affectedServices?: Array<{ id: string; name: string }>;
+  correlatedDeployCount?: number;
+  project: { id: string; name: string; owner?: string | null };
 };
 
 const INCIDENT_PRESETS: FilterPreset[] = [
@@ -36,6 +42,7 @@ function IncidentsPageContent() {
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProjects = async () => {
@@ -107,6 +114,7 @@ function IncidentsPageContent() {
     if (byStatus !== 0) return byStatus;
     return new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime();
   });
+  const selected = displayIncidents.find((row) => row.id === selectedId) ?? null;
 
   return (
     <Shell>
@@ -200,7 +208,12 @@ function IncidentsPageContent() {
               Showing active incidents first. Resolved incidents are grouped after active investigations.
             </p>
           </section>
-          <IncidentsTable rows={displayIncidents} />
+          <IncidentsTable
+            rows={displayIncidents}
+            selectedId={selectedId}
+            onSelectRow={(id) => setSelectedId(id)}
+          />
+          <IncidentQuickDrawer incident={selected} onClose={() => setSelectedId(null)} />
         </>
       )}
     </Shell>
