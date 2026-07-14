@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../lib/api";
-import { API_BASE_URL } from "../../lib/constants";
+import { resolvePublicIngestApiUrl } from "../../lib/public-ingest-api-url";
 import { formatApplicationId } from "../../lib/application-id";
 import type { ProjectTopologyResponse } from "../topology/topology-types";
 import {
@@ -107,7 +107,7 @@ const buildSetupEnv = (input: {
   publicUrl?: string;
 }): string => {
   const lines = [
-    `OPSWATCH_API_URL=${API_BASE_URL}`,
+    `OPSWATCH_API_URL=${resolvePublicIngestApiUrl()}`,
     `OPSWATCH_API_KEY=${input.apiKey}`,
     `OPSWATCH_SIGNING_SECRET=${input.signingSecret}`,
     `OPSWATCH_PROJECT_SLUG=${input.projectSlug}`

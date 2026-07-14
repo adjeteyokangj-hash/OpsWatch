@@ -199,12 +199,41 @@ export const computeProjectHealth = (input: {
     };
   }
 
-  if (!anyCompletedCheck && input.openAlerts.length === 0 && input.unresolvedIncidents.length === 0) {
+  if (
+    !anyCompletedCheck &&
+    !input.lastHeartbeatAt &&
+    input.openAlerts.length === 0 &&
+    input.unresolvedIncidents.length === 0
+  ) {
     return {
       status: "UNKNOWN",
       healthReason: "Waiting for first heartbeat",
       healthSource: "monitoring",
       displayLabel: healthDisplayLabel("UNKNOWN"),
+      lastCompletedCheckAt: null,
+      lastSignalAt,
+      monitoredAreaCount,
+      affectedModules: [],
+      affectedWorkflows: [],
+      affectedComponents: []
+    };
+  }
+
+  if (!anyCompletedCheck && input.lastHeartbeatAt) {
+    const heartbeatStatus: ProjectStatus =
+      input.storedStatus === "DOWN" || input.storedStatus === "DEGRADED" || input.storedStatus === "HEALTHY"
+        ? input.storedStatus
+        : "HEALTHY";
+    return {
+      status: heartbeatStatus,
+      healthReason:
+        heartbeatStatus === "DOWN"
+          ? "Latest heartbeat reported DOWN"
+          : heartbeatStatus === "DEGRADED"
+            ? "Latest heartbeat reported DEGRADED"
+            : "Receiving heartbeats",
+      healthSource: "heartbeat",
+      displayLabel: healthDisplayLabel(heartbeatStatus),
       lastCompletedCheckAt: null,
       lastSignalAt,
       monitoredAreaCount,
@@ -239,7 +268,7 @@ export const computeProjectHealth = (input: {
     }
   }
 
-  if (rolled === "DEGRADED" && !anyCompletedCheck && input.openAlerts.length === 0) {
+  if (rolled === "DEGRADED" && !anyCompletedCheck && !input.lastHeartbeatAt && input.openAlerts.length === 0) {
     return {
       status: "UNKNOWN",
       healthReason: "Waiting for first heartbeat",
