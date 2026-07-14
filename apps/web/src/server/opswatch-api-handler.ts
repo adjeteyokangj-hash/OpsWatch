@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import supertest from "supertest";
+import { resolveEmbeddedResponseBody } from "./embedded-response";
 
 type ExpressApplication = Parameters<typeof supertest>[0];
 
@@ -90,9 +91,12 @@ export const handleEmbeddedOpswatchApi = async (
   }
 
   const response = await agent;
+  const status = Number(response.status) || 500;
+  // Fetch Response/NextResponse reject bodies on null-body statuses (e.g. CORS OPTIONS 204).
+  const responseBody = resolveEmbeddedResponseBody(status, response.text);
 
-  return new NextResponse(response.text, {
-    status: response.status,
+  return new NextResponse(responseBody, {
+    status,
     headers: forwardSupertestHeaders(response.headers)
   });
 };
