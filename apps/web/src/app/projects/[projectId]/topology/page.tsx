@@ -14,6 +14,7 @@ import { TopologySummaryCards } from "../../../../components/topology/topology-s
 import { TopologyFilterBar, type TopologyViewMode } from "../../../../components/topology/topology-filter-bar";
 import { TopologyListView } from "../../../../components/topology/topology-list-view";
 import { TopologyTimeReplay } from "../../../../components/topology/topology-time-replay";
+import { TopologyLiveOpsFeed } from "../../../../components/topology/topology-live-ops-feed";
 import type { ProjectTopologyResponse, TopologyHealthStatus, TopologyNodeType } from "../../../../components/topology/topology-types";
 
 const REFRESH_MS = 15_000;
@@ -203,13 +204,22 @@ export default function ProjectTopologyPage() {
                   searchQuery={searchQuery}
                 />
               )}
-              <TopologyNodeDrawer
-                topology={topology}
-                node={selectedNode}
-                projectId={projectId}
-                project={project}
-                onClose={() => setSelectedNodeId(null)}
-              />
+              <div className="topology-side-stack">
+                <TopologyLiveOpsFeed
+                  projectId={projectId}
+                  topology={topology}
+                  project={project}
+                  selectedNode={selectedNode}
+                  paused={paused}
+                />
+                <TopologyNodeDrawer
+                  topology={topology}
+                  node={selectedNode}
+                  projectId={projectId}
+                  project={project}
+                  onClose={() => setSelectedNodeId(null)}
+                />
+              </div>
             </div>
           </>
         ) : null}
