@@ -6,6 +6,7 @@ import { runAutonomousAutomationSweep } from "../services/automation/automation-
 import { prisma } from "../lib/prisma";
 import { assertPasswordMeetsPolicy } from "../utils/password-policy";
 import { revokeAllUserSessions } from "../services/session.service";
+import { setPlatformSuperAdminFlag } from "../services/platform-super-admin-column";
 
 export const internalRouter = Router();
 
@@ -56,11 +57,15 @@ internalRouter.post("/internal/bootstrap/reset-admin-password", requireWorkerInt
     data: {
       passwordHash: await bcrypt.hash(password, 10),
       isActive: true,
-      isPlatformSuperAdmin: true,
       role: user.role === "ADMIN" ? user.role : "ADMIN",
       updatedAt: new Date()
     }
   });
+  try {
+    await setPlatformSuperAdminFlag(user.id, true);
+  } catch {
+    // Column may not exist until migrate deploy; email allowlist still grants access.
+  }
   await revokeAllUserSessions(user.id, "BOOTSTRAP_PASSWORD_RESET");
 
   res.json({ ok: true, email: user.email });

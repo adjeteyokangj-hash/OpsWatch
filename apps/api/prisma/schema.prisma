@@ -652,7 +652,8 @@ model User {
   passwordHash          String
   role                  String        @default("MEMBER")
   isActive              Boolean       @default(true)
-  isPlatformSuperAdmin  Boolean       @default(false)
+  // isPlatformSuperAdmin added by migration 20260714060000; accessed via platform-super-admin-column.ts
+  // so Prisma does not SELECT a missing column before migrate deploy.
   createdAt             DateTime      @default(now())
   updatedAt             DateTime
   organizationId        String?

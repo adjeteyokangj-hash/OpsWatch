@@ -18,8 +18,10 @@ import {
   listUserAuditLogs,
   logUserEvent,
   resolvePreferredDevOrganizationId,
-  serializeUser
+  serializeUser,
+  serializeUsers
 } from "../services/user-management.service";
+import { setPlatformSuperAdminFlag } from "../services/platform-super-admin-column";
 import { revokeAllUserSessions } from "../services/session.service";
 import { handleEntitlementFailure } from "./subscription.controller";
 import { assertWithinLimit } from "../services/entitlements/entitlement.service";
@@ -187,7 +189,7 @@ export const getManagementCenter = async (req: AuthRequest, res: Response) => {
   ]);
 
   res.json({
-    users: users.map(serializeUser),
+    users: await serializeUsers(users),
     registeredEmails,
     auditLogs,
     activeAdminCount,
@@ -201,7 +203,7 @@ export const listUsers = async (req: AuthRequest, res: Response) => {
 
   const scopeOrgId = await resolveOrganizationScope(orgId);
   const rows = await prisma.user.findMany({ where: { organizationId: scopeOrgId }, orderBy: { createdAt: "desc" } });
-  res.json(rows.map(serializeUser));
+  res.json(await serializeUsers(rows));
 };
 
 export const listUserAuditLogsHandler = async (req: AuthRequest, res: Response) => {
@@ -216,7 +218,9 @@ export const getUserById = async (req: AuthRequest, res: Response) => {
   const userId = userIdOr400(req, res);
   if (!userId) return;
   try {
-    res.json(serializeUser(await getOrgUserOrThrow(orgId, userId)));
+    const user = await getOrgUserOrThrow(orgId, userId);
+    const [serialized] = await serializeUsers([user]);
+    res.json(serialized);
   } catch (error) {
     if (handleUserManagementError(res, error)) return;
     throw error;
@@ -394,19 +398,25 @@ export const setPlatformSuperAdminHandler = async (req: AuthRequest, res: Respon
 
   try {
     const user = await getOrgUserOrThrow(orgId, userId);
-    const updated = await prisma.user.update({
-      where: { id: user.id },
-      data: { isPlatformSuperAdmin: enabled, updatedAt: new Date() }
-    });
+    await setPlatformSuperAdminFlag(user.id, enabled);
     await logUserEvent({
       actorUserId: req.user?.sub,
       action: enabled ? "USER_PLATFORM_SUPER_ADMIN_GRANTED" : "USER_PLATFORM_SUPER_ADMIN_REVOKED",
-      entityId: updated.id,
-      metadata: { email: updated.email }
+      entityId: user.id,
+      metadata: { email: user.email }
     });
-    res.json(serializeUser(updated));
+    res.json(
+      serializeUser({
+        ...user,
+        isPlatformSuperAdmin: enabled
+      })
+    );
   } catch (error) {
     if (handleUserManagementError(res, error)) return;
+    if (error instanceof Error && /migrations are incomplete/i.test(error.message)) {
+      res.status(503).json({ error: error.message });
+      return;
+    }
     throw error;
   }
 };

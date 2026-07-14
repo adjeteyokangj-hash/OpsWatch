@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { prisma } from "../lib/prisma";
 import { isPlatformSuperAdmin } from "../middleware/require-platform-super-admin";
+import { loadPlatformSuperAdminFlags } from "./platform-super-admin-column";
 
 export class UserManagementError extends Error {
   constructor(message: string) {
@@ -40,6 +41,25 @@ export const serializeUser = (user: {
   isActive: user.isActive,
   createdAt: user.createdAt.toISOString()
 });
+
+export const serializeUsers = async (
+  users: Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    isActive: boolean;
+    createdAt: Date;
+  }>
+) => {
+  const flags = await loadPlatformSuperAdminFlags(users.map((user) => user.id));
+  return users.map((user) =>
+    serializeUser({
+      ...user,
+      isPlatformSuperAdmin: flags.get(user.id) ?? null
+    })
+  );
+};
 
 export const countActiveAdmins = async (organizationId: string): Promise<number> =>
   prisma.user.count({

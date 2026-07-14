@@ -7,6 +7,7 @@ import { revokeAllUserSessions } from "./session.service";
 import type { CreatedSession, SessionUser } from "./session.service";
 import { createUserSession } from "./session.service";
 import { isPlatformSuperAdmin } from "../middleware/require-platform-super-admin";
+import { loadPlatformSuperAdminFlags } from "./platform-super-admin-column";
 
 export class AuthError extends Error {
   constructor(
@@ -77,8 +78,9 @@ export const login = async (
     userAgent: context.userAgent
   });
 
+  const flags = await loadPlatformSuperAdminFlags([user.id]);
   return {
-    user: toSessionUser(user),
+    user: toSessionUser({ ...user, isPlatformSuperAdmin: flags.get(user.id) ?? null }),
     session
   };
 };
@@ -89,7 +91,8 @@ export const getSessionUser = async (userId: string): Promise<SessionUser | null
     return null;
   }
 
-  return toSessionUser(user);
+  const flags = await loadPlatformSuperAdminFlags([user.id]);
+  return toSessionUser({ ...user, isPlatformSuperAdmin: flags.get(user.id) ?? null });
 };
 
 export const changePassword = async (

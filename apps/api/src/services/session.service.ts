@@ -4,6 +4,7 @@ import { sessionAbsoluteTtlSeconds, sessionIdleTtlSeconds, sessionIdleTouchInter
 import { sha256 } from "../utils/crypto";
 import { timingSafeEqualString } from "../lib/request-signature";
 import { isPlatformSuperAdmin } from "../middleware/require-platform-super-admin";
+import { loadPlatformSuperAdminFlags } from "./platform-super-admin-column";
 
 export type SessionUser = {
   id: string;
@@ -71,8 +72,7 @@ export const validateSessionToken = async (sessionToken: string): Promise<Valida
           role: true,
           organizationId: true,
           name: true,
-          isActive: true,
-          isPlatformSuperAdmin: true
+          isActive: true
         }
       }
     }
@@ -100,6 +100,8 @@ export const validateSessionToken = async (sessionToken: string): Promise<Valida
     });
   }
 
+  const flags = await loadPlatformSuperAdminFlags([row.User.id]);
+
   return {
     sessionId: row.id,
     csrfTokenHash: row.csrfTokenHash,
@@ -109,7 +111,7 @@ export const validateSessionToken = async (sessionToken: string): Promise<Valida
       role: row.User.role,
       organizationId: row.User.organizationId,
       name: row.User.name,
-      isPlatformSuperAdmin: isPlatformSuperAdmin(row.User.email, row.User.isPlatformSuperAdmin)
+      isPlatformSuperAdmin: isPlatformSuperAdmin(row.User.email, flags.get(row.User.id) ?? null)
     }
   };
 };
