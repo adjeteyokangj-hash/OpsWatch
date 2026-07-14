@@ -5,8 +5,8 @@ import { handleEmbeddedOpswatchApi } from "../../../server/opswatch-api-handler"
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-/** Avoid hard kills on cold embedded Express + Prisma; Pro plans allow up to 300s. */
-export const maxDuration = 60;
+/** Cold embed + Prisma headroom after lean topology queries; Pro allows up to 300s. */
+export const maxDuration = 90;
 
 const hopByHopHeaders = new Set([
   "connection",

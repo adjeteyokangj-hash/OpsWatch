@@ -9,6 +9,7 @@ import type {
   CheckDetailDto,
   CheckResultDto
 } from "../types/dto";
+import { loadLatestCheckResultsByCheckIds } from "./check-result-batch.service";
 
 type AlertListFilters = {
   projectId?: string;
@@ -179,15 +180,16 @@ export const listChecksWithSummary = async (
   const rows = await prisma.check.findMany({
     where,
     include: {
-      Service: { include: { Project: true } },
-      CheckResult: { orderBy: { checkedAt: "desc" }, take: 1 }
+      Service: { include: { Project: true } }
     },
     orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }]
   });
 
+  const latestByCheckId = await loadLatestCheckResultsByCheckIds(rows.map((row) => row.id));
+
   const items: CheckListItemDto[] = rows
     .map((r) => {
-      const latest = r.CheckResult[0] ?? null;
+      const latest = latestByCheckId.get(r.id) ?? null;
       return {
         row: r,
         dto: {
@@ -202,7 +204,16 @@ export const listChecksWithSummary = async (
             name: r.Service.name,
             project: { id: r.Service.Project.id, name: r.Service.Project.name }
           },
-          latestResult: latest ? mapResult(latest) : null
+          latestResult: latest
+            ? mapResult({
+                id: `${latest.checkId}:latest`,
+                status: latest.status as CheckResultDto["status"],
+                responseCode: latest.responseCode ?? null,
+                responseTimeMs: latest.responseTimeMs,
+                message: latest.message ?? null,
+                checkedAt: latest.checkedAt
+              })
+            : null
         } satisfies CheckListItemDto
       };
     })

@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type { BillingPlanType } from "@prisma/client";
 import { prisma } from "../lib/prisma";
+import { loadLatestCheckResultsByCheckIds } from "./check-result-batch.service";
 import { computeProjectHealth } from "./project-health.service";
 import { createDefaultProjectBilling, getProjectBilling, normalizeAllowanceLimit, resolvePricingLabel } from "./project-billing.service";
 import { listActiveMaintenanceWindows } from "./maintenance-window-policy.service";
@@ -20,6 +21,7 @@ type ProjectRow = {
     status: string;
     criticality: string;
     Check: Array<{
+      id: string;
       isActive: boolean;
       CheckResult: Array<{ status: string; checkedAt: Date; responseCode?: number | null }>;
     }>;
@@ -39,36 +41,72 @@ type ProjectRow = {
   } | null;
 };
 
-export const enrichProjectRow = async (row: ProjectRow) => {
-  const openAlerts = row.Alert.filter((alert) => alert.status === "OPEN" || alert.status === "ACKNOWLEDGED");
-  const unresolvedIncidents = row.Incident.filter((incident) => incident.status !== "RESOLVED");
-
-  let inMaintenance = false;
-  let verificationActive = false;
-  if (row.organizationId) {
-    const windows = await listActiveMaintenanceWindows({
-      organizationId: row.organizationId,
-      projectId: row.id
-    });
-    inMaintenance = windows.length > 0;
+const attachLatestCheckResults = async <
+  T extends {
+    Service: Array<{
+      Check: Array<{ id: string; isActive: boolean; CheckResult?: Array<unknown> }>;
+    }>;
   }
-  verificationActive = row.status === "RECOVERING" || (await hasActiveVerificationRun(row.id));
-
-  const health = computeProjectHealth({
-    storedStatus: row.status,
-    healthReason: row.healthReason,
-    monitoringEnabled: row.monitoringEnabled,
-    isActive: row.isActive,
-    inMaintenance,
-    verificationActive,
-    services: row.Service,
-    openAlerts,
-    unresolvedIncidents,
-    lastHeartbeatAt: row.Heartbeat[0]?.receivedAt ?? null
-  });
+>(
+  row: T
+): Promise<T> => {
+  const checkIds = row.Service.flatMap((service) => service.Check.map((check) => check.id));
+  const latestByCheckId = await loadLatestCheckResultsByCheckIds(checkIds);
 
   return {
     ...row,
+    Service: row.Service.map((service) => ({
+      ...service,
+      Check: service.Check.map((check) => {
+        const latest = latestByCheckId.get(check.id);
+        return {
+          ...check,
+          CheckResult: latest
+            ? [
+                {
+                  status: latest.status,
+                  checkedAt: latest.checkedAt,
+                  responseCode: latest.responseCode ?? null
+                }
+              ]
+            : []
+        };
+      })
+    }))
+  };
+};
+
+export const enrichProjectRow = async (row: ProjectRow) => {
+  const withResults = await attachLatestCheckResults(row);
+  const openAlerts = withResults.Alert.filter((alert) => alert.status === "OPEN" || alert.status === "ACKNOWLEDGED");
+  const unresolvedIncidents = withResults.Incident.filter((incident) => incident.status !== "RESOLVED");
+
+  let inMaintenance = false;
+  let verificationActive = false;
+  if (withResults.organizationId) {
+    const windows = await listActiveMaintenanceWindows({
+      organizationId: withResults.organizationId,
+      projectId: withResults.id
+    });
+    inMaintenance = windows.length > 0;
+  }
+  verificationActive = withResults.status === "RECOVERING" || (await hasActiveVerificationRun(withResults.id));
+
+  const health = computeProjectHealth({
+    storedStatus: withResults.status,
+    healthReason: withResults.healthReason,
+    monitoringEnabled: withResults.monitoringEnabled,
+    isActive: withResults.isActive,
+    inMaintenance,
+    verificationActive,
+    services: withResults.Service,
+    openAlerts,
+    unresolvedIncidents,
+    lastHeartbeatAt: withResults.Heartbeat[0]?.receivedAt ?? null
+  });
+
+  return {
+    ...withResults,
     status: health.status,
     healthReason: health.healthReason,
     healthSource: health.healthSource,
@@ -79,28 +117,28 @@ export const enrichProjectRow = async (row: ProjectRow) => {
     affectedModules: health.affectedModules,
     affectedWorkflows: health.affectedWorkflows,
     affectedComponents: health.affectedComponents,
-    services: row.Service,
+    services: withResults.Service,
     alerts: openAlerts,
-    incidents: row.Incident,
-    heartbeats: row.Heartbeat,
-    billing: row.ProjectBilling
+    incidents: withResults.Incident,
+    heartbeats: withResults.Heartbeat,
+    billing: withResults.ProjectBilling
       ? (() => {
           const limits = {
-            monthlyPrice: row.ProjectBilling.monthlyPrice,
-            currency: row.ProjectBilling.currency,
-            dataRetentionDays: row.ProjectBilling.dataRetentionDays,
-            checkLimit: normalizeAllowanceLimit(row.ProjectBilling.checkLimit),
-            userLimit: normalizeAllowanceLimit(row.ProjectBilling.userLimit),
-            automationRunLimit: normalizeAllowanceLimit(row.ProjectBilling.automationRunLimit)
+            monthlyPrice: withResults.ProjectBilling.monthlyPrice,
+            currency: withResults.ProjectBilling.currency,
+            dataRetentionDays: withResults.ProjectBilling.dataRetentionDays,
+            checkLimit: normalizeAllowanceLimit(withResults.ProjectBilling.checkLimit),
+            userLimit: normalizeAllowanceLimit(withResults.ProjectBilling.userLimit),
+            automationRunLimit: normalizeAllowanceLimit(withResults.ProjectBilling.automationRunLimit)
           };
-          const pricingLabel = resolvePricingLabel(row.ProjectBilling.plan, limits);
+          const pricingLabel = resolvePricingLabel(withResults.ProjectBilling.plan, limits);
           return {
-            plan: row.ProjectBilling.plan,
+            plan: withResults.ProjectBilling.plan,
             pricingLabel,
             isCustomPricing: pricingLabel === "CUSTOM",
-            monthlyPrice: row.ProjectBilling.monthlyPrice,
-            currency: row.ProjectBilling.currency,
-            billingStatus: row.ProjectBilling.billingStatus
+            monthlyPrice: withResults.ProjectBilling.monthlyPrice,
+            currency: withResults.ProjectBilling.currency,
+            billingStatus: withResults.ProjectBilling.billingStatus
           };
         })()
       : null
@@ -131,14 +169,11 @@ export const writeBillingAudit = async (
   });
 };
 
+/** Lean includes — latest CheckResult is attached in enrichProjectRow (one SQL, not N+1 nested take). */
 export const projectInclude = {
   Service: {
     include: {
-      Check: {
-        include: {
-          CheckResult: { orderBy: { checkedAt: "desc" as const }, take: 1 }
-        }
-      }
+      Check: true
     }
   },
   Alert: { where: { status: { in: ["OPEN", "ACKNOWLEDGED"] as ("OPEN" | "ACKNOWLEDGED")[] } } },
@@ -154,11 +189,7 @@ export const projectInclude = {
 export const projectIncludeLite = {
   Service: {
     include: {
-      Check: {
-        include: {
-          CheckResult: { orderBy: { checkedAt: "desc" as const }, take: 1 }
-        }
-      }
+      Check: true
     }
   },
   Alert: { where: { status: { in: ["OPEN", "ACKNOWLEDGED"] as ("OPEN" | "ACKNOWLEDGED")[] } } },
