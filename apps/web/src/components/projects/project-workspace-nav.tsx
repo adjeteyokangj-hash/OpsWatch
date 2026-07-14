@@ -16,7 +16,7 @@ const tabs = [
   ["Deployments", "/deployments"],
   ["Automation", "/automation"],
   ["Metrics", "/metrics"],
-  ["Logs", "/logs"],
+  ["Logs", "/log-streams"],
   ["AI Insights", "/insights"],
   ["Settings", "/settings"]
 ] as const;

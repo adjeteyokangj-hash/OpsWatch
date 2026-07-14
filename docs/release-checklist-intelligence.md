@@ -29,7 +29,7 @@ Use before any production push. **Do not push until the owner explicitly request
 
 - [ ] Tabs present: Overview, Topology, Modules, Workflows, Services, Incidents, Alerts, Deployments, Automation, Metrics, Logs, AI Insights, Settings
 - [ ] Project Automation stats come from `/intelligence/automation-history` (no hardcoded success %)
-- [ ] Logs tab shows honest “not connected” empty state
+- [ ] Logs tab (`/log-streams`) shows honest “not connected” empty state
 - [ ] Deployments tab shows change events / intelligence records only
 
 ## Incidents / Alerts
