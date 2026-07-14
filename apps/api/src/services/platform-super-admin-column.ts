@@ -1,7 +1,11 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
-/** True when the DB has User.isPlatformSuperAdmin (after migrate). Cached per isolate. */
+/**
+ * True when the DB has User.isPlatformSuperAdmin (after migrate or ensure).
+ * Only cache positives — a prior false must be re-probed so grants recover after
+ * migrate deploy without waiting for a cold start.
+ */
 let columnAvailable: boolean | null = null;
 
 export const resetPlatformSuperAdminColumnCache = (): void => {
@@ -9,8 +13,8 @@ export const resetPlatformSuperAdminColumnCache = (): void => {
 };
 
 export const hasPlatformSuperAdminColumn = async (): Promise<boolean> => {
-  if (columnAvailable !== null) {
-    return columnAvailable;
+  if (columnAvailable === true) {
+    return true;
   }
   try {
     const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
@@ -22,11 +26,39 @@ export const hasPlatformSuperAdminColumn = async (): Promise<boolean> => {
           AND column_name = 'isPlatformSuperAdmin'
       ) AS "exists"
     `;
-    columnAvailable = Boolean(rows[0]?.exists);
+    if (Boolean(rows[0]?.exists)) {
+      columnAvailable = true;
+      return true;
+    }
+    columnAvailable = null;
+    return false;
   } catch {
-    columnAvailable = false;
+    columnAvailable = null;
+    return false;
   }
-  return columnAvailable;
+};
+
+/** Idempotent: ADD COLUMN IF NOT EXISTS so grant works without waiting on migrate. */
+export const ensurePlatformSuperAdminColumn = async (): Promise<void> => {
+  if (await hasPlatformSuperAdminColumn()) {
+    return;
+  }
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isPlatformSuperAdmin" BOOLEAN NOT NULL DEFAULT false
+    `);
+  } catch (error) {
+    resetPlatformSuperAdminColumnCache();
+    throw new Error(
+      "Database migrations are incomplete. Run prisma migrate deploy with Supabase session pooler DIRECT_URL, then retry."
+    );
+  }
+  resetPlatformSuperAdminColumnCache();
+  if (!(await hasPlatformSuperAdminColumn())) {
+    throw new Error(
+      "Database migrations are incomplete. Run prisma migrate deploy with Supabase session pooler DIRECT_URL, then retry."
+    );
+  }
 };
 
 export const loadPlatformSuperAdminFlags = async (
@@ -47,17 +79,13 @@ export const loadPlatformSuperAdminFlags = async (
     `;
     return new Map(rows.map((row) => [row.id, Boolean(row.isPlatformSuperAdmin)]));
   } catch {
-    columnAvailable = false;
+    resetPlatformSuperAdminColumnCache();
     return new Map();
   }
 };
 
 export const setPlatformSuperAdminFlag = async (userId: string, enabled: boolean): Promise<void> => {
-  if (!(await hasPlatformSuperAdminColumn())) {
-    throw new Error(
-      "Database migrations are incomplete. Run prisma migrate deploy with Supabase session pooler DIRECT_URL, then retry."
-    );
-  }
+  await ensurePlatformSuperAdminColumn();
   try {
     await prisma.$executeRaw`
       UPDATE "User"
@@ -65,7 +93,7 @@ export const setPlatformSuperAdminFlag = async (userId: string, enabled: boolean
       WHERE id = ${userId}
     `;
   } catch (error) {
-    columnAvailable = false;
+    resetPlatformSuperAdminColumnCache();
     throw error;
   }
 };

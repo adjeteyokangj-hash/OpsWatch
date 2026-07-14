@@ -61,6 +61,14 @@ const formatAuditAction = (action: string): string =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 
+const platformSuperAdminError = (err: unknown): string => {
+  const message = String((err as { message?: string })?.message || "");
+  if (/migrations are incomplete|isPlatformSuperAdmin|Failed to ensure/i.test(message)) {
+    return "Cannot update Platform Super Admin yet — database migrations are incomplete. Ask an operator to run prisma migrate deploy with the Supabase session pooler DIRECT_URL, then retry.";
+  }
+  return message || "Failed to update platform Super Admin";
+};
+
 const loadAdminCenter = async (): Promise<ManagementCenter> => {
   try {
     return await apiFetch<ManagementCenter>("/users/management-center");
@@ -93,7 +101,13 @@ export default function MembersPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [tab, setTab] = useState<"members" | "emails" | "logs">("members");
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: "", email: "", role: "MEMBER", password: "" });
+  const [createForm, setCreateForm] = useState({
+    name: "",
+    email: "",
+    role: "MEMBER",
+    password: "",
+    alsoGrantPlatformSuperAdmin: false
+  });
   const [showGeneratedPassword, setShowGeneratedPassword] = useState(false);
   const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
   const [resetPassword, setResetPassword] = useState("");
@@ -146,22 +160,51 @@ export default function MembersPage() {
     setError(null);
     setSuccessMsg(null);
     try {
+      const { alsoGrantPlatformSuperAdmin, ...inviteBody } = createForm;
       const created = await apiFetch<UserRow & { inviteOutcome?: "created" | "reattached" | "already_in_org" }>(
         "/auth/invite",
         {
           method: "POST",
-          body: JSON.stringify(createForm)
+          body: JSON.stringify(inviteBody)
         }
       );
+      let grantedPlatformSuperAdmin = false;
+      let grantWarning: string | null = null;
+      if (alsoGrantPlatformSuperAdmin && isPlatformSuperAdmin && created.id) {
+        try {
+          await apiFetch(`/users/${created.id}/platform-super-admin`, {
+            method: "POST",
+            body: JSON.stringify({ enabled: true })
+          });
+          grantedPlatformSuperAdmin = true;
+        } catch (grantErr: unknown) {
+          grantWarning = platformSuperAdminError(grantErr);
+        }
+      }
       const successByOutcome: Record<string, string> = {
         already_in_org: `${createForm.email} is already a member of this organization.`,
         reattached: `${createForm.email} was added to this organization. Share the initial password securely.`,
         created: `Created ${createForm.email}. Share the initial password securely.`
       };
+      const baseMsg =
+        successByOutcome[created.inviteOutcome ?? "created"] ?? successByOutcome.created ?? "Member saved.";
       setSuccessMsg(
-        successByOutcome[created.inviteOutcome ?? "created"] ?? successByOutcome.created ?? "Member saved."
+        grantedPlatformSuperAdmin
+          ? `${baseMsg} Also granted Platform Super Admin (all orgs).`
+          : baseMsg
       );
-      setCreateForm({ name: "", email: "", role: "MEMBER", password: "" });
+      if (grantWarning) {
+        setError(
+          `${grantWarning} The member was created — use Make Platform Super Admin in Actions once migrations are ready.`
+        );
+      }
+      setCreateForm({
+        name: "",
+        email: "",
+        role: "MEMBER",
+        password: "",
+        alsoGrantPlatformSuperAdmin: false
+      });
       setShowGeneratedPassword(false);
       setShowCreate(false);
       await reload();
@@ -195,12 +238,12 @@ export default function MembersPage() {
       });
       setSuccessMsg(
         user.isPlatformSuperAdmin
-          ? `Revoked platform Super Admin from ${user.email}.`
-          : `Granted platform Super Admin to ${user.email}.`
+          ? `Revoked Platform Super Admin from ${user.email}.`
+          : `Granted Platform Super Admin to ${user.email}.`
       );
       await reload();
-    } catch (err: any) {
-      setError(err?.message || "Failed to update platform Super Admin");
+    } catch (err: unknown) {
+      setError(platformSuperAdminError(err));
     }
   };
 
@@ -299,9 +342,9 @@ export default function MembersPage() {
             </button>
           </div>
           <p className="dashboard-subtle">
-            Organization roles (Admin, Member, …) are managed here. <strong>Platform Super Admin</strong> can be
-            granted by an existing Super Admin from the Actions column (stored in OpsWatch). The email allowlist{" "}
-            <code>PLATFORM_SUPER_ADMIN_EMAILS</code> and <code>admin@okanggroup.com</code> remain bootstraps.
+            <strong>Organization role</strong> (Admin / Member / Viewer) controls access inside this org only.{" "}
+            <strong>Platform Super Admin (all orgs)</strong> is separate — grant it below or from Actions. Email
+            allowlist bootstrap: <code>admin@okanggroup.com</code>.
           </p>
           <form className="stack-form" onSubmit={(event) => void handleCreate(event)}>
             <label>
@@ -322,7 +365,7 @@ export default function MembersPage() {
               />
             </label>
             <label>
-              Role
+              Organization role
               <select
                 value={createForm.role}
                 onChange={(event) => setCreateForm((current) => ({ ...current, role: event.target.value }))}
@@ -334,6 +377,21 @@ export default function MembersPage() {
                 ))}
               </select>
             </label>
+            {isPlatformSuperAdmin ? (
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={createForm.alsoGrantPlatformSuperAdmin}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({
+                      ...current,
+                      alsoGrantPlatformSuperAdmin: event.target.checked
+                    }))
+                  }
+                />
+                Also grant Platform Super Admin (all orgs)
+              </label>
+            ) : null}
             <label>
               Initial password
               <div className="password-field-row">
@@ -432,6 +490,19 @@ export default function MembersPage() {
             ) : null}
           </div>
           {!isAdmin ? <p className="dashboard-subtle">Only admins can create members or change access.</p> : null}
+          {isAdmin && !isPlatformSuperAdmin ? (
+            <p className="dashboard-subtle">
+              Platform Super Admin is not an organization role. Sign in as{" "}
+              <code>admin@okanggroup.com</code> (or another Super Admin), then use{" "}
+              <strong>Make Super Admin</strong> in the Actions column after the member exists (usually as Admin).
+            </p>
+          ) : null}
+          {isAdmin && isPlatformSuperAdmin ? (
+            <p className="dashboard-subtle">
+              You can grant or revoke <strong>platform Super Admin</strong> from Actions. Create member only sets an
+              organization role (Admin, Member, …) — grant Super Admin after the account exists.
+            </p>
+          ) : null}
           <table className="data-table">
             <thead>
               <tr>
@@ -455,7 +526,9 @@ export default function MembersPage() {
                     <td>
                       {user.isPlatformSuperAdmin ? (
                         <div className="member-role-cell">
-                          <span className="result-pill pass">Super Admin</span>
+                          <span className="result-pill pass" title="Platform Super Admin (all orgs)">
+                            Platform Super Admin
+                          </span>
                           {isAdmin ? (
                             <select
                               aria-label={`Organization role for ${user.email}`}
@@ -505,11 +578,20 @@ export default function MembersPage() {
                             type="button"
                             className="secondary-button"
                             disabled={user.id === currentUserId && user.isPlatformSuperAdmin}
+                            title={
+                              user.id === currentUserId && user.isPlatformSuperAdmin
+                                ? "You cannot revoke your own platform Super Admin access."
+                                : user.isPlatformSuperAdmin
+                                  ? "Revoke platform Super Admin flag"
+                                  : "Grant platform Super Admin (separate from organization role)"
+                            }
                             onClick={() => void togglePlatformSuperAdmin(user)}
                             data-action="api"
                             data-endpoint="/users/:id/platform-super-admin"
                           >
-                            {user.isPlatformSuperAdmin ? "Revoke Super Admin" : "Make Super Admin"}
+                            {user.isPlatformSuperAdmin
+                              ? "Revoke Platform Super Admin"
+                              : "Make Platform Super Admin"}
                           </button>
                         ) : null}
                         <button

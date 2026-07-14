@@ -413,7 +413,7 @@ export const setPlatformSuperAdminHandler = async (req: AuthRequest, res: Respon
     );
   } catch (error) {
     if (handleUserManagementError(res, error)) return;
-    if (error instanceof Error && /migrations are incomplete/i.test(error.message)) {
+    if (error instanceof Error && /Failed to ensure User\.isPlatformSuperAdmin/i.test(error.message)) {
       res.status(503).json({ error: error.message });
       return;
     }
