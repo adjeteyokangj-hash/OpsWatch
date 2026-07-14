@@ -57,7 +57,7 @@ vi.mock("../../lib/api", () => ({
           id: "h1",
           projectId: "proj-1",
           serviceId: "redis",
-          action: "RERUN_HTTP_CHECK",
+          action: "RESTART_WORKER",
           status: "SUCCEEDED",
           executionMode: "AUTONOMOUS",
           createdAt: "2026-07-14T11:57:00.000Z",
@@ -83,6 +83,20 @@ vi.mock("../../lib/api", () => ({
         }
       ];
     }
+    if (path.startsWith("/projects/proj-1/change-events")) {
+      return [
+        {
+          id: "ce1",
+          eventType: "DEPLOY_RELEASE",
+          summary: "Shipped 1.4.2",
+          occurredAt: "2026-07-14T11:56:00.000Z",
+          detailsJson: { version: "1.4.2" }
+        }
+      ];
+    }
+    if (path.startsWith("/projects/proj-1/service-dependencies")) {
+      return [];
+    }
     if (path.startsWith("/incidents?") || path === "/incidents/inc-1") {
       if (path === "/incidents/inc-1") {
         return { id: "inc-1", rootCause: "Redis memory pressure observed" };
@@ -105,12 +119,13 @@ vi.mock("../../lib/api", () => ({
 describe("TopologyLiveOpsFeed", () => {
   afterEach(() => cleanup());
 
-  it("renders live feed cards and honest predictive placeholder", async () => {
+  it("renders operations timeline and honest learning progression", async () => {
     render(
       <TopologyLiveOpsFeed
         projectId="proj-1"
         topology={topology}
         project={{
+          createdAt: "2026-07-12T00:00:00.000Z",
           alerts: [
             {
               id: "a1",
@@ -120,7 +135,8 @@ describe("TopologyLiveOpsFeed", () => {
               lastSeenAt: "2026-07-14T11:58:00.000Z",
               serviceId: "redis"
             }
-          ]
+          ],
+          heartbeats: [{ receivedAt: "2026-07-14T11:50:00.000Z", environment: "production" }]
         }}
         selectedNode={null}
         paused
@@ -128,13 +144,14 @@ describe("TopologyLiveOpsFeed", () => {
     );
 
     expect(screen.getByTestId("topology-live-ops-feed")).toBeInTheDocument();
-    expect(screen.getByTestId("topology-predictive-placeholder")).toHaveTextContent(
-      /coming online as signal history grows/i
-    );
+    expect(screen.getByText("Operations Timeline")).toBeInTheDocument();
+    expect(screen.getByTestId("topology-learning-progression")).toHaveTextContent(/Collecting signals|Learning dependencies/i);
+    expect(screen.queryByTestId("topology-predictive-placeholder")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText("Redis unreachable")).toBeInTheDocument();
     });
-    expect(screen.getByText(/rerun http check/i)).toBeInTheDocument();
+    expect(screen.getByText(/Worker auto-restarted/i)).toBeInTheDocument();
+    expect(screen.getByText(/Deployment detected/i)).toBeInTheDocument();
     expect(screen.queryByText(/%\s*prediction|saturation/i)).not.toBeInTheDocument();
   });
 

@@ -7,11 +7,16 @@ import type { ProjectTopologyResponse, TopologyNode } from "./topology-types";
 import {
   buildFactualInsight,
   buildLiveOpsItems,
+  buildOpsInsights,
+  deriveLearningProgression,
+  formatTimelineClock,
+  type ChangeEventRow,
   type CheckListResponse,
   type LiveOpsItem,
   type LiveOpsKind,
   type ProjectSignalSource,
-  type RemediationLogRow
+  type RemediationLogRow,
+  type ServiceDependencyRow
 } from "./topology-live-ops-build";
 
 type Props = {
@@ -30,6 +35,8 @@ const kindIcon: Record<LiveOpsKind, string> = {
   heal: "↺",
   check: "✓",
   heartbeat: "♥",
+  deploy: "↑",
+  dependency: "⤴",
   insight: "◆"
 };
 
@@ -39,6 +46,8 @@ const kindLabel: Record<LiveOpsKind, string> = {
   heal: "Heal",
   check: "Check",
   heartbeat: "Heartbeat",
+  deploy: "Deploy",
+  dependency: "Dependency",
   insight: "Insight"
 };
 
@@ -53,22 +62,32 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
   const [checks, setChecks] = useState<CheckListResponse | null>(null);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [incidents, setIncidents] = useState<IncidentRow[]>([]);
+  const [changeEvents, setChangeEvents] = useState<ChangeEventRow[]>([]);
+  const [dependencies, setDependencies] = useState<ServiceDependencyRow[]>([]);
   const [incidentRootCauses, setIncidentRootCauses] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const loadSignals = useCallback(async () => {
     try {
-      const [remediationRows, checkRows, alertRows, incidentRows] = await Promise.all([
-        apiFetch<RemediationLogRow[]>("/remediation/logs").catch(() => [] as RemediationLogRow[]),
-        apiFetch<CheckListResponse>(`/checks?projectId=${projectId}`).catch(() => null),
-        apiFetch<AlertApiRow[]>(`/alerts?projectId=${projectId}&onlyUnresolved=true`).catch(
-          () => [] as AlertApiRow[]
-        ),
-        apiFetch<IncidentApiRow[]>(`/incidents?projectId=${projectId}&onlyUnresolved=true`).catch(
-          () => [] as IncidentApiRow[]
-        )
-      ]);
+      const [remediationRows, checkRows, alertRows, incidentRows, changeRows, dependencyRows] =
+        await Promise.all([
+          apiFetch<RemediationLogRow[]>("/remediation/logs").catch(() => [] as RemediationLogRow[]),
+          apiFetch<CheckListResponse>(`/checks?projectId=${projectId}`).catch(() => null),
+          apiFetch<AlertApiRow[]>(`/alerts?projectId=${projectId}&onlyUnresolved=true`).catch(
+            () => [] as AlertApiRow[]
+          ),
+          apiFetch<IncidentApiRow[]>(`/incidents?projectId=${projectId}&onlyUnresolved=true`).catch(
+            () => [] as IncidentApiRow[]
+          ),
+          apiFetch<ChangeEventRow[]>(`/projects/${projectId}/change-events?take=40`).catch(
+            () => [] as ChangeEventRow[]
+          ),
+          apiFetch<ServiceDependencyRow[]>(`/projects/${projectId}/service-dependencies`).catch(
+            () => [] as ServiceDependencyRow[]
+          )
+        ]);
       setLogs(
         (remediationRows ?? []).filter((row) => !row.projectId || row.projectId === projectId).slice(0, 40)
       );
@@ -80,9 +99,12 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
         }))
       );
       setIncidents(incidentRows ?? []);
+      setChangeEvents(changeRows ?? []);
+      setDependencies(dependencyRows ?? []);
       setError(null);
+      setNowMs(Date.now());
     } catch (err: any) {
-      setError(err?.message || "Failed to load operations feed");
+      setError(err?.message || "Failed to load operations timeline");
     } finally {
       setLoading(false);
     }
@@ -141,7 +163,9 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
       alerts: alerts.length > 0 ? alerts : project?.alerts,
       incidents: incidents.length > 0 ? incidents : project?.incidents,
       heartbeats: project?.heartbeats,
+      events: project?.events,
       services: project?.services,
+      createdAt: project?.createdAt,
       lastSignalAt: project?.lastSignalAt,
       lastCompletedCheckAt: project?.lastCompletedCheckAt
     }),
@@ -155,20 +179,50 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
         project: liveProject,
         remediationLogs: logs,
         checkResults: checks,
+        changeEvents,
+        dependencies,
         selectedNode,
-        projectId
+        projectId,
+        nowMs
       }),
-    [topology, liveProject, logs, checks, selectedNode, projectId]
+    [topology, liveProject, logs, checks, changeEvents, dependencies, selectedNode, projectId, nowMs]
   );
 
-  const insight = useMemo(
+  const statusInsight = useMemo(
     () =>
       buildFactualInsight({
         topology,
         project: liveProject,
-        checkSummary: checks?.summary ?? null
+        checkSummary: checks?.summary ?? null,
+        nowMs
       }),
-    [topology, liveProject, checks]
+    [topology, liveProject, checks, nowMs]
+  );
+
+  const opsInsights = useMemo(
+    () =>
+      buildOpsInsights({
+        remediationLogs: logs,
+        changeEvents,
+        projectEvents: liveProject.events,
+        projectId,
+        nowMs
+      }),
+    [logs, changeEvents, liveProject.events, projectId, nowMs]
+  );
+
+  const learning = useMemo(
+    () =>
+      deriveLearningProgression({
+        project: liveProject,
+        topology,
+        dependencyCount: dependencies.length,
+        checkResultCount: checks?.items.filter((row) => row.latestResult).length ?? 0,
+        remediationCount: logs.length,
+        changeEventCount: changeEvents.length,
+        nowMs
+      }),
+    [liveProject, topology, dependencies.length, checks, logs.length, changeEvents.length, nowMs]
   );
 
   const selectedIncidents = selectedNode
@@ -179,20 +233,41 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
     : [];
 
   return (
-    <aside className="topology-live-ops panel" aria-label="Live operations feed" data-testid="topology-live-ops-feed">
+    <aside className="topology-live-ops panel" aria-label="Operations timeline" data-testid="topology-live-ops-feed">
       <header className="topology-live-ops-head">
         <div>
-          <p className="topology-live-ops-eyebrow">OpsWatch intelligence</p>
-          <h2>Live operations feed</h2>
+          <p className="topology-live-ops-eyebrow">Facts from monitoring</p>
+          <h2>Operations Timeline</h2>
         </div>
         <span className="topology-live-ops-pulse" aria-hidden="true" />
       </header>
 
-      {insight ? (
+      {opsInsights.length > 0 ? (
+        <section className="topology-ops-insights" aria-label="Ops insights" data-testid="topology-ops-insights">
+          <p className="topology-ops-insights-label">Ops Insights</p>
+          <ul>
+            {opsInsights.map((insight) => (
+              <li key={insight.id}>
+                <p className="topology-ops-insights-text">{insight.text}</p>
+                <p className="topology-ops-insights-evidence">{insight.evidence}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : statusInsight ? (
         <p className="topology-live-ops-insight" data-testid="topology-live-ops-insight">
-          {insight}
+          {statusInsight}
         </p>
       ) : null}
+
+      <section
+        className="topology-learning-progression"
+        aria-label="Learning progression"
+        data-testid="topology-learning-progression"
+      >
+        <p className="topology-learning-progression-label">{learning.label}</p>
+        <p className="topology-learning-progression-detail">{learning.detail}</p>
+      </section>
 
       {selectedNode ? (
         <section className="topology-live-ops-node-context" aria-label={`Context for ${selectedNode.name}`}>
@@ -222,19 +297,15 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
         </section>
       ) : null}
 
-      <p className="topology-live-ops-predictive" data-testid="topology-predictive-placeholder">
-        Predictive insights — coming online as signal history grows
-      </p>
-
       {error ? <p className="dashboard-subtle topology-live-ops-error">{error}</p> : null}
-      {loading && items.length === 0 ? <p className="dashboard-subtle">Loading live signals…</p> : null}
+      {loading && items.length === 0 ? <p className="dashboard-subtle">Loading timeline signals…</p> : null}
 
       {items.length === 0 && !loading ? (
-        <p className="dashboard-subtle">No recent operational signals for this project yet.</p>
+        <p className="dashboard-subtle">No recent operational facts for this project yet.</p>
       ) : (
-        <ul className="topology-live-ops-list">
+        <ul className="topology-live-ops-list" data-testid="topology-operations-timeline">
           {items.map((item) => (
-            <LiveOpsCard key={item.id} item={item} />
+            <TimelineCard key={item.id} item={item} nowMs={nowMs} />
           ))}
         </ul>
       )}
@@ -242,17 +313,25 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
   );
 }
 
-function LiveOpsCard({ item }: { item: LiveOpsItem }) {
+function TimelineCard({ item, nowMs }: { item: LiveOpsItem; nowMs: number }) {
   const body = (
     <>
-      <div className="topology-live-ops-card-head">
+      <div className="topology-timeline-row">
+        <time className="topology-timeline-clock" dateTime={item.at}>
+          {formatTimelineClock(item.at, nowMs)}
+        </time>
         <span className={`topology-live-ops-icon tone-${item.tone}`} aria-hidden="true">
           {kindIcon[item.kind]}
         </span>
-        <span className={`topology-live-ops-kind ${item.kind}`}>{kindLabel[item.kind]}</span>
+        <div className="topology-timeline-body">
+          <div className="topology-live-ops-card-head">
+            <span className={`topology-live-ops-kind ${item.kind}`}>{kindLabel[item.kind]}</span>
+          </div>
+          <p className="topology-live-ops-title">{item.title}</p>
+          {item.subject ? <p className="topology-timeline-subject">{item.subject}</p> : null}
+          <p className="topology-live-ops-detail">{item.detail}</p>
+        </div>
       </div>
-      <p className="topology-live-ops-title">{item.title}</p>
-      <p className="topology-live-ops-detail">{item.detail}</p>
     </>
   );
 

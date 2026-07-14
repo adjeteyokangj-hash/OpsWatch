@@ -15,6 +15,8 @@ import { TopologyFilterBar, type TopologyViewMode } from "../../../../components
 import { TopologyListView } from "../../../../components/topology/topology-list-view";
 import { TopologyTimeReplay } from "../../../../components/topology/topology-time-replay";
 import { TopologyLiveOpsFeed } from "../../../../components/topology/topology-live-ops-feed";
+import { TopologyRefreshBanner } from "../../../../components/topology/topology-error-banner";
+import { classifyTopologyError, type ClassifiedTopologyError } from "../../../../components/topology/topology-error-classify";
 import type { ProjectTopologyResponse, TopologyHealthStatus, TopologyNodeType } from "../../../../components/topology/topology-types";
 
 const REFRESH_MS = 15_000;
@@ -33,7 +35,8 @@ export default function ProjectTopologyPage() {
   const [topology, setTopology] = useState<ProjectTopologyResponse | null>(null);
   const [maintenance, setMaintenance] = useState<MaintenanceBanner[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ClassifiedTopologyError | null>(null);
+  const [lastSuccessfulAt, setLastSuccessfulAt] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<TopologyNodeType | "ALL">("ALL");
   const [healthFilter, setHealthFilter] = useState<TopologyHealthStatus | "ALL">("ALL");
@@ -55,9 +58,10 @@ export default function ProjectTopologyPage() {
         ]);
         setTopology(row);
         setMaintenance(activeMaintenance);
+        setLastSuccessfulAt(row.generatedAt || new Date().toISOString());
         setError(null);
-      } catch (err: any) {
-        setError(err?.message || "Failed to load topology");
+      } catch (err: unknown) {
+        setError(classifyTopologyError(err));
       } finally {
         setLoading(false);
         if (manual) setRefreshing(false);
@@ -143,7 +147,14 @@ export default function ProjectTopologyPage() {
           <ProjectWorkspaceNav projectId={projectId} />
         </section>
 
-        {projectError ?? error ? <section className="panel error-panel">{projectError ?? error}</section> : null}
+        {projectError ? <section className="panel error-panel">{projectError}</section> : null}
+        {error ? (
+          <TopologyRefreshBanner
+            error={error}
+            lastSuccessfulAt={lastSuccessfulAt ?? topology?.generatedAt ?? null}
+            autoRetrying={!paused}
+          />
+        ) : null}
 
         {maintenance.length > 0 ? (
           <section className="panel maintenance-banner">
