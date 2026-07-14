@@ -52,7 +52,7 @@ export const getIncidentById = async (req: AuthRequest, res: Response) => {
 	const row = await prisma.incident.findFirst({
 		where: { id: req.params.incidentId, Project: { organizationId: orgId } },
 		include: {
-			Project: { select: { id: true, name: true, organizationId: true } },
+			Project: { select: { id: true, name: true, organizationId: true, projectOwner: true } },
 			CorrelationGroup: {
 				include: {
 					Incidents: {

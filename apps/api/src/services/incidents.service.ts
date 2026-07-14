@@ -56,26 +56,56 @@ export const listIncidents = async (organizationId: string, filters: IncidentLis
 
   const rows = await prisma.incident.findMany({
     where,
-    include: { Project: true },
+    include: {
+      Project: { select: { id: true, name: true, projectOwner: true } },
+      IncidentAlert: {
+        include: {
+          Alert: {
+            include: { Service: { select: { id: true, name: true } } }
+          }
+        },
+        take: 40
+      },
+      ChangeEvent: {
+        select: { id: true },
+        take: 10
+      }
+    },
     orderBy: { openedAt: "desc" }
   });
 
-  return rows.map((r): IncidentListItemDto => ({
-    id: r.id,
-    title: r.title,
-    severity: r.severity,
-    status: r.status,
-    openedAt: r.openedAt.toISOString(),
-    acknowledgedAt: r.acknowledgedAt?.toISOString() ?? null,
-    resolvedAt: r.resolvedAt?.toISOString() ?? null,
-    project: { id: r.Project.id, name: r.Project.name }
-  }));
+  return rows.map((r): IncidentListItemDto => {
+    const serviceMap = new Map<string, { id: string; name: string }>();
+    for (const link of r.IncidentAlert) {
+      const service = link.Alert.Service;
+      if (service) serviceMap.set(service.id, service);
+    }
+    return {
+      id: r.id,
+      title: r.title,
+      severity: r.severity,
+      status: r.status,
+      openedAt: r.openedAt.toISOString(),
+      acknowledgedAt: r.acknowledgedAt?.toISOString() ?? null,
+      resolvedAt: r.resolvedAt?.toISOString() ?? null,
+      rootCause: r.rootCause ?? null,
+      project: {
+        id: r.Project.id,
+        name: r.Project.name,
+        owner: r.Project.projectOwner ?? null
+      },
+      alertCount: r.IncidentAlert.length,
+      affectedServices: Array.from(serviceMap.values()),
+      owner: r.Project.projectOwner ?? null,
+      correlatedDeployCount: r.ChangeEvent.length
+    };
+  });
 };
 
 type IncidentDetailRecord = NonNullable<
   Awaited<ReturnType<typeof prisma.incident.findUnique>>
 > & {
-  Project: { id: string; name: string; organizationId: string | null };
+  Project: { id: string; name: string; organizationId: string | null; projectOwner?: string | null };
   IncidentAlert: Array<{
     Alert: {
       id: string;
@@ -117,29 +147,43 @@ const mapCorrelationGroup = (
   }))
 });
 
-export const mapIncidentDetail = (r: IncidentDetailRecord): IncidentDetailDto => ({
-  id: r.id,
-  title: r.title,
-  severity: r.severity,
-  status: r.status,
-  openedAt: r.openedAt.toISOString(),
-  acknowledgedAt: r.acknowledgedAt?.toISOString() ?? null,
-  resolvedAt: r.resolvedAt?.toISOString() ?? null,
-  rootCause: r.rootCause,
-  resolutionNotes: r.resolutionNotes,
-  project: { id: r.Project.id, name: r.Project.name },
-  alerts: r.IncidentAlert.map((ref) => ({
-    id: ref.Alert.id,
-    title: ref.Alert.title,
-    severity: ref.Alert.severity,
-    status: ref.Alert.status,
-    lastSeenAt: ref.Alert.lastSeenAt.toISOString(),
-    service: ref.Alert.Service
-      ? { id: ref.Alert.Service.id, name: ref.Alert.Service.name }
-      : null
-  })),
-  correlationGroup: r.CorrelationGroup ? mapCorrelationGroup(r.CorrelationGroup) : null
-});
+export const mapIncidentDetail = (r: IncidentDetailRecord): IncidentDetailDto => {
+  const serviceMap = new Map<string, { id: string; name: string }>();
+  for (const ref of r.IncidentAlert) {
+    const service = ref.Alert.Service;
+    if (service) serviceMap.set(service.id, service);
+  }
+
+  const owner = r.Project.projectOwner ?? null;
+
+  return {
+    id: r.id,
+    title: r.title,
+    severity: r.severity,
+    status: r.status,
+    openedAt: r.openedAt.toISOString(),
+    acknowledgedAt: r.acknowledgedAt?.toISOString() ?? null,
+    resolvedAt: r.resolvedAt?.toISOString() ?? null,
+    rootCause: r.rootCause,
+    resolutionNotes: r.resolutionNotes,
+    project: { id: r.Project.id, name: r.Project.name, owner },
+    alertCount: r.IncidentAlert.length,
+    affectedServices: Array.from(serviceMap.values()),
+    owner,
+    correlatedDeployCount: 0,
+    alerts: r.IncidentAlert.map((ref) => ({
+      id: ref.Alert.id,
+      title: ref.Alert.title,
+      severity: ref.Alert.severity,
+      status: ref.Alert.status,
+      lastSeenAt: ref.Alert.lastSeenAt.toISOString(),
+      service: ref.Alert.Service
+        ? { id: ref.Alert.Service.id, name: ref.Alert.Service.name }
+        : null
+    })),
+    correlationGroup: r.CorrelationGroup ? mapCorrelationGroup(r.CorrelationGroup) : null
+  };
+};
 
 const clampScore = (value: number): number => Math.max(0, Math.min(1, Number(value.toFixed(2))));
 

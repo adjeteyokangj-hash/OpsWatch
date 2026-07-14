@@ -38,6 +38,9 @@ export type AlertListItemDto = {
   resolvedAt: string | null;
   project: ProjectRefDto;
   service: ServiceRefDto | null;
+  /** Linked incidents via IncidentAlert join — real links only. */
+  linkedIncidents: Array<{ id: string; title: string; status: string }>;
+  assignedTo: UserRefDto | null;
 };
 
 export type IncidentRefDto = {
@@ -49,7 +52,6 @@ export type IncidentRefDto = {
 };
 
 export type AlertDetailDto = AlertListItemDto & {
-  assignedTo: UserRefDto | null;
   incidents: IncidentRefDto[];
 };
 
@@ -63,7 +65,14 @@ export type IncidentListItemDto = {
   openedAt: string;
   acknowledgedAt: string | null;
   resolvedAt: string | null;
-  project: ProjectRefDto;
+  /** Only present when recorded — never invented. */
+  rootCause: string | null;
+  project: ProjectRefDto & { owner: string | null };
+  alertCount: number;
+  affectedServices: Array<{ id: string; name: string }>;
+  /** Operational owner from project metadata when set. */
+  owner: string | null;
+  correlatedDeployCount: number;
 };
 
 export type AlertRefDto = {
@@ -90,7 +99,6 @@ export type OrganizationIncidentGroupDto = {
 };
 
 export type IncidentDetailDto = IncidentListItemDto & {
-  rootCause: string | null;
   resolutionNotes: string | null;
   alerts: AlertRefDto[];
   correlationGroup: OrganizationIncidentGroupDto | null;

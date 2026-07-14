@@ -63,7 +63,14 @@ export const listAlerts = async (organizationId: string, filters: AlertListFilte
     where,
     include: {
       Project: true,
-      Service: true
+      Service: true,
+      User: { select: { id: true, name: true, email: true } },
+      IncidentAlert: {
+        include: {
+          Incident: { select: { id: true, title: true, status: true } }
+        },
+        take: 5
+      }
     },
     orderBy: { lastSeenAt: "desc" }
   });
@@ -81,7 +88,15 @@ export const listAlerts = async (organizationId: string, filters: AlertListFilte
     acknowledgedAt: r.acknowledgedAt?.toISOString() ?? null,
     resolvedAt: r.resolvedAt?.toISOString() ?? null,
     project: { id: r.Project.id, name: r.Project.name },
-    service: r.Service ? { id: r.Service.id, name: r.Service.name } : null
+    service: r.Service ? { id: r.Service.id, name: r.Service.name } : null,
+    linkedIncidents: r.IncidentAlert.map((link) => ({
+      id: link.Incident.id,
+      title: link.Incident.title,
+      status: link.Incident.status
+    })),
+    assignedTo: r.User
+      ? { id: r.User.id, name: r.User.name, email: r.User.email }
+      : null
   }));
 };
 
@@ -117,6 +132,11 @@ export const mapAlertDetail = (r: NonNullable<AlertDetailRecord>): AlertDetailDt
   assignedTo: r.User
     ? { id: r.User.id, name: r.User.name, email: r.User.email }
     : null,
+  linkedIncidents: r.IncidentAlert.map((ref) => ({
+    id: ref.Incident.id,
+    title: ref.Incident.title,
+    status: ref.Incident.status
+  })),
   incidents: r.IncidentAlert.map((ref) => ({
     id: ref.Incident.id,
     title: ref.Incident.title,
