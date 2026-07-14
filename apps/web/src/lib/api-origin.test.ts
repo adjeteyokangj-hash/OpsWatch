@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { CLIENT_API_BASE_URL, resolveOpswatchApiOrigin } from "./api-origin";
+import { CLIENT_API_BASE_URL, resolveOpswatchApiOrigin, shouldUseEmbeddedOpswatchApi } from "./api-origin";
 
 describe("api-origin", () => {
   const original = { ...process.env };
@@ -45,5 +45,28 @@ describe("api-origin", () => {
 
   it("keeps browser API calls on same-origin /api", () => {
     expect(CLIENT_API_BASE_URL).toBe("/api");
+  });
+
+  it("embeds API on Vercel even when OPSWATCH_API_ORIGIN is set", () => {
+    process.env.OPSWATCH_API_ORIGIN = "https://api.example.com";
+    process.env.VERCEL = "1";
+    delete process.env.OPSWATCH_EMBEDDED_API;
+    expect(shouldUseEmbeddedOpswatchApi()).toBe(true);
+  });
+
+  it("still proxies for local split-dev when origin is set", () => {
+    process.env.OPSWATCH_API_ORIGIN = "http://127.0.0.1:4000";
+    delete process.env.VERCEL;
+    delete process.env.OPSWATCH_EMBEDDED_API;
+    expect(shouldUseEmbeddedOpswatchApi()).toBe(false);
+  });
+
+  it("respects OPSWATCH_EMBEDDED_API override", () => {
+    process.env.OPSWATCH_API_ORIGIN = "https://api.example.com";
+    process.env.VERCEL = "1";
+    process.env.OPSWATCH_EMBEDDED_API = "false";
+    expect(shouldUseEmbeddedOpswatchApi()).toBe(false);
+    process.env.OPSWATCH_EMBEDDED_API = "true";
+    expect(shouldUseEmbeddedOpswatchApi()).toBe(true);
   });
 });

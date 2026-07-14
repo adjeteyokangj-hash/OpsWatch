@@ -96,14 +96,3 @@ export const handleEmbeddedOpswatchApi = async (
     headers: forwardSupertestHeaders(response.headers)
   });
 };
-
-/** Use external API only when explicitly configured (local split dev). */
-export const shouldUseEmbeddedOpswatchApi = (): boolean => {
-  if (process.env.OPSWATCH_EMBEDDED_API === "false") {
-    return false;
-  }
-  if (process.env.OPSWATCH_API_ORIGIN?.trim()) {
-    return false;
-  }
-  return true;
-};

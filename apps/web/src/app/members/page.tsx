@@ -277,6 +277,12 @@ export default function MembersPage() {
               Cancel
             </button>
           </div>
+          <p className="dashboard-subtle">
+            Organization roles (Admin, Member, …) are managed here. <strong>Platform Super Admin</strong> is not a
+            creatable role — it is granted by login email allowlist (
+            <code>PLATFORM_SUPER_ADMIN_EMAILS</code>, plus always <code>admin@okanggroup.com</code>). Invite the user
+            below, then add their email to that Vercel env var and redeploy / wait for next login.
+          </p>
           <form className="stack-form" onSubmit={(event) => void handleCreate(event)}>
             <label>
               Name

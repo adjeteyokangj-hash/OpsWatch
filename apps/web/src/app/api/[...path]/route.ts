@@ -1,13 +1,12 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { resolveOpswatchApiOrigin } from "../../../lib/api-origin";
-import {
-  handleEmbeddedOpswatchApi,
-  shouldUseEmbeddedOpswatchApi
-} from "../../../server/opswatch-api-handler";
+import { resolveOpswatchApiOrigin, shouldUseEmbeddedOpswatchApi } from "../../../lib/api-origin";
+import { handleEmbeddedOpswatchApi } from "../../../server/opswatch-api-handler";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Avoid hard kills on cold embedded Express + Prisma; Pro plans allow up to 300s. */
+export const maxDuration = 60;
 
 const hopByHopHeaders = new Set([
   "connection",

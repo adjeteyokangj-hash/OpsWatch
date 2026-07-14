@@ -36,3 +36,22 @@ export const resolveOpswatchApiOrigin = (): string => {
 
 /** Browser-facing API base — always same-origin so session cookies stay on the web host. */
 export const CLIENT_API_BASE_URL = "/api";
+
+/**
+ * Prefer in-process API on Vercel (same-origin). Proxy only when explicitly forced off.
+ * Having OPSWATCH_API_ORIGIN set without OPSWATCH_EMBEDDED_API=false used to force a
+ * second serverless hop, which commonly surfaces as browser "Failed to fetch".
+ */
+export const shouldUseEmbeddedOpswatchApi = (): boolean => {
+  if (process.env.OPSWATCH_EMBEDDED_API === "true") {
+    return true;
+  }
+  if (process.env.OPSWATCH_EMBEDDED_API === "false") {
+    return false;
+  }
+  // Local split-dev keeps proxying when an absolute API origin is configured.
+  if (process.env.OPSWATCH_API_ORIGIN?.trim() && process.env.VERCEL !== "1") {
+    return false;
+  }
+  return true;
+};
