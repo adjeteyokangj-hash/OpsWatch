@@ -77,7 +77,13 @@ export default function ProjectIncidentsPage() {
         </Link>
       </p>
 
-      <IncidentQuickDrawer incident={selected} onClose={() => setSelectedId(null)} />
+      <IncidentQuickDrawer
+        incident={selected}
+        onClose={() => setSelectedId(null)}
+        onStatusChanged={(id, status) => {
+          setIncidents((rows) => rows.map((row) => (row.id === id ? { ...row, status } : row)));
+        }}
+      />
     </ProjectWorkspaceShell>
   );
 }

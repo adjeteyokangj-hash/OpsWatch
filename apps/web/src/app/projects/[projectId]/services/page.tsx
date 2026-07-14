@@ -1,8 +1,20 @@
 "use client";
 
-import { ProjectLayerPage } from "../../../../components/projects/project-layer-page";
+import { useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 
-/** Services tab — reuses components/services layer with real service rows. */
+/** Legacy Services tab — Components is the canonical label/route. */
 export default function ProjectServicesPage() {
-  return <ProjectLayerPage layerKey="components" />;
+  const { projectId } = useParams<{ projectId: string }>();
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace(`/projects/${projectId}/components`);
+  }, [projectId, router]);
+
+  return (
+    <section className="panel" aria-live="polite">
+      Redirecting to Components…
+    </section>
+  );
 }

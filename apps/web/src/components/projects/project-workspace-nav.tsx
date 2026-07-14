@@ -4,21 +4,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
-/** Application workspace tabs — Overview through Settings. */
+/**
+ * Application workspace tabs (mission set).
+ * Routes kept stable: Components=/components (Services redirects),
+ * Intelligence=/insights, Configuration=/settings.
+ * Metrics, Logs, Deployments remain reachable from Configuration.
+ */
 const tabs = [
   ["Overview", ""],
-  ["Topology", "/topology"],
   ["Modules", "/modules"],
   ["Workflows", "/workflows"],
-  ["Services", "/services"],
+  ["Components", "/components"],
+  ["Topology", "/topology"],
   ["Incidents", "/incidents"],
   ["Alerts", "/alerts"],
-  ["Deployments", "/deployments"],
   ["Automation", "/automation"],
-  ["Metrics", "/metrics"],
-  ["Logs", "/log-streams"],
-  ["AI Insights", "/insights"],
-  ["Settings", "/settings"]
+  ["Intelligence", "/insights"],
+  ["Configuration", "/settings"]
 ] as const;
 
 export function ProjectWorkspaceNav({ projectId }: { projectId: string }) {
@@ -39,7 +41,7 @@ export function ProjectWorkspaceNav({ projectId }: { projectId: string }) {
   }, [pathname]);
 
   return (
-    <nav ref={navRef} className="pill-row project-workspace-nav" aria-label="Project workspace">
+    <nav ref={navRef} className="pill-row project-workspace-nav" aria-label="Application workspace">
       {tabs.map(([label, path]) => {
         const href = `${base}${path}`;
         const active =
@@ -52,6 +54,7 @@ export function ProjectWorkspaceNav({ projectId }: { projectId: string }) {
             ref={active ? activeRef : undefined}
             className={active ? "pill active" : "pill"}
             href={href}
+            aria-current={active ? "page" : undefined}
           >
             {label}
           </Link>

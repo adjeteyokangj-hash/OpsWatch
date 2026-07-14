@@ -118,7 +118,7 @@ export default function ProjectDetailPage() {
 								<span>Severity, scope, and evidence for this application.</span>
 							</Link>
 							<Link className="quick-link-card" href={`/projects/${project.id}/insights`}>
-								<strong>AI Insights</strong>
+								<strong>Intelligence</strong>
 								<span>Evidence-backed patterns — predictions stay gated off.</span>
 							</Link>
 							<Link className="quick-link-card" href={`/projects/${project.id}/automation`}>

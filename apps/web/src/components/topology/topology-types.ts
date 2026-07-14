@@ -61,8 +61,23 @@ export type ProjectTopologyResponse = {
 export const LAYER_ORDER: TopologyNodeType[] = ["APP", "MODULE", "WORKFLOW", "COMPONENT"];
 
 export const healthLabel = (status: TopologyHealthStatus): string => {
-  if (status === "UNKNOWN") return "Waiting for first heartbeat";
+  if (status === "UNKNOWN") return "Unknown";
   return status.charAt(0) + status.slice(1).toLowerCase();
+};
+
+/** Honest explanation when health cannot be confirmed from real checks/heartbeats. */
+export const unknownHealthReason = (input: {
+  monitoringState?: "AWAITING_FIRST_CHECK" | "MONITORED" | string | null;
+  lastCheckAt?: string | null;
+  openAlerts?: number;
+}): string => {
+  if (input.monitoringState === "AWAITING_FIRST_CHECK" || !input.lastCheckAt) {
+    return "Health is unknown because no completed check or heartbeat has been recorded for this node yet.";
+  }
+  if ((input.openAlerts ?? 0) === 0) {
+    return "Health is unknown because recent monitoring signals are missing or inconclusive — not because a failure was detected.";
+  }
+  return "Health is unknown while OpsWatch waits for a conclusive check result. Open alerts may still appear from other signals.";
 };
 
 export const riskLabel = (risk: { openAlerts: number; unresolvedIncidents: number }): string | null => {

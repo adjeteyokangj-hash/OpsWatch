@@ -73,23 +73,72 @@ export default function ProjectSettingsPage() {
 
   return (
     <Shell>
-      <Header title={`${project.name} Settings`} />
+      <Header title={`${project.name} Configuration`} />
       <section className="panel">
         <nav className="breadcrumb" aria-label="Breadcrumb">
-          <Link href="/projects">Projects</Link>
+          <Link href="/projects">Applications</Link>
           <span aria-hidden="true"> / </span>
           <Link href={`/projects/${projectId}`}>{project.name}</Link>
           <span aria-hidden="true"> / </span>
-          <span>Settings</span>
+          <span>Configuration</span>
         </nav>
         <ProjectWorkspaceNav projectId={projectId} />
       </section>
       {error ? <section className="panel error-panel">{error}</section> : null}
       <section className="panel">
-        <h2>Project settings</h2>
+        <h2>Configuration</h2>
         <p className="dashboard-subtle">
-          Operational settings for {project.name}. Billing, monitoring, and integrations are managed in their workspace tabs.
+          Operational configuration for {project.name}. Primary workspace tabs stay focused on ops; secondary diagnostics
+          remain available below.
         </p>
+        <dl className="topology-detail-grid" style={{ marginTop: "12px" }}>
+          <div>
+            <dt>Environment</dt>
+            <dd>{project.environment || "—"}</dd>
+          </div>
+          <div>
+            <dt>Owner</dt>
+            <dd>{project.projectOwner || project.clientName || "Unassigned"}</dd>
+          </div>
+          <div>
+            <dt>Contact</dt>
+            <dd>{project.operationalContact || "—"}</dd>
+          </div>
+          <div>
+            <dt>Monitoring</dt>
+            <dd>{project.monitoringEnabled ? "Enabled" : "Paused"}</dd>
+          </div>
+        </dl>
+      </section>
+      <section className="panel">
+        <h2>Secondary workspaces</h2>
+        <p className="dashboard-subtle">Kept reachable without crowding the primary tab bar.</p>
+        <div className="quick-link-grid" style={{ marginTop: "10px" }}>
+          <Link className="quick-link-card" href={`/projects/${projectId}/metrics`}>
+            <strong>Metrics</strong>
+            <span>Check latency and availability from completed results.</span>
+          </Link>
+          <Link className="quick-link-card" href={`/projects/${projectId}/log-streams`}>
+            <strong>Logs</strong>
+            <span>Connected log sources only — honest empty when not wired.</span>
+          </Link>
+          <Link className="quick-link-card" href={`/projects/${projectId}/deployments`}>
+            <strong>Deployments</strong>
+            <span>Change events correlated with this application.</span>
+          </Link>
+          <Link className="quick-link-card" href={`/integrations/${projectId}`}>
+            <strong>Connect / credentials</strong>
+            <span>API key, signing secret, and ingest setup.</span>
+          </Link>
+          <Link className="quick-link-card" href={`/projects/${projectId}/billing`}>
+            <strong>Billing</strong>
+            <span>Plan usage and entitlement limits for this app.</span>
+          </Link>
+          <Link className="quick-link-card" href={`/projects/${projectId}/team`}>
+            <strong>Team</strong>
+            <span>People with access to this application.</span>
+          </Link>
+        </div>
       </section>
       <section className="panel danger-zone">
         <div className="section-head">

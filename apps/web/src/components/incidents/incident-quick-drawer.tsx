@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
+import { apiFetch } from "../../lib/api";
 import { StatusBadge, severityTone } from "../ui/status-badge";
 
 type IncidentPreview = {
@@ -19,14 +21,37 @@ type IncidentPreview = {
 
 export function IncidentQuickDrawer({
   incident,
-  onClose
+  onClose,
+  onStatusChanged
 }: {
   incident: IncidentPreview | null;
   onClose: () => void;
+  onStatusChanged?: (id: string, status: string) => void;
 }) {
+  const [acting, setActing] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
   if (!incident) return null;
 
   const owner = incident.owner || incident.project?.owner || null;
+
+  const patchStatus = async (status: string, confirmReopen = false) => {
+    if (confirmReopen && !window.confirm("Reopen this incident?")) return;
+    setActing(true);
+    setMessage(null);
+    try {
+      await apiFetch(`/incidents/${incident.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status })
+      });
+      onStatusChanged?.(incident.id, status);
+      setMessage(`Status → ${status}`);
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : "Status update failed");
+    } finally {
+      setActing(false);
+    }
+  };
 
   return (
     <aside className="incident-quick-drawer panel" role="dialog" aria-label="Incident preview">
@@ -90,6 +115,56 @@ export function IncidentQuickDrawer({
         <h3>Root cause</h3>
         <p>{incident.rootCause || "Not recorded — will appear only when known."}</p>
       </section>
+
+      <section className="topology-detail-section">
+        <h3>Actions</h3>
+        <div className="incident-status-actions" role="group" aria-label="Incident status actions">
+          {incident.status === "OPEN" ? (
+            <button
+              type="button"
+              className="primary-button"
+              disabled={acting}
+              onClick={() => void patchStatus("INVESTIGATING")}
+              title="Supported by PATCH /incidents/:id — sets Investigating and acknowledgedAt"
+            >
+              Acknowledge / investigate
+            </button>
+          ) : null}
+          {incident.status !== "RESOLVED" && incident.status !== "OPEN" ? (
+            <button
+              type="button"
+              className="primary-button"
+              disabled={acting}
+              onClick={() => void patchStatus("RESOLVED")}
+            >
+              Resolve
+            </button>
+          ) : null}
+          {incident.status === "RESOLVED" ? (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={acting}
+              onClick={() => void patchStatus("OPEN", true)}
+            >
+              Reopen
+            </button>
+          ) : null}
+        </div>
+        {message ? <p className="metric-label">{message}</p> : null}
+      </section>
+
+      <div className="portfolio-links">
+        {incident.project?.id ? (
+          <>
+            <Link href={`/projects/${incident.project.id}/topology`}>Topology</Link>
+            <Link href={`/projects/${incident.project.id}/alerts`}>Alerts</Link>
+            <Link href={`/projects/${incident.project.id}/automation`}>Automation</Link>
+            <Link href={`/projects/${incident.project.id}/insights`}>Intelligence</Link>
+          </>
+        ) : null}
+        <Link href={`/alerts?q=${encodeURIComponent(incident.title)}`}>Related alerts</Link>
+      </div>
 
       <p>
         <Link className="primary-button" href={`/incidents/${incident.id}`}>

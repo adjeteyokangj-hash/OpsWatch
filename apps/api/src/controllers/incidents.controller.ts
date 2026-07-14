@@ -210,7 +210,7 @@ export const patchIncident = async (req: AuthRequest, res: Response) => {
 
 	const existing = await prisma.incident.findFirst({
 		where: { id: req.params.incidentId, Project: { organizationId: orgId } },
-		select: { id: true, title: true, status: true, rootCause: true, resolutionNotes: true }
+		select: { id: true, title: true, status: true, rootCause: true, resolutionNotes: true, acknowledgedAt: true, resolvedAt: true }
 	});
 	if (!existing) {
 		res.status(404).json({ error: "Incident not found" });
@@ -218,6 +218,7 @@ export const patchIncident = async (req: AuthRequest, res: Response) => {
 	}
 
 	const body = req.body ?? {};
+	const nextStatus = body.status !== undefined ? body.status : undefined;
 	const updated = await prisma.incident.update({
 		where: { id: existing.id },
 		data: {
@@ -226,7 +227,11 @@ export const patchIncident = async (req: AuthRequest, res: Response) => {
 			...(body.severity !== undefined ? { severity: body.severity } : {}),
 			...(body.rootCause !== undefined ? { rootCause: body.rootCause ? String(body.rootCause) : null } : {}),
 			...(body.resolutionNotes !== undefined ? { resolutionNotes: body.resolutionNotes ? String(body.resolutionNotes) : null } : {}),
-			...(body.status === "RESOLVED" ? { resolvedAt: new Date() } : {})
+			...(nextStatus === "RESOLVED" ? { resolvedAt: new Date() } : {}),
+			...(nextStatus === "OPEN" || nextStatus === "INVESTIGATING" || nextStatus === "MONITORING"
+				? { resolvedAt: null }
+				: {}),
+			...(nextStatus === "INVESTIGATING" && !existing.acknowledgedAt ? { acknowledgedAt: new Date() } : {})
 		}
 	});
 

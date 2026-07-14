@@ -86,7 +86,7 @@ describe("TopologyCanvas", () => {
     expect(screen.getByTestId("topology-canvas")).toBeInTheDocument();
     expect(screen.queryByTestId("topology-node-app")).not.toBeInTheDocument();
     expect(screen.getByTestId("topology-node-redis")).toBeInTheDocument();
-    expect(screen.getByLabelText("Redis, Waiting for first heartbeat")).toBeInTheDocument();
+    expect(screen.getByLabelText("Redis, Unknown")).toBeInTheDocument();
   });
 
   it("filters nodes by health state", () => {
@@ -100,7 +100,7 @@ describe("TopologyCanvas", () => {
       />
     );
 
-    expect(screen.getByLabelText("Redis, Waiting for first heartbeat")).toBeInTheDocument();
+    expect(screen.getByLabelText("Redis, Unknown")).toBeInTheDocument();
     expect(screen.queryByLabelText(/Noble Express/)).not.toBeInTheDocument();
   });
 
@@ -116,7 +116,7 @@ describe("TopologyCanvas", () => {
       />
     );
 
-    fireEvent.click(screen.getByLabelText("Redis, Waiting for first heartbeat"));
+    fireEvent.click(screen.getByLabelText("Redis, Unknown"));
     expect(onSelectNode).toHaveBeenCalledWith("redis");
   });
 

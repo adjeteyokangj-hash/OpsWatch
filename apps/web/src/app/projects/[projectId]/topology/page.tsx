@@ -184,7 +184,7 @@ export default function ProjectTopologyPage() {
             <EmptyState
               title="No topology data"
               description="Register services and dependencies to build the live service map."
-              action={<Link className="primary-button" href={`/projects/${projectId}/services`}>Open services</Link>}
+              action={<Link className="primary-button" href={`/projects/${projectId}/components`}>Open components</Link>}
             />
           </section>
         ) : null}
@@ -259,10 +259,10 @@ export default function ProjectTopologyPage() {
                 <section className="panel topology-intel-slot">
                   <h3>Intelligence</h3>
                   <p className="dashboard-subtle">
-                    Predictions stay disabled. Patterns and deploy correlation live on the AI Insights tab when evidence exists.
+                    Predictions stay disabled. Patterns and deploy correlation live on the Intelligence tab when evidence exists.
                   </p>
                   <Link className="text-link" href={`/projects/${projectId}/insights`}>
-                    Open AI Insights →
+                    Open Intelligence →
                   </Link>
                 </section>
               </div>

@@ -375,16 +375,27 @@ export default function IncidentDetailPage() {
       setExecuting(null);
     }
   };
-  const saveIncident = async () => {
+  const saveIncident = async (nextStatus?: string) => {
     if (!incident) return;
+    const statusToSave = nextStatus ?? status;
     setSaving(true);
     setSaveMsg(null);
     try {
       await apiFetch(`/incidents/${incident.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ status, rootCause: rootCause || null }),
+        body: JSON.stringify({ status: statusToSave, rootCause: rootCause || null }),
       });
-      setSaveMsg("Saved");
+      setStatus(statusToSave);
+      setIncident((prev) => (prev ? { ...prev, status: statusToSave } : prev));
+      setSaveMsg(
+        statusToSave === "RESOLVED"
+          ? "Incident resolved"
+          : statusToSave === "OPEN"
+            ? "Incident reopened"
+            : statusToSave === "INVESTIGATING"
+              ? "Marked investigating (acknowledged)"
+              : "Saved"
+      );
     } catch {
       setSaveMsg("Save failed");
     } finally {
@@ -825,7 +836,54 @@ export default function IncidentDetailPage() {
       {/* ── Update incident ────────────────────────────────────────── */}
       <section className="panel">
         <h2>Update incident</h2>
-        <div className="stack-form incident-update-form">
+        <div className="incident-status-actions" role="group" aria-label="Incident status actions">
+          {incident.status === "OPEN" ? (
+            <button
+              type="button"
+              className="primary-button"
+              disabled={saving}
+              onClick={() => void saveIncident("INVESTIGATING")}
+              title="Sets status to Investigating and records acknowledged time"
+            >
+              Acknowledge / investigate
+            </button>
+          ) : null}
+          {incident.status === "INVESTIGATING" || incident.status === "MONITORING" ? (
+            <button
+              type="button"
+              className="primary-button"
+              disabled={saving}
+              onClick={() => void saveIncident("RESOLVED")}
+            >
+              Resolve
+            </button>
+          ) : null}
+          {incident.status === "RESOLVED" ? (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => {
+                if (window.confirm("Reopen this incident? Resolved time will be cleared.")) {
+                  void saveIncident("OPEN");
+                }
+              }}
+            >
+              Reopen
+            </button>
+          ) : null}
+          {incident.status !== "RESOLVED" && incident.status !== "OPEN" ? (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => void saveIncident("MONITORING")}
+            >
+              Mark monitoring
+            </button>
+          ) : null}
+        </div>
+        <div className="stack-form incident-update-form" style={{ marginTop: "12px" }}>
           <label>
             Status
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -843,7 +901,13 @@ export default function IncidentDetailPage() {
               placeholder="Describe the root cause…"
             />
           </label>
-          <button onClick={saveIncident} disabled={saving} data-action="api" data-endpoint="/incidents/:incidentId">
+          <button
+            type="button"
+            onClick={() => void saveIncident()}
+            disabled={saving}
+            data-action="api"
+            data-endpoint="/incidents/:incidentId"
+          >
             {saving ? "Saving…" : "Save"}
           </button>
           {saveMsg && <p className="metric-label">{saveMsg}</p>}

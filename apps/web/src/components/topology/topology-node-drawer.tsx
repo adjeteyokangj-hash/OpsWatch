@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { ProjectTopologyResponse, TopologyNode } from "./topology-types";
-import { healthClassName, healthLabel } from "./topology-types";
+import { healthClassName, healthLabel, unknownHealthReason } from "./topology-types";
 import { TopologySparkline } from "./topology-sparkline";
 import { TopologyApplicationPanel } from "./topology-application-panel";
 
@@ -123,6 +123,18 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
 
       {tab === "overview" ? (
         <>
+          {node.status === "UNKNOWN" ? (
+            <section className="topology-detail-section topology-unknown-reason" role="status">
+              <h3>Why health is unknown</h3>
+              <p>
+                {unknownHealthReason({
+                  monitoringState: context?.monitoringState,
+                  lastCheckAt: context?.lastCheckAt,
+                  openAlerts: node.risk.openAlerts
+                })}
+              </p>
+            </section>
+          ) : null}
           <section className="topology-detail-section">
             <dl className="topology-detail-grid">
               {overviewRows.map((row) => (

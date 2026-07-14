@@ -27,9 +27,10 @@ Use before any production push. **Do not push until the owner explicitly request
 
 ## Application workspace tabs
 
-- [ ] Tabs present: Overview, Topology, Modules, Workflows, Services, Incidents, Alerts, Deployments, Automation, Metrics, Logs, AI Insights, Settings
+- [ ] Tabs present: Overview, Modules, Workflows, Components, Topology, Incidents, Alerts, Automation, Intelligence, Configuration
+- [ ] Legacy Services → Components redirect; Metrics/Logs/Deployments reachable from Configuration
 - [ ] Project Automation stats come from `/intelligence/automation-history` (no hardcoded success %)
-- [ ] Logs tab (`/log-streams`) shows honest “not connected” empty state
+- [ ] Logs (`/log-streams`) shows honest “not connected” empty state
 - [ ] Deployments tab shows change events / intelligence records only
 
 ## Incidents / Alerts

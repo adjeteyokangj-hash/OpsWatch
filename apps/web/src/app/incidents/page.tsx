@@ -213,7 +213,13 @@ function IncidentsPageContent() {
             selectedId={selectedId}
             onSelectRow={(id) => setSelectedId(id)}
           />
-          <IncidentQuickDrawer incident={selected} onClose={() => setSelectedId(null)} />
+          <IncidentQuickDrawer
+            incident={selected}
+            onClose={() => setSelectedId(null)}
+            onStatusChanged={(id, status) => {
+              setIncidents((rows) => rows.map((row) => (row.id === id ? { ...row, status } : row)));
+            }}
+          />
         </>
       )}
     </Shell>

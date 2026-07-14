@@ -71,7 +71,7 @@ export function ProjectsTable({ rows }: { rows: Array<any> }) {
         <thead>
           <tr>
             <th>Application</th>
-            <th>Client</th>
+            <th>Owner</th>
             <th>Env</th>
             <th>Health</th>
             <th>Risk (evidence)</th>
@@ -95,7 +95,7 @@ export function ProjectsTable({ rows }: { rows: Array<any> }) {
                 <td data-label="Application">
                   <Link href={`/projects/${row.id}`}>{row.name}</Link>
                 </td>
-                <td data-label="Client">{row.clientName || "—"}</td>
+                <td data-label="Client">{row.projectOwner || row.clientName || "—"}</td>
                 <td data-label="Env">{row.environment}</td>
                 <td data-label="Health">
                   <div className="application-health-cell">
@@ -119,9 +119,10 @@ export function ProjectsTable({ rows }: { rows: Array<any> }) {
                 <td data-label="Links">
                   <div className="portfolio-links">
                     <Link href={`/projects/${row.id}/topology`}>Topology</Link>
+                    <Link href={`/projects/${row.id}/incidents`}>Incidents</Link>
                     <Link href={`/projects/${row.id}/automation`}>Automation</Link>
-                    <Link href={`/projects/${row.id}/deployments`}>Deploys</Link>
-                    <Link href={`/projects/${row.id}/insights`}>Insights</Link>
+                    <Link href={`/projects/${row.id}/insights`}>Intelligence</Link>
+                    <Link href={`/projects/${row.id}/settings`}>Configuration</Link>
                   </div>
                 </td>
               </tr>
