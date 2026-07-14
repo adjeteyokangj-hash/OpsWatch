@@ -14,6 +14,8 @@ import { LayerHealthTable, type LayerHealthRow } from "../../components/health/l
 import { DashboardAppStatusTable } from "../../components/health/dashboard-app-status-table";
 import { PageSection } from "../../components/ui/page-section";
 import { EmptyState } from "../../components/ui/empty-state";
+import { LearningStateBanner } from "../../components/ui/learning-state-banner";
+import { StatusBadge } from "../../components/ui/status-badge";
 
 type ProjectRow = {
   id: string;
@@ -65,6 +67,26 @@ type InsightsProject = {
   recommendations?: InsightsRecommendation[];
 };
 
+type IntelligenceTeaser = {
+  learningState: "EMPTY" | "LEARNING" | "ACTIVE";
+  emptyReason: string | null;
+  counters: {
+    automationRuns: number;
+    deployments: number;
+    patternsDisplayable: number;
+    baselinesReady: number;
+  };
+  predictions: { enabled: boolean; status: string; reason: string };
+  automationHistory: Array<{
+    id: string;
+    incidentId: string;
+    status: string;
+    success: boolean | null;
+    reason: string | null;
+    createdAt: string;
+  }>;
+};
+
 const formatLoadFailure = (label: string, reason: unknown): string => {
   const message = reason instanceof Error ? reason.message : String(reason);
   return `${label} (${message || "failed"})`;
@@ -78,6 +100,7 @@ export default function DashboardPage() {
   const [checkSummary, setCheckSummary] = useState<{ total: number; pass: number; fail: number; warn: number; pending: number } | null>(null);
   const [recommendations, setRecommendations] = useState<Array<InsightsRecommendation & { projectName: string }>>([]);
   const [layerHealth, setLayerHealth] = useState<LayerHealthRow[]>([]);
+  const [intelligence, setIntelligence] = useState<IntelligenceTeaser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionOrgMissing, setSessionOrgMissing] = useState(false);
@@ -93,14 +116,15 @@ export default function DashboardPage() {
           setSessionOrgMissing(true);
         }
 
-        const [projectsResult, alertsResult, incidentsResult, checksResult, insightsResult, layerHealthResult] =
+        const [projectsResult, alertsResult, incidentsResult, checksResult, insightsResult, layerHealthResult, intelligenceResult] =
           await Promise.allSettled([
             apiFetch<ProjectRow[]>('/projects', { suppressAuthRedirect: true }),
             apiFetch<AlertRow[]>('/alerts', { suppressAuthRedirect: true }),
             apiFetch<IncidentRow[]>('/incidents', { suppressAuthRedirect: true }),
             apiFetch<{ items: CheckRow[]; summary: { total: number; pass: number; fail: number; warn: number; pending: number } }>('/checks', { suppressAuthRedirect: true }),
             apiFetch<{ projects: InsightsProject[] }>('/insights/product', { suppressAuthRedirect: true }),
-            apiFetch<LayerHealthRow[]>('/analytics/layer-health', { suppressAuthRedirect: true })
+            apiFetch<LayerHealthRow[]>('/analytics/layer-health', { suppressAuthRedirect: true }),
+            apiFetch<IntelligenceTeaser>('/intelligence?harvest=false', { suppressAuthRedirect: true })
           ]);
 
         const failures: string[] = [];
@@ -149,6 +173,10 @@ export default function DashboardPage() {
           setLayerHealth(layerHealthResult.value);
         } else {
           failures.push(formatLoadFailure('layer health', layerHealthResult.reason));
+        }
+
+        if (intelligenceResult.status === 'fulfilled') {
+          setIntelligence(intelligenceResult.value);
         }
 
         if (failures.length > 0) {
@@ -215,6 +243,20 @@ export default function DashboardPage() {
         </section>
       ) : null}
       {error ? <section className="panel error-panel">{error}</section> : null}
+
+      {!loading && intelligence ? (
+        <LearningStateBanner
+          state={intelligence.learningState}
+          message={
+            intelligence.predictions.enabled
+              ? intelligence.predictions.reason
+              : intelligence.emptyReason ??
+                "Predictions disabled. Risk slots stay empty until evidence and confidence thresholds are met."
+          }
+          action={<Link className="text-link" href="/intelligence">Open Intelligence →</Link>}
+        />
+      ) : null}
+
       <section className="grid-6 dashboard-metrics">
         <StatCard label="Projects" value={loading ? '-' : projects.length} href="/projects" />
         <StatCard label="Healthy projects" value={loading ? '-' : healthy} href="/projects?health=HEALTHY" />
@@ -331,6 +373,59 @@ export default function DashboardPage() {
           )}
         </PageSection>
 
+        <PageSection title="Operations command" description="Automation activity and intelligence posture from real data.">
+          {loading ? <p>Loading operations command…</p> : (
+            <>
+              <div className="snapshot-grid">
+                <div className="snapshot-item">
+                  <span className="snapshot-label">Automation runs</span>
+                  <strong>{intelligence?.counters.automationRuns ?? 0}</strong>
+                </div>
+                <div className="snapshot-item">
+                  <span className="snapshot-label">Deployments tracked</span>
+                  <strong>{intelligence?.counters.deployments ?? 0}</strong>
+                </div>
+                <div className="snapshot-item">
+                  <span className="snapshot-label">Displayable patterns</span>
+                  <strong>{intelligence?.counters.patternsDisplayable ?? 0}</strong>
+                </div>
+                <div className="snapshot-item">
+                  <span className="snapshot-label">Predictive risk</span>
+                  <strong>
+                    <StatusBadge label="Not ready" tone="muted" title="Predictions disabled until evidence threshold" />
+                  </strong>
+                </div>
+              </div>
+              {(intelligence?.automationHistory ?? []).length === 0 ? (
+                <EmptyState title="No recent automation" description="Automation history appears after playbook runs." />
+              ) : (
+                <div className="activity-feed">
+                  {(intelligence?.automationHistory ?? []).slice(0, 4).map((row) => (
+                    <article className="activity-feed-item" key={row.id}>
+                      <div className="activity-feed-head">
+                        <StatusBadge
+                          label={row.success == null ? row.status : row.success ? "Success" : "Failed"}
+                          tone={row.success === true ? "success" : row.success === false ? "danger" : "neutral"}
+                        />
+                      </div>
+                      <div className="activity-feed-title">
+                        <Link href={`/incidents/${row.incidentId}`}>{row.reason || "Automation run"}</Link>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+              <p>
+                <Link className="text-link" href="/automation">Automation centre →</Link>
+                {" · "}
+                <Link className="text-link" href="/intelligence">Intelligence →</Link>
+              </p>
+            </>
+          )}
+        </PageSection>
+      </section>
+
+      <section className="two-col dashboard-secondary">
         <PageSection title="Actionable recommendations" description="Open insights from product monitoring analysis.">
           {loading ? <p>Loading recommendations…</p> : recommendations.length === 0 ? (
             <EmptyState title="No active recommendations" description="Monitoring looks healthy across tracked projects." />
@@ -349,6 +444,17 @@ export default function DashboardPage() {
             </div>
           )}
           <p><Link className="text-link" href="/insights">Open insights page →</Link></p>
+        </PageSection>
+
+        <PageSection title="Quick links" description="Primary operational surfaces.">
+          <div className="snapshot-grid">
+            <div className="snapshot-item"><Link href="/incidents">Incidents</Link></div>
+            <div className="snapshot-item"><Link href="/alerts">Alerts</Link></div>
+            <div className="snapshot-item"><Link href="/automation">Automation</Link></div>
+            <div className="snapshot-item"><Link href="/intelligence">Intelligence</Link></div>
+            <div className="snapshot-item"><Link href="/accuracy">Accuracy</Link></div>
+            <div className="snapshot-item"><Link href="/insights">Insights</Link></div>
+          </div>
         </PageSection>
       </section>
     </Shell>

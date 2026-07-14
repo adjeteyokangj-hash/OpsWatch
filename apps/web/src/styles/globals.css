@@ -7016,4 +7016,55 @@ label {
   color: #166534;
 }
 
+/* Intelligence / design-system additions */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.status-badge-success { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+.status-badge-warning { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.status-badge-danger { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.status-badge-info { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.status-badge-neutral { background: #f8fafc; color: #334155; border-color: #e2e8f0; }
+.status-badge-muted { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
+
+.learning-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.learning-banner p {
+  margin: 0.35rem 0 0;
+  color: #475569;
+  max-width: 60rem;
+}
+
+.learning-banner-empty { background: #f8fafc; }
+.learning-banner-learning { background: #fffbeb; border-color: #fde68a; }
+.learning-banner-active { background: #ecfdf5; border-color: #a7f3d0; }
+
+.intelligence-details {
+  margin-top: 0.85rem;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.intelligence-muted-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+}
 

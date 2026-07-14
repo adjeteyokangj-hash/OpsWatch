@@ -8,7 +8,10 @@ import { fetchSessionUser, type SessionUser } from "../../lib/auth";
 const baseNavGroups = [
   {
     label: "Overview",
-    links: [["Dashboard", "/dashboard"]] as const
+    links: [
+      ["Dashboard", "/dashboard"],
+      ["Intelligence", "/intelligence"]
+    ] as const
   },
   {
     label: "Operations",
@@ -50,6 +53,7 @@ const platformAdminGroup = {
 
 const navIcons: Record<string, string> = {
   Dashboard: "⌂",
+  Intelligence: "◉",
   Applications: "▣",
   Incidents: "◆",
   Alerts: "!",
