@@ -208,6 +208,8 @@ export function RegisterApplicationWizard({
   const [clientMode, setClientMode] = useState<ClientMode>("none");
   const [selectedClient, setSelectedClient] = useState("");
   const [org, setOrg] = useState<OrgSummary | null>(null);
+  const [orgStatus, setOrgStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [orgError, setOrgError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreateApplicationResponse | null>(null);
@@ -248,11 +250,31 @@ export function RegisterApplicationWizard({
     });
   }, [credentials, form.publicUrl, hasCredentials]);
 
-  useEffect(() => {
-    void apiFetch<OrgSummary>("/org")
-      .then(setOrg)
-      .catch(() => setOrg(null));
+  const loadOrganization = useCallback(async () => {
+    setOrgStatus("loading");
+    setOrgError(null);
+    try {
+      const next = await apiFetch<OrgSummary>("/org");
+      setOrg(next);
+      setOrgStatus("ready");
+    } catch (err: unknown) {
+      setOrg(null);
+      setOrgStatus("error");
+      const message = err instanceof Error ? err.message : "Failed to load organization";
+      const missingOrg =
+        /organization required/i.test(message) ||
+        /organization not found/i.test(message);
+      setOrgError(
+        missingOrg
+          ? "Your account is not linked to an organization. Open Organization or ask an admin on Members to attach your user, then retry."
+          : message
+      );
+    }
   }, []);
+
+  useEffect(() => {
+    void loadOrganization();
+  }, [loadOrganization]);
 
   const stopHeartbeatPolling = useCallback(() => {
     if (heartbeatPollRef.current) {
@@ -491,12 +513,36 @@ export function RegisterApplicationWizard({
 
           <label>
             Organization *
-            <div className="register-org-readonly" aria-readonly="true">
-              <span>{org?.name ?? "Loading organization…"}</span>
-              <span className="register-org-lock" title="Organization is fixed for your workspace" aria-hidden="true">
-                🔒
+            <div
+              className={`register-org-readonly${orgStatus === "error" ? " register-org-readonly--error" : ""}`}
+              aria-readonly="true"
+              aria-busy={orgStatus === "loading"}
+            >
+              <span>
+                {orgStatus === "loading"
+                  ? "Loading organization…"
+                  : orgStatus === "ready" && org
+                    ? org.name
+                    : "Organization unavailable"}
               </span>
+              {orgStatus === "ready" ? (
+                <span className="register-org-lock" title="Organization is fixed for your workspace" aria-hidden="true">
+                  🔒
+                </span>
+              ) : null}
             </div>
+            {orgStatus === "error" ? (
+              <span className="field-hint field-hint--spaced warn-text">
+                {orgError ?? "Could not load your organization."}{" "}
+                <a href="/org">Organization settings</a>
+                {" · "}
+                <a href="/members">Members</a>
+                {" · "}
+                <button type="button" className="link-button" onClick={() => void loadOrganization()} data-action="local-ui">
+                  Retry
+                </button>
+              </span>
+            ) : null}
           </label>
 
           <label>
@@ -574,7 +620,13 @@ export function RegisterApplicationWizard({
             <button type="button" className="secondary-button" onClick={closeWizard} data-action="local-ui">
               Cancel
             </button>
-            <button className="primary-button" type="submit" disabled={saving || !org} data-action="api" data-endpoint="/projects">
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={saving || orgStatus !== "ready" || !org}
+              data-action="api"
+              data-endpoint="/projects"
+            >
               {saving ? "Registering…" : "Register application"}
             </button>
           </div>
@@ -621,8 +673,24 @@ export function RegisterApplicationWizard({
 
       {step === "credentials" && created ? (
         <div className="stack-form">
+          <div className="hint-panel register-wizard-next-step">
+            <strong>Paste into Noble Integration Centre</strong>
+            <p>
+              Admin → Integrations → OpsWatch. Use Base URL, API key, Signing secret, and{" "}
+              <strong>Project slug</strong> below. Application ID (OW-APP-…) is display-only and will not authenticate
+              heartbeats.
+            </p>
+          </div>
+
           <label>
-            Application ID
+            Project slug
+            <input value={credentials?.projectSlug ?? created.slug ?? ""} readOnly />
+          </label>
+
+          <CredentialCopyField label="Base URL" value={resolvePublicIngestApiUrl()} />
+
+          <label>
+            Application ID (display only)
             <input value={applicationId} readOnly />
           </label>
 

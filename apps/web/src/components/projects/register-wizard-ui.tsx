@@ -88,15 +88,26 @@ const highlightEnvLine = (line: string): { key: string; value: string } | null =
   return { key: line.slice(0, index), value: line.slice(index + 1) };
 };
 
-export function EnvSnippetBlock({ snippet, onCopy }: { snippet: string; onCopy: () => void | Promise<void> }) {
+export function EnvSnippetBlock({
+  snippet,
+  onCopy,
+  title = "Integration Centre credentials",
+  hint = "Paste these into Noble → Admin → Integrations → OpsWatch. Do not put them on Vercel."
+}: {
+  snippet: string;
+  onCopy: () => void | Promise<void>;
+  title?: string;
+  hint?: string;
+}) {
   const lines = snippet.trim().split("\n").filter(Boolean);
 
   return (
     <div className="env-snippet-panel">
       <div className="env-snippet-head">
-        <strong>Environment variables</strong>
+        <strong>{title}</strong>
         <CopyFeedbackButton idleLabel="Copy snippet" successLabel="✓ Copied" onAction={onCopy} />
       </div>
+      {hint ? <p className="env-snippet-hint dashboard-subtle">{hint}</p> : null}
       <pre className="env-snippet-block">
         {lines.map((line) => {
           const parsed = highlightEnvLine(line);

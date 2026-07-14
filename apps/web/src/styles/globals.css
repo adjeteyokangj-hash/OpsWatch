@@ -2255,9 +2255,26 @@ h1 {
   cursor: not-allowed;
 }
 
+.register-org-readonly--error {
+  border-color: color-mix(in srgb, var(--critical, #b42318) 45%, var(--line));
+  color: var(--text);
+}
+
 .register-org-lock {
   font-size: 0.9rem;
   opacity: 0.75;
+}
+
+.link-button {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .field-hint--spaced {
