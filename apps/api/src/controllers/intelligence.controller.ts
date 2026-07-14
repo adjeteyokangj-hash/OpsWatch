@@ -3,7 +3,7 @@ import type { AuthRequest } from "../middleware/auth";
 import { hasPermission } from "../auth/permissions";
 import { buildIntelligenceSnapshot } from "../services/intelligence/brain-snapshot.service";
 import { prisma } from "../lib/prisma";
-import { PREDICTIONS_ENABLED } from "../services/intelligence/intelligence-constants";
+import { isPredictionsEnabled } from "../services/intelligence/intelligence-constants";
 
 const orgIdOr403 = (req: AuthRequest, res: Response): string | null => {
   const orgId = req.user?.organizationId;
@@ -171,9 +171,9 @@ export const getPredictionStatusHandler = async (
   }
 
   res.json({
-    enabled: PREDICTIONS_ENABLED,
+    enabled: isPredictionsEnabled(),
     productEmission: false,
-    message: PREDICTIONS_ENABLED
+    message: isPredictionsEnabled()
       ? "Predictions flag is on, but product emission still requires confidence thresholds."
       : "Predictions are disabled. Framework tables exist for future use; no predictive claims are shown.",
     flag: "OPSWATCH_PREDICTIONS_ENABLED"

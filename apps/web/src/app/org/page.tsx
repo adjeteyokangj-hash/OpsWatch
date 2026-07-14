@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
@@ -28,6 +28,11 @@ type ProjectOption = {
   id: string;
   name: string;
   slug: string;
+};
+
+const asErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && error.message) return error.message;
+  return "Unknown API error";
 };
 
 type ApiKeyRow = {
@@ -102,12 +107,7 @@ export default function OrgPage() {
     expiresAt: ""
   });
 
-  const asErrorMessage = (error: unknown): string => {
-    if (error instanceof Error && error.message) return error.message;
-    return "Unknown API error";
-  };
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -170,11 +170,11 @@ export default function OrgPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   const handleSaveName = async (event: FormEvent) => {
     event.preventDefault();

@@ -6,7 +6,7 @@ import {
   MIN_DISPLAY_CONFIDENCE,
   MIN_RECOMMENDATION_CONFIDENCE,
   PATTERN_TYPE,
-  PREDICTIONS_ENABLED
+  isPredictionsEnabled
 } from "./intelligence-constants";
 import { syncDeploymentsFromChangeEvents } from "./deployment-intelligence.service";
 import { randomUUID } from "crypto";
@@ -390,7 +390,7 @@ export const buildIntelligenceSnapshot = async (
   return {
     learningState,
     predictions: {
-      enabled: PREDICTIONS_ENABLED,
+      enabled: isPredictionsEnabled(),
       status: predictionGate.status,
       reason: predictionGate.reason,
       productEmission: predictionGate.emitToProduct
@@ -471,7 +471,7 @@ export const buildIntelligenceSnapshot = async (
       resolvedAt: row.resolvedAt?.toISOString() ?? null
     })),
     predictionReadiness: {
-      message: PREDICTIONS_ENABLED
+      message: isPredictionsEnabled()
         ? predictionGate.reason
         : "Prediction framework installed but disabled. Empty accuracy table until predictions are enabled.",
       candidatesStored: predictionCandidates,

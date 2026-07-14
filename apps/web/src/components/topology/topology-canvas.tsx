@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ProjectTopologyResponse,
   TopologyHealthStatus,
@@ -183,7 +183,7 @@ export const TopologyCanvas = ({
     }
 
     return { ...base, positions };
-  }, [layoutNodes, layoutKey, overlays, showChangeEvents, showCorrelatedIncidents, expandedLayers]);
+  }, [layoutNodes, overlays, showChangeEvents, showCorrelatedIncidents, expandedLayers]);
 
   const nodeById = useMemo(() => new Map(topology.nodes.map((row) => [row.id, row])), [topology.nodes]);
 
@@ -191,11 +191,14 @@ export const TopologyCanvas = ({
 
   const zoomPercent = Math.max(25, Math.min(250, Math.round((viewport.scale / referenceScale) * 100)));
 
-  const displayStatusFor = (nodeId: string, status: TopologyHealthStatus): TopologyHealthStatus => {
-    const node = topology.nodes.find((row) => row.id === nodeId);
-    if (!node) return status;
-    return replayNodeStatus(node, replayMinutesAgo);
-  };
+  const displayStatusFor = useCallback(
+    (nodeId: string, status: TopologyHealthStatus): TopologyHealthStatus => {
+      const node = topology.nodes.find((row) => row.id === nodeId);
+      if (!node) return status;
+      return replayNodeStatus(node, replayMinutesAgo);
+    },
+    [topology.nodes, replayMinutesAgo]
+  );
 
   const visibleNodes = useMemo(
     () =>
@@ -212,7 +215,7 @@ export const TopologyCanvas = ({
         if (!layoutVisibleIds.has(node.id)) return false;
         return true;
       }),
-    [baseNodes, typeFilter, healthFilter, searchQuery, replayMinutesAgo, layoutVisibleIds]
+    [baseNodes, typeFilter, healthFilter, searchQuery, displayStatusFor, layoutVisibleIds]
   );
 
   const hierarchyLinks = useMemo(
@@ -231,7 +234,7 @@ export const TopologyCanvas = ({
     onInteractingChange?.(dragging);
   }, [dragging, onInteractingChange]);
 
-  const fitToScreen = () => {
+  const fitToScreen = useCallback(() => {
     const container = containerRef.current;
     if (!container || layoutNodes.length === 0) return;
     const bounds = [...graphLayout.positions.values()];
@@ -249,11 +252,11 @@ export const TopologyCanvas = ({
       x: container.clientWidth / 2 - ((minX + maxX) / 2) * nextScale,
       y: container.clientHeight / 2 - ((minY + maxY) / 2) * nextScale
     });
-  };
+  }, [layoutNodes.length, graphLayout.positions]);
 
   useEffect(() => {
     fitToScreen();
-  }, [layoutKey, subgraphOnly, fitToken]);
+  }, [layoutKey, subgraphOnly, fitToken, fitToScreen]);
 
   const zoomBy = (factor: number) => {
     const container = containerRef.current;

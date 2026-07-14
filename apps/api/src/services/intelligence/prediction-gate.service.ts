@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import {
   MIN_PREDICTION_CONFIDENCE,
-  PREDICTIONS_ENABLED,
+  isPredictionsEnabled,
   PREDICTION_STATUS,
   type PredictionStatus
 } from "./intelligence-constants";
@@ -23,7 +23,7 @@ export type PredictionEvaluation = {
 export const evaluatePredictionGate = (
   confidence: ConfidenceResult
 ): PredictionEvaluation => {
-  if (!PREDICTIONS_ENABLED) {
+  if (!isPredictionsEnabled()) {
     return {
       enabled: false,
       status: PREDICTION_STATUS.DISABLED,

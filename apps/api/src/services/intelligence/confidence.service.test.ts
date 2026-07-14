@@ -38,6 +38,7 @@ describe("computeConfidence", () => {
 
 describe("evaluatePredictionGate", () => {
   it("keeps predictions disabled when flag is off", () => {
+    delete process.env.OPSWATCH_PREDICTIONS_ENABLED;
     const confidence = computeConfidence({
       evidenceCount: 100,
       dataCompleteness: 1,
@@ -46,7 +47,6 @@ describe("evaluatePredictionGate", () => {
       recoveryMatches: 20
     });
     const gate = evaluatePredictionGate(confidence);
-    // Default env leaves OPSWATCH_PREDICTIONS_ENABLED unset → disabled
     expect(gate.status).toBe(PREDICTION_STATUS.DISABLED);
     expect(gate.emitToProduct).toBe(false);
   });

@@ -3,7 +3,8 @@
  * Predictions stay OFF unless OPSWATCH_PREDICTIONS_ENABLED=true AND confidence thresholds are met.
  */
 
-export const PREDICTIONS_ENABLED =
+/** Read at call time so tests and runtime toggles see current env. */
+export const isPredictionsEnabled = (): boolean =>
   process.env.OPSWATCH_PREDICTIONS_ENABLED === "true";
 
 /** Patterns / insights must meet this before UI may show them as actionable. */

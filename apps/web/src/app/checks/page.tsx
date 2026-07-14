@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shell } from "../../components/layout/shell";
@@ -86,6 +86,34 @@ const EMPTY_FORM = {
   recoveryThreshold: 2
 };
 
+const detectIpVersion = (host: string): 0 | 4 | 6 => {
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return 4;
+  if (host.includes(":")) return 6;
+  return 0;
+};
+
+const isPrivateDevHost = (hostname: string): boolean => {
+  const host = hostname.toLowerCase();
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
+  if (host.endsWith(".local") || host.endsWith(".internal") || host.endsWith(".localhost")) return true;
+  const ipVersion = detectIpVersion(host);
+  if (ipVersion === 4) {
+    const parts = host.split(".").map((value) => Number.parseInt(value, 10));
+    if (parts.length !== 4 || parts.some((value) => Number.isNaN(value))) return true;
+    const a = parts[0]!;
+    const b = parts[1]!;
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 169 && b === 254) return true;
+  }
+  if (ipVersion === 6) {
+    if (host === "::1") return true;
+    if (host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80")) return true;
+  }
+  return false;
+};
+
 function ChecksPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -102,7 +130,7 @@ function ChecksPageContent() {
   const serviceIdFilter = searchParams.get("serviceId") || "";
   const isActiveFilter = searchParams.get("isActive") || "";
 
-  const loadChecks = async () => {
+  const loadChecks = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -127,11 +155,11 @@ function ChecksPageContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchParams]);
 
   useEffect(() => {
     void loadChecks();
-  }, [searchParams]);
+  }, [loadChecks]);
 
   const allServices = useMemo<ServiceOption[]>(
     () => projects.flatMap((p) => (p.services || []).map((s) => ({ ...s, project: { id: p.id, name: p.name } }))),
@@ -140,34 +168,6 @@ function ChecksPageContent() {
 
   const serviceById = useMemo(() => new Map(allServices.map((service) => [service.id, service])), [allServices]);
   const selectedService = form.serviceId ? serviceById.get(form.serviceId) ?? null : null;
-
-  const detectIpVersion = (host: string): 0 | 4 | 6 => {
-    if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return 4;
-    if (host.includes(":")) return 6;
-    return 0;
-  };
-
-  const isPrivateDevHost = (hostname: string): boolean => {
-    const host = hostname.toLowerCase();
-    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
-    if (host.endsWith(".local") || host.endsWith(".internal") || host.endsWith(".localhost")) return true;
-    const ipVersion = detectIpVersion(host);
-    if (ipVersion === 4) {
-      const parts = host.split(".").map((value) => Number.parseInt(value, 10));
-      if (parts.length !== 4 || parts.some((value) => Number.isNaN(value))) return true;
-      const a = parts[0]!;
-      const b = parts[1]!;
-      if (a === 10 || a === 127 || a === 0) return true;
-      if (a === 192 && b === 168) return true;
-      if (a === 172 && b >= 16 && b <= 31) return true;
-      if (a === 169 && b === 254) return true;
-    }
-    if (ipVersion === 6) {
-      if (host === "::1") return true;
-      if (host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80")) return true;
-    }
-    return false;
-  };
 
   const sslValidationError = useMemo(() => {
     if (form.type !== "SSL") return null;

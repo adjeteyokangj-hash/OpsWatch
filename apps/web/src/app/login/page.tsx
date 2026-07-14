@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Image from "next/image";
 import { APP_NAME, API_BASE_URL } from "../../lib/constants";
 
 const DEV_LOGIN_EMAIL =
@@ -81,10 +82,13 @@ export default function LoginPage() {
                 Ops<span className="auth-logo-accent">Watch</span>
               </span>
             ) : (
-              <img
+              <Image
                 src="/brand/opswatch-logo-light.png"
                 alt="OpsWatch"
+                width={280}
+                height={64}
                 className="auth-logo-img"
+                priority
                 onError={() => setLogoMissing(true)}
               />
             )}

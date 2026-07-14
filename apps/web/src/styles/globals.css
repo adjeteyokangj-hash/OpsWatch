@@ -27,7 +27,7 @@
 
 body {
   margin: 0;
-  font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-inter), Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   color: var(--ink);
   background:
     radial-gradient(circle at top left, rgba(37, 99, 235, 0.06), transparent 28%),
@@ -4508,7 +4508,7 @@ button {
   padding: 10px 12px 8px;
   display: grid;
   gap: 4px;
-  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-inter), Inter, "Segoe UI", system-ui, sans-serif;
   color: var(--ink);
   background: transparent;
 }

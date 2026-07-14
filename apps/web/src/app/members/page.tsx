@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
 import { apiFetch } from "../../lib/api";
@@ -145,13 +145,18 @@ export default function MembersPage() {
 
   const reload = async () => load(isAdmin);
 
-  const users = center?.users ?? [];
-  const isLastActiveAdmin = (user: UserRow): boolean =>
-    user.role === "ADMIN" && user.isActive && (center?.activeAdminCount ?? 0) <= 1;
+  const users = useMemo(() => center?.users ?? [], [center?.users]);
+  const activeAdminCount = center?.activeAdminCount ?? 0;
+
+  const isLastActiveAdmin = useCallback(
+    (user: UserRow): boolean =>
+      user.role === "ADMIN" && user.isActive && activeAdminCount <= 1,
+    [activeAdminCount]
+  );
 
   const protectedAdmin = useMemo(
     () => users.find((user) => isLastActiveAdmin(user)) ?? null,
-    [users, center?.activeAdminCount]
+    [users, isLastActiveAdmin]
   );
 
   const handleCreate = async (event: FormEvent) => {

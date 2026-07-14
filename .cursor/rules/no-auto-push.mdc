@@ -1,0 +1,11 @@
+---
+description: Do not push to remote/Vercel unless the user explicitly asks
+alwaysApply: true
+---
+
+# Git push / Vercel deploys
+
+- **Commit locally** when the user asks to commit, or when a change set is ready and they have asked for commits as part of the work.
+- **Never `git push`** (OpsWatch, Noble, or any remote) unless the user explicitly says to push, deploy, or ship to Vercel/GitHub.
+- Batch related work into local commits; wait for the user to request a single push when ready — frequent pushes trigger costly Vercel builds.
+- Do not imply that every commit must be pushed. Prefer: “Committed locally as `<sha>`; say when to push.”

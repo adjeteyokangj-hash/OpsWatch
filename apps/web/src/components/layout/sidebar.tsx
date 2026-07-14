@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { fetchSessionUser, type SessionUser } from "../../lib/auth";
@@ -104,7 +105,7 @@ export function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-brand">
         <div className="sidebar-brand-icon">
-          <img src="/brand/opswatch-icon.png" alt="OpsWatch" />
+          <Image src="/brand/opswatch-icon.png" alt="OpsWatch" width={24} height={24} priority />
         </div>
         <div className="sidebar-brand-text">
           <span className="sidebar-brand-name">
