@@ -17,9 +17,12 @@ export default function LoginPage() {
 
   useEffect(() => {
     setMounted(true);
-    if (DEV_LOGIN_EMAIL) {
-      setEmail(DEV_LOGIN_EMAIL);
-    }
+  }, []);
+
+  // Prefill only when the field is still empty so automation fill() is not raced.
+  useEffect(() => {
+    if (!DEV_LOGIN_EMAIL) return;
+    setEmail((current) => (current ? current : DEV_LOGIN_EMAIL));
   }, []);
 
   const onSubmit = async (event: FormEvent) => {
@@ -130,25 +133,15 @@ export default function LoginPage() {
                   required
                 />
               </label>
-              {error ? <div className="error-chip">{error}</div> : null}
+              {error ? <div className="error-chip" role="alert">{error}</div> : null}
               <button type="submit" className="primary-button auth-submit" disabled={submitting} data-action="api" data-endpoint="/auth/login">
                 {submitting ? "Signing in…" : "Sign in"}
               </button>
             </form>
           ) : (
-            <form aria-hidden="true">
-              <label>
-                Email
-                <input type="email" value="" disabled readOnly />
-              </label>
-              <label>
-                Password
-                <input type="password" value="" disabled readOnly />
-              </label>
-              <button type="button" className="primary-button" disabled>
-                Sign in
-              </button>
-            </form>
+            <div className="dashboard-subtle" aria-live="polite">
+              Loading sign-in…
+            </div>
           )}
         </div>
       </section>
