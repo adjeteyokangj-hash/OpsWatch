@@ -34,6 +34,7 @@ import { heartbeatsRouter } from "./routes/heartbeats.routes";
 import analyticsRouter from "./routes/analytics.routes";
 import maintenanceWindowsRouter from "./routes/maintenance-windows.routes";
 import automationRouter from "./routes/automation.routes";
+import intelligenceRouter from "./routes/intelligence.routes";
 import { internalRouter } from "./routes/internal.routes";
 import { webhooksRouter } from "./routes/webhooks.routes";
 import { adminBillingRouter } from "./routes/admin-billing.routes";
@@ -114,6 +115,7 @@ app.use(API_PREFIX, requireAuth, onboardingRouter);
 app.use(API_PREFIX, requireAuth, analyticsRouter);
 app.use(API_PREFIX, requireAuth, maintenanceWindowsRouter);
 app.use(API_PREFIX, requireAuth, automationRouter);
+app.use(API_PREFIX, requireAuth, intelligenceRouter);
 app.use(`${API_PREFIX}/remediation`, requireAuth, remediationRouter);
 
 app.use(errorHandler);

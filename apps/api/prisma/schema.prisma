@@ -220,6 +220,17 @@ model Organization {
   Subscription       Subscription?
   UsageRecord        UsageRecord[]
   IncidentMemoryEntry IncidentMemoryEntry[]
+  OperationalObservation OperationalObservation[]
+  LearningBaseline   LearningBaseline[]
+  OperationalPattern OperationalPattern[]
+  AiConfidenceRecord AiConfidenceRecord[]
+  PredictionCandidate PredictionCandidate[]
+  PredictionAccuracyLog PredictionAccuracyLog[]
+  OperationsTimelineEvent OperationsTimelineEvent[]
+  DeploymentRecord   DeploymentRecord[]
+  AiDecisionAudit    AiDecisionAudit[]
+  ApplicationLearningModel ApplicationLearningModel[]
+  RetentionPolicy    RetentionPolicy[]
 }
 
 model OrganizationIncidentGroup {
@@ -434,6 +445,12 @@ model AutomationRun {
   confidence         Float?
   riskLevel          String?
   reason             String?
+  /// Trigger that started the run (ALERT, INCIDENT, MANUAL, SCHEDULE, POLICY).
+  triggerType        String?
+  durationMs         Int?
+  verificationStatus String?
+  verifiedAt         DateTime?
+  affectedServiceIds Json?
   createdBy          String?
   approvedBy         String?
   approvedAt         DateTime?
@@ -450,6 +467,7 @@ model AutomationRun {
 
   @@index([organizationId, incidentId, createdAt])
   @@index([projectId, status])
+  @@index([organizationId, createdAt])
 }
 
 model AutomationRunStep {
@@ -553,6 +571,12 @@ model ServiceDependency {
   dependencyType String   @default("RUNTIME")
   criticality    String   @default("HIGH")
   isActive       Boolean  @default(true)
+  /// Telemetry-backed evidence count; 0 means declared without observed confirmation.
+  evidenceCount  Int      @default(0)
+  /// 0..1 strength derived from observed co-occurrence / failures; not invented edges.
+  evidenceStrength Float  @default(0)
+  lastObservedAt DateTime?
+  source         String   @default("MANUAL")
   createdAt      DateTime @default(now())
   updatedAt      DateTime
   FromService    Service  @relation("DependencyFromService", fields: [fromServiceId], references: [id], onDelete: Cascade)
@@ -1072,19 +1096,242 @@ model IncidentMemoryEntry {
   id                String    @id
   organizationId    String
   incidentId        String    @unique
+  projectId         String?
   title             String
   category          String?
   diagnosisSummary  String
+  /// Only populated when root cause was recorded/known — never invented.
   rootCause         String?
   resolutionSummary String?
   signatureText     String
   embeddingJson     Json?
+  timelineJson      Json?
+  affectedServiceIds Json?
+  affectedModuleKeys Json?
+  affectedWorkflowKeys Json?
+  recoveryActionsJson Json?
+  automationInvolved Boolean  @default(false)
+  verificationSummary String?
+  resolutionTimeMs  Int?
   resolvedAt        DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime
   Organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, resolvedAt])
+  @@index([organizationId, projectId])
+}
+
+/// Continuous AI Brain observation of operational signals (facts only).
+model OperationalObservation {
+  id             String   @id
+  organizationId String
+  projectId      String?
+  sourceType     String
+  sourceId       String?
+  eventKey       String
+  summary        String
+  severity       String?
+  payloadJson    Json?
+  observedAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, observedAt])
+  @@index([organizationId, sourceType, observedAt])
+  @@index([projectId, observedAt])
+  @@index([organizationId, eventKey, observedAt])
+}
+
+/// Accumulated evidence baselines (nothing without samples).
+model LearningBaseline {
+  id             String   @id
+  organizationId String
+  /// Empty string = org-scoped baseline (avoids NULL uniqueness holes in Postgres).
+  projectId      String   @default("")
+  scopeType      String
+  scopeKey       String
+  sampleCount    Int      @default(0)
+  metricsJson    Json
+  lastSampleAt   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, projectId, scopeType, scopeKey])
+  @@index([organizationId, scopeType])
+}
+
+/// Stored patterns; displayEligible stays false until confidence threshold is met.
+model OperationalPattern {
+  id              String   @id
+  organizationId  String
+  projectId       String?
+  patternType     String
+  signatureKey    String
+  title           String
+  description     String
+  evidenceCount   Int      @default(0)
+  confidenceScore Float    @default(0)
+  evidenceJson    Json?
+  lastMatchedAt   DateTime?
+  displayEligible Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime
+  Organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, patternType, signatureKey])
+  @@index([organizationId, displayEligible, confidenceScore])
+  @@index([organizationId, patternType])
+}
+
+/// Evidence-based confidence scores — no recommendation without confidence.
+model AiConfidenceRecord {
+  id                 String   @id
+  organizationId     String
+  subjectType        String
+  subjectId          String
+  score              Float
+  label              String
+  evidenceCount      Int      @default(0)
+  historicalAccuracy Float?
+  matchingIncidents  Int      @default(0)
+  recoveryMatches    Int      @default(0)
+  dataCompleteness   Float    @default(0)
+  factorsJson        Json?
+  computedAt         DateTime @default(now())
+  Organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, subjectType, subjectId])
+  @@index([organizationId, computedAt])
+}
+
+/// Prediction framework storage — product emission gated OFF by default.
+model PredictionCandidate {
+  id              String   @id
+  organizationId  String
+  projectId       String?
+  predictionType  String
+  title           String
+  summary         String
+  confidenceScore Float    @default(0)
+  /// DISABLED | INSUFFICIENT_DATA | READY — READY only when predictions feature flag is on AND threshold met.
+  status          String   @default("DISABLED")
+  evidenceJson    Json?
+  computedAt      DateTime @default(now())
+  expiresAt       DateTime?
+  Organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, computedAt])
+  @@index([organizationId, predictionType])
+}
+
+/// Empty until predictions are enabled and outcomes can be scored.
+model PredictionAccuracyLog {
+  id               String   @id
+  organizationId   String
+  predictionId     String?
+  predictedOutcome String
+  actualOutcome    String?
+  wasCorrect       Boolean?
+  recordedAt       DateTime @default(now())
+  Organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, recordedAt])
+}
+
+/// Org-level chronological factual operations timeline.
+model OperationsTimelineEvent {
+  id             String   @id
+  organizationId String
+  projectId      String?
+  eventType      String
+  summary        String
+  sourceType     String?
+  sourceId       String?
+  severity       String?
+  payloadJson    Json?
+  occurredAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, occurredAt])
+  @@index([projectId, occurredAt])
+  @@index([organizationId, eventType, occurredAt])
+}
+
+/// Deployment intelligence for correlation (facts from change events / webhooks).
+model DeploymentRecord {
+  id                  String   @id
+  organizationId      String
+  projectId           String?
+  serviceId           String?
+  deployedAt          DateTime
+  version             String?
+  commitSha           String?
+  branch              String?
+  changedServicesJson Json?
+  resultingIncidentIds Json?
+  resultingAlertIds   Json?
+  recoveryEventIds    Json?
+  changeEventId       String?
+  source              String   @default("CHANGE_EVENT")
+  summary             String
+  detailsJson         Json?
+  createdAt           DateTime @default(now())
+  Organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, deployedAt])
+  @@index([projectId, deployedAt])
+  @@index([changeEventId])
+}
+
+/// Audit trail for AI decisions and recovery actions.
+model AiDecisionAudit {
+  id              String   @id
+  organizationId  String
+  actorUserId     String?
+  decisionType    String
+  subjectType     String
+  subjectId       String?
+  summary         String
+  confidenceScore Float?
+  evidenceJson    Json?
+  outcome         String?
+  createdAt       DateTime @default(now())
+  Organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, decisionType, createdAt])
+}
+
+/// Per-application learning model state (storage only; predictions still gated).
+model ApplicationLearningModel {
+  id             String   @id
+  organizationId String
+  projectId      String
+  modelKey       String
+  stateJson      Json
+  sampleCount    Int      @default(0)
+  readiness      String   @default("LEARNING")
+  updatedAt      DateTime
+  createdAt      DateTime @default(now())
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, modelKey])
+  @@index([organizationId, readiness])
+}
+
+model RetentionPolicy {
+  id             String   @id
+  organizationId String
+  dataClass      String
+  retentionDays  Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, dataClass])
 }
 
 model StripeWebhookEvent {

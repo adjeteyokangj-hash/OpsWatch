@@ -618,9 +618,18 @@ const executeApprovedRun = async (input: {
       };
     }
 
+    const completedAt = new Date();
+    const durationMs = Math.max(0, completedAt.getTime() - run.createdAt.getTime());
     await prisma.automationRun.update({
       where: { id: run.id },
-      data: { status: "COMPLETED", currentStepOrder: null, updatedAt: new Date() }
+      data: {
+        status: "COMPLETED",
+        currentStepOrder: null,
+        durationMs,
+        verificationStatus: recoveryEntered ? "VERIFIED" : "COMPLETED",
+        verifiedAt: recoveryEntered ? completedAt : null,
+        updatedAt: completedAt
+      }
     });
     if (recoveryEntered) {
       await completeProjectRecovery({
@@ -635,7 +644,7 @@ const executeApprovedRun = async (input: {
         runId: run.id,
         summary: `Automation run completed (${succeeded} succeeded, ${skipped} skipped).`,
         success: true,
-        detailsJson: { succeeded, failed, skipped }
+        detailsJson: { succeeded, failed, skipped, durationMs }
       }
     });
     await safeWriteTimeline({
@@ -643,8 +652,48 @@ const executeApprovedRun = async (input: {
       projectId: run.projectId,
       sourceId: run.id,
       summary: `Automation run completed (${succeeded} succeeded, ${skipped} skipped, ${failed} failed).`,
-      payload: { runId: run.id, status: "COMPLETED", succeeded, skipped, failed }
+      payload: { runId: run.id, status: "COMPLETED", succeeded, skipped, failed, durationMs }
     });
+
+    try {
+      const { recordObservation, recordOperationsTimelineEvent, recordAiDecisionAudit } =
+        await import("../intelligence/observation.service");
+      const { OBSERVATION_SOURCE, TIMELINE_EVENT, AI_DECISION_TYPE } =
+        await import("../intelligence/intelligence-constants");
+      await recordObservation({
+        organizationId: run.organizationId,
+        projectId: run.projectId,
+        sourceType: OBSERVATION_SOURCE.AUTOMATION,
+        sourceId: run.id,
+        eventKey: "automation.executed",
+        summary: `Automation run completed (${succeeded} succeeded)`,
+        payloadJson: { succeeded, failed, skipped, durationMs, incidentId: run.incidentId }
+      });
+      await recordOperationsTimelineEvent({
+        organizationId: run.organizationId,
+        projectId: run.projectId,
+        eventType: recoveryEntered
+          ? TIMELINE_EVENT.RECOVERY_VERIFIED
+          : TIMELINE_EVENT.AUTOMATION_EXECUTED,
+        summary: recoveryEntered
+          ? "Automation recovery verified"
+          : "Automation executed",
+        sourceType: "AUTOMATION",
+        sourceId: run.id
+      });
+      await recordAiDecisionAudit({
+        organizationId: run.organizationId,
+        decisionType: AI_DECISION_TYPE.AUTOMATE,
+        subjectType: "AUTOMATION_RUN",
+        subjectId: run.id,
+        summary: `Automation run completed with ${succeeded} succeeded step(s)`,
+        confidenceScore: run.confidence ?? null,
+        outcome: "EXECUTED",
+        evidenceJson: { succeeded, failed, skipped, durationMs }
+      });
+    } catch {
+      // Intelligence recording must not fail the run.
+    }
 
     return {
       runId: run.id,

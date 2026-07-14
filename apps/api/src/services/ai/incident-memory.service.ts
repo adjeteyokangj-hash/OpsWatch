@@ -104,6 +104,7 @@ const embedText = async (text: string): Promise<number[] | null> => {
 export const indexIncidentMemory = async (input: {
   organizationId: string;
   incidentId: string;
+  projectId?: string | null;
   title: string;
   category?: string | null;
   diagnosisSummary: string;
@@ -112,14 +113,23 @@ export const indexIncidentMemory = async (input: {
   resolvedAt?: Date | null;
   alerts?: Array<{ title: string; message: string; sourceType: string }>;
   timeline?: Array<{ eventType: string; summary: string }>;
+  affectedServiceIds?: string[] | null;
+  affectedModuleKeys?: string[] | null;
+  affectedWorkflowKeys?: string[] | null;
+  recoveryActionsJson?: unknown;
+  automationInvolved?: boolean;
+  verificationSummary?: string | null;
+  resolutionTimeMs?: number | null;
 }): Promise<void> => {
   const signatureText = buildIncidentSignatureText(input);
   const embedding = await embedText(signatureText);
   const now = new Date();
+  const timelineJson = input.timeline?.slice(0, 50) ?? undefined;
 
   await prisma.incidentMemoryEntry.upsert({
     where: { incidentId: input.incidentId },
     update: {
+      projectId: input.projectId ?? null,
       title: input.title,
       category: input.category ?? null,
       diagnosisSummary: input.diagnosisSummary,
@@ -127,6 +137,14 @@ export const indexIncidentMemory = async (input: {
       resolutionSummary: input.resolutionSummary ?? null,
       signatureText,
       embeddingJson: embedding ?? undefined,
+      timelineJson: timelineJson ?? undefined,
+      affectedServiceIds: input.affectedServiceIds ?? undefined,
+      affectedModuleKeys: input.affectedModuleKeys ?? undefined,
+      affectedWorkflowKeys: input.affectedWorkflowKeys ?? undefined,
+      recoveryActionsJson: input.recoveryActionsJson ?? undefined,
+      automationInvolved: input.automationInvolved ?? false,
+      verificationSummary: input.verificationSummary ?? null,
+      resolutionTimeMs: input.resolutionTimeMs ?? null,
       resolvedAt: input.resolvedAt ?? null,
       updatedAt: now
     },
@@ -134,6 +152,7 @@ export const indexIncidentMemory = async (input: {
       id: randomUUID(),
       organizationId: input.organizationId,
       incidentId: input.incidentId,
+      projectId: input.projectId ?? null,
       title: input.title,
       category: input.category ?? null,
       diagnosisSummary: input.diagnosisSummary,
@@ -141,6 +160,14 @@ export const indexIncidentMemory = async (input: {
       resolutionSummary: input.resolutionSummary ?? null,
       signatureText,
       embeddingJson: embedding ?? undefined,
+      timelineJson: timelineJson ?? undefined,
+      affectedServiceIds: input.affectedServiceIds ?? undefined,
+      affectedModuleKeys: input.affectedModuleKeys ?? undefined,
+      affectedWorkflowKeys: input.affectedWorkflowKeys ?? undefined,
+      recoveryActionsJson: input.recoveryActionsJson ?? undefined,
+      automationInvolved: input.automationInvolved ?? false,
+      verificationSummary: input.verificationSummary ?? null,
+      resolutionTimeMs: input.resolutionTimeMs ?? null,
       resolvedAt: input.resolvedAt ?? null,
       updatedAt: now
     }
