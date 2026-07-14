@@ -7,6 +7,19 @@ type ExpressApplication = Parameters<typeof supertest>[0];
 
 let appPromise: Promise<ExpressApplication> | null = null;
 
+const hopByHopHeaders = new Set([
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailers",
+  "transfer-encoding",
+  "upgrade",
+  "host",
+  "content-length"
+]);
+
 const loadExpressApp = async (): Promise<ExpressApplication> => {
   if (!appPromise) {
     appPromise = (async () => {
@@ -74,25 +87,31 @@ export const handleEmbeddedOpswatchApi = async (
   const app = await loadExpressApp();
   const method = nextRequest.method.toUpperCase();
   const path = buildApiPath(nextRequest, pathSegments);
-  const headers = Object.fromEntries(nextRequest.headers.entries());
-  const body =
+  const incomingHeaders = Object.fromEntries(nextRequest.headers.entries());
+  const bodyBytes =
     method === "GET" || method === "HEAD"
       ? undefined
       : Buffer.from(await nextRequest.arrayBuffer());
 
   let agent = dispatchSupertest(app, method, path);
 
-  for (const [key, value] of Object.entries(headers)) {
+  for (const [key, value] of Object.entries(incomingHeaders)) {
+    if (hopByHopHeaders.has(key.toLowerCase())) continue;
     agent = agent.set(key, value);
   }
 
-  if (body !== undefined && body.length > 0) {
-    agent = agent.send(body);
+  if (bodyBytes !== undefined && bodyBytes.length > 0) {
+    const contentType = incomingHeaders["content-type"] || incomingHeaders["Content-Type"];
+    if (contentType) {
+      agent = agent.set("Content-Type", contentType);
+    }
+    // Send as utf8 string so express.json() can parse application/json reliably.
+    const asText = bodyBytes.toString("utf8");
+    agent = agent.send(asText);
   }
 
   const response = await agent;
   const status = Number(response.status) || 500;
-  // Fetch Response/NextResponse reject bodies on null-body statuses (e.g. CORS OPTIONS 204).
   const responseBody = resolveEmbeddedResponseBody(status, response.text);
 
   return new NextResponse(responseBody, {

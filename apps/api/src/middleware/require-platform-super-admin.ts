@@ -1,7 +1,7 @@
-import type { NextFunction, Response } from "express";
 import type { AuthRequest } from "./auth";
+import type { NextFunction, Response } from "express";
 
-/** Built-in platform operators (always allowlisted; env can add more). */
+/** Built-in platform operators (always allowlisted; env / DB can add more). */
 const DEFAULT_PLATFORM_SUPER_ADMIN_EMAILS = ["admin@okanggroup.com"] as const;
 
 const normalizeEmails = (raw: string | undefined): string[] =>
@@ -15,9 +15,18 @@ export const platformSuperAdminEmails = (): string[] => {
   return Array.from(new Set([...DEFAULT_PLATFORM_SUPER_ADMIN_EMAILS, ...fromEnv]));
 };
 
-export const isPlatformSuperAdmin = (userEmail?: string | null): boolean => {
+export const isPlatformSuperAdminEmail = (userEmail?: string | null): boolean => {
   if (!userEmail) return false;
   return platformSuperAdminEmails().includes(userEmail.trim().toLowerCase());
+};
+
+/** Prefer DB flag when present; always honor env/hardcoded email allowlist. */
+export const isPlatformSuperAdmin = (
+  userEmail?: string | null,
+  dbFlag?: boolean | null
+): boolean => {
+  if (dbFlag) return true;
+  return isPlatformSuperAdminEmail(userEmail);
 };
 
 export const requirePlatformSuperAdmin = (
@@ -29,7 +38,9 @@ export const requirePlatformSuperAdmin = (
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  if (!isPlatformSuperAdmin(req.user.email)) {
+  const dbFlag =
+    typeof req.user.isPlatformSuperAdmin === "boolean" ? req.user.isPlatformSuperAdmin : null;
+  if (!isPlatformSuperAdmin(req.user.email, dbFlag)) {
     res.status(403).json({ error: "Platform super admin access required" });
     return;
   }

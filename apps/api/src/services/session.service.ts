@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import { sessionAbsoluteTtlSeconds, sessionIdleTtlSeconds, sessionIdleTouchIntervalSeconds } from "../config/session";
 import { sha256 } from "../utils/crypto";
 import { timingSafeEqualString } from "../lib/request-signature";
+import { isPlatformSuperAdmin } from "../middleware/require-platform-super-admin";
 
 export type SessionUser = {
   id: string;
@@ -10,6 +11,7 @@ export type SessionUser = {
   role: string;
   organizationId: string | null;
   name: string;
+  isPlatformSuperAdmin: boolean;
 };
 
 export type CreatedSession = {
@@ -69,7 +71,8 @@ export const validateSessionToken = async (sessionToken: string): Promise<Valida
           role: true,
           organizationId: true,
           name: true,
-          isActive: true
+          isActive: true,
+          isPlatformSuperAdmin: true
         }
       }
     }
@@ -105,7 +108,8 @@ export const validateSessionToken = async (sessionToken: string): Promise<Valida
       email: row.User.email,
       role: row.User.role,
       organizationId: row.User.organizationId,
-      name: row.User.name
+      name: row.User.name,
+      isPlatformSuperAdmin: isPlatformSuperAdmin(row.User.email, row.User.isPlatformSuperAdmin)
     }
   };
 };

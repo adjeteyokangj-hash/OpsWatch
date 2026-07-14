@@ -380,4 +380,35 @@ export const reactivateUserHandler = async (req: AuthRequest, res: Response) => 
   }
 };
 
+export const setPlatformSuperAdminHandler = async (req: AuthRequest, res: Response) => {
+  const orgId = orgIdOr403(req, res);
+  if (!orgId) return;
+  const userId = userIdOr400(req, res);
+  if (!userId) return;
+
+  const enabled = Boolean(req.body?.enabled);
+  if (req.user?.sub === userId && !enabled) {
+    res.status(400).json({ error: "You cannot remove your own platform super admin access." });
+    return;
+  }
+
+  try {
+    const user = await getOrgUserOrThrow(orgId, userId);
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: { isPlatformSuperAdmin: enabled, updatedAt: new Date() }
+    });
+    await logUserEvent({
+      actorUserId: req.user?.sub,
+      action: enabled ? "USER_PLATFORM_SUPER_ADMIN_GRANTED" : "USER_PLATFORM_SUPER_ADMIN_REVOKED",
+      entityId: updated.id,
+      metadata: { email: updated.email }
+    });
+    res.json(serializeUser(updated));
+  } catch (error) {
+    if (handleUserManagementError(res, error)) return;
+    throw error;
+  }
+};
+
 export const deleteUser = deactivateUserHandler;

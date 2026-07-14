@@ -646,19 +646,20 @@ model StatusPage {
 }
 
 model User {
-  id             String        @id
-  name           String
-  email          String        @unique
-  passwordHash   String
-  role           String        @default("MEMBER")
-  isActive       Boolean       @default(true)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime
-  organizationId String?
-  Alert          Alert[]
-  AuditLog       AuditLog[]
-  Organization   Organization? @relation(fields: [organizationId], references: [id])
-  UserSession    UserSession[]
+  id                    String        @id
+  name                  String
+  email                 String        @unique
+  passwordHash          String
+  role                  String        @default("MEMBER")
+  isActive              Boolean       @default(true)
+  isPlatformSuperAdmin  Boolean       @default(false)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime
+  organizationId        String?
+  Alert                 Alert[]
+  AuditLog              AuditLog[]
+  Organization          Organization? @relation(fields: [organizationId], references: [id])
+  UserSession           UserSession[]
 
   @@index([organizationId])
 }

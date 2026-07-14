@@ -82,7 +82,8 @@ const tryAttachSession = async (req: AuthRequest): Promise<boolean> => {
     id: validated.user.id,
     email: validated.user.email,
     role: validated.user.role,
-    organizationId: validated.user.organizationId ?? undefined
+    organizationId: validated.user.organizationId ?? undefined,
+    isPlatformSuperAdmin: validated.user.isPlatformSuperAdmin
   };
   return true;
 };

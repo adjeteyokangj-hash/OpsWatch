@@ -80,9 +80,17 @@ describe("require-platform-super-admin", () => {
     expect(res.body).toEqual({ error: "Platform super admin access required" });
   });
 
-  it("returns 401 for unauthenticated requests", () => {
+  it("honors explicit DB platform super admin flag", () => {
+    delete process.env.PLATFORM_SUPER_ADMIN_EMAILS;
+    expect(isPlatformSuperAdmin("member@example.com", true)).toBe(true);
+    expect(isPlatformSuperAdmin("member@example.com", false)).toBe(false);
+  });
+
+  it("allows allowlisted users through requirePlatformSuperAdmin", () => {
     process.env.PLATFORM_SUPER_ADMIN_EMAILS = "platform-only@example.com";
-    const req = {} as AuthRequest;
+    const req = {
+      user: { sub: "u1", email: "platform-only@example.com", role: "ADMIN", isPlatformSuperAdmin: true }
+    } as AuthRequest;
     const res = {
       statusCode: 200,
       body: undefined as unknown,
@@ -101,7 +109,7 @@ describe("require-platform-super-admin", () => {
       nextCalled = true;
     });
 
-    expect(nextCalled).toBe(false);
-    expect(res.statusCode).toBe(401);
+    expect(nextCalled).toBe(true);
+    expect(res.statusCode).toBe(200);
   });
 });

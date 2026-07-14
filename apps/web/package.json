@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "vercel-build": "pnpm --filter @opswatch/shared build && pnpm --filter @opswatch/api exec prisma generate && next build",
+    "vercel-build": "pnpm --filter @opswatch/shared build && pnpm --filter @opswatch/api exec prisma generate && pnpm --filter @opswatch/api exec prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",

@@ -100,6 +100,7 @@ export default function MembersPage() {
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isPlatformSuperAdmin, setIsPlatformSuperAdmin] = useState(false);
 
   const load = async (admin: boolean) => {
     setLoading(true);
@@ -123,6 +124,7 @@ export default function MembersPage() {
       const admin = user?.role === "ADMIN";
       setCurrentUserId(user?.id ?? null);
       setIsAdmin(admin);
+      setIsPlatformSuperAdmin(Boolean(user?.isPlatformSuperAdmin));
       void load(admin);
     });
   }, []);
@@ -180,6 +182,25 @@ export default function MembersPage() {
       await reload();
     } catch (err: any) {
       setError(err?.message || "Failed to update role");
+    }
+  };
+
+  const togglePlatformSuperAdmin = async (user: UserRow) => {
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      await apiFetch(`/users/${user.id}/platform-super-admin`, {
+        method: "POST",
+        body: JSON.stringify({ enabled: !user.isPlatformSuperAdmin })
+      });
+      setSuccessMsg(
+        user.isPlatformSuperAdmin
+          ? `Revoked platform Super Admin from ${user.email}.`
+          : `Granted platform Super Admin to ${user.email}.`
+      );
+      await reload();
+    } catch (err: any) {
+      setError(err?.message || "Failed to update platform Super Admin");
     }
   };
 
@@ -278,10 +299,9 @@ export default function MembersPage() {
             </button>
           </div>
           <p className="dashboard-subtle">
-            Organization roles (Admin, Member, …) are managed here. <strong>Platform Super Admin</strong> is not a
-            creatable role — it is granted by login email allowlist (
-            <code>PLATFORM_SUPER_ADMIN_EMAILS</code>, plus always <code>admin@okanggroup.com</code>). Invite the user
-            below, then add their email to that Vercel env var and redeploy / wait for next login.
+            Organization roles (Admin, Member, …) are managed here. <strong>Platform Super Admin</strong> can be
+            granted by an existing Super Admin from the Actions column (stored in OpsWatch). The email allowlist{" "}
+            <code>PLATFORM_SUPER_ADMIN_EMAILS</code> and <code>admin@okanggroup.com</code> remain bootstraps.
           </p>
           <form className="stack-form" onSubmit={(event) => void handleCreate(event)}>
             <label>
@@ -480,6 +500,18 @@ export default function MembersPage() {
                     <td>{new Date(user.createdAt).toLocaleDateString()}</td>
                     {isAdmin ? (
                       <td className="table-actions">
+                        {isPlatformSuperAdmin ? (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            disabled={user.id === currentUserId && user.isPlatformSuperAdmin}
+                            onClick={() => void togglePlatformSuperAdmin(user)}
+                            data-action="api"
+                            data-endpoint="/users/:id/platform-super-admin"
+                          >
+                            {user.isPlatformSuperAdmin ? "Revoke Super Admin" : "Make Super Admin"}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="secondary-button"

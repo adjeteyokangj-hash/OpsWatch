@@ -6,6 +6,7 @@ import { assertPasswordMeetsPolicy, PasswordPolicyError } from "../utils/passwor
 import { revokeAllUserSessions } from "./session.service";
 import type { CreatedSession, SessionUser } from "./session.service";
 import { createUserSession } from "./session.service";
+import { isPlatformSuperAdmin } from "../middleware/require-platform-super-admin";
 
 export class AuthError extends Error {
   constructor(
@@ -23,12 +24,14 @@ const toSessionUser = (user: {
   role: string;
   organizationId: string | null;
   name: string;
+  isPlatformSuperAdmin?: boolean | null;
 }): SessionUser => ({
   id: user.id,
   email: user.email,
   role: user.role,
   organizationId: user.organizationId,
-  name: user.name
+  name: user.name,
+  isPlatformSuperAdmin: isPlatformSuperAdmin(user.email, user.isPlatformSuperAdmin)
 });
 
 export const login = async (

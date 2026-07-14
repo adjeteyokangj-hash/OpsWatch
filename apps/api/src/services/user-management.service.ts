@@ -30,12 +30,13 @@ export const serializeUser = (user: {
   role: string;
   isActive: boolean;
   createdAt: Date;
+  isPlatformSuperAdmin?: boolean | null;
 }) => ({
   id: user.id,
   name: user.name,
   email: user.email,
   role: user.role,
-  isPlatformSuperAdmin: isPlatformSuperAdmin(user.email),
+  isPlatformSuperAdmin: isPlatformSuperAdmin(user.email, user.isPlatformSuperAdmin),
   isActive: user.isActive,
   createdAt: user.createdAt.toISOString()
 });

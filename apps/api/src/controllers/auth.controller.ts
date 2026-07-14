@@ -1,6 +1,5 @@
 import { Response } from "express";
 import type { AuthRequest } from "../middleware/auth";
-import { isPlatformSuperAdmin } from "../middleware/require-platform-super-admin";
 import {
   AuthError,
   changePassword,
@@ -62,7 +61,7 @@ export const sessionController = async (req: AuthRequest, res: Response) => {
   res.json({
     user: {
       ...user,
-      isPlatformSuperAdmin: isPlatformSuperAdmin(user.email)
+      isPlatformSuperAdmin: user.isPlatformSuperAdmin
     }
   });
 };
