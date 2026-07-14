@@ -5,6 +5,7 @@ import { createAlert } from "./alerting.service";
 import { createMaintenanceWindow, cancelMaintenanceWindow, transitionMaintenanceWindowStatuses } from "./maintenance-windows.service";
 import { runIncidentAutoHeal } from "./remediation/auto-heal.service";
 import { executeReviewHttpExpectedStatus } from "./remediation/executors/review-http-expected-status.executor";
+import { ensureE2EOrgPlan } from "./test-helpers/e2e-org-plan";
 
 const enabled = process.env.RUN_DATABASE_E2E === "true";
 
@@ -25,6 +26,7 @@ describe.runIf(enabled)("maintenance window production smoke", () => {
         updatedAt: new Date()
       }
     });
+    await ensureE2EOrgPlan(organizationId, "BUSINESS");
     await prisma.user.create({
       data: {
         id: userId,

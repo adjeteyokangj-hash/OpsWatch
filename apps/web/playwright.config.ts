@@ -14,7 +14,11 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] }
+      use: {
+        ...devices["Desktop Chrome"],
+        // Prefer system Chrome — never block on `playwright install`
+        channel: process.env.PLAYWRIGHT_CHANNEL || "chrome"
+      }
     }
   ],
   webServer: process.env.PLAYWRIGHT_SKIP_WEB_SERVER

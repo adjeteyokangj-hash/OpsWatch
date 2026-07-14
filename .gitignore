@@ -51,3 +51,9 @@ apps/web/playwright-report/
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**
+
+# Local verification scratch
+tmp-browser-smoke.txt
+tmp-connect-journey.txt
+tmp-db-e2e-api.txt
+apps/web/test-results/

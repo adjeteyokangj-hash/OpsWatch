@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../lib/prisma";
 import { runIncidentAutoHeal } from "./auto-heal.service";
 import { executeReviewHttpExpectedStatus } from "./executors/review-http-expected-status.executor";
+import { ensureE2EOrgPlan } from "../test-helpers/e2e-org-plan";
 
 const enabled = process.env.RUN_DATABASE_E2E === "true";
 
@@ -26,6 +27,7 @@ describe.runIf(enabled)("remediation production hardening", () => {
         updatedAt: new Date()
       }
     });
+    await ensureE2EOrgPlan(organizationId, "BUSINESS");
     await prisma.project.create({
       data: {
         id: projectId,

@@ -112,30 +112,59 @@ export const ensureDefaultSubscription = async (
   }
 
   const start = now();
-  const subscription = await prisma.subscription.create({
-    data: {
-      id: randomUUID(),
-      organizationId,
-      planId: plan.id,
-      status: "ACTIVE",
-      currentPeriodStart: start,
-      currentPeriodEnd: periodEndFromStart(start),
-      updatedAt: start
-    },
-    include: { Plan: { include: { PlanEntitlement: true } } }
-  });
+  try {
+    const subscription = await prisma.subscription.create({
+      data: {
+        id: randomUUID(),
+        organizationId,
+        planId: plan.id,
+        status: "ACTIVE",
+        currentPeriodStart: start,
+        currentPeriodEnd: periodEndFromStart(start),
+        updatedAt: start
+      },
+      include: { Plan: { include: { PlanEntitlement: true } } }
+    });
 
-  return {
-    organizationId,
-    planCode: subscription.Plan.code,
-    planName: subscription.Plan.name,
-    subscriptionStatus: subscription.status,
-    accessMode: "FULL" as const,
-    billingWarning: null,
-    allowMutations: true,
-    allowMonitoringExecution: true,
-    entitlements: mapSubscriptionEntitlements(subscription.Plan.PlanEntitlement)
-  };
+    return {
+      organizationId,
+      planCode: subscription.Plan.code,
+      planName: subscription.Plan.name,
+      subscriptionStatus: subscription.status,
+      accessMode: "FULL" as const,
+      billingWarning: null,
+      allowMutations: true,
+      allowMonitoringExecution: true,
+      entitlements: mapSubscriptionEntitlements(subscription.Plan.PlanEntitlement)
+    };
+  } catch (error) {
+    // Concurrent callers can race on organizationId unique — re-read winner.
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code?: unknown }).code)
+        : "";
+    if (code !== "P2002") {
+      throw error;
+    }
+    const raced = await prisma.subscription.findUnique({
+      where: { organizationId },
+      include: { Plan: { include: { PlanEntitlement: true } } }
+    });
+    if (!raced) {
+      throw error;
+    }
+    return {
+      organizationId,
+      planCode: raced.Plan.code,
+      planName: raced.Plan.name,
+      subscriptionStatus: raced.status,
+      accessMode: "FULL" as const,
+      billingWarning: null,
+      allowMutations: true,
+      allowMonitoringExecution: true,
+      entitlements: mapSubscriptionEntitlements(raced.Plan.PlanEntitlement)
+    };
+  }
 };
 
 export const assignSubscriptionPlan = async (input: {

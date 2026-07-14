@@ -5,7 +5,7 @@ import Image from "next/image";
 import { APP_NAME, API_BASE_URL } from "../../lib/constants";
 
 const DEV_LOGIN_EMAIL =
-  process.env.NODE_ENV === "development" ? "adjeteyokangj@gmail.com" : "";
+  process.env.NODE_ENV === "development" ? "admin@opswatch.local" : "";
 
 export default function LoginPage() {
   const [mounted, setMounted] = useState(false);

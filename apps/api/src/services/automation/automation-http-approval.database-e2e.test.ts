@@ -7,6 +7,7 @@ import {
   approveAutomationRun,
   rejectAutomationRun
 } from "./automation-run-executor.service";
+import { ensureE2EOrgPlan } from "../test-helpers/e2e-org-plan";
 
 const enabled = process.env.RUN_DATABASE_E2E === "true";
 const TAG = "automation-http-approval-e2e";
@@ -33,6 +34,7 @@ describe.runIf(enabled)("automation HTTP mismatch approval execution", () => {
         updatedAt: new Date()
       }
     });
+    await ensureE2EOrgPlan(organizationId, "GROWTH");
     await prisma.user.create({
       data: {
         id: operatorUserId,
