@@ -5,6 +5,7 @@ import type { AuthRequest } from "../middleware/auth";
 import { handleEntitlementFailure } from "../controllers/subscription.controller";
 import { assertWithinLimit } from "../services/entitlements/entitlement.service";
 import { ENTITLEMENT } from "../services/entitlements/entitlement-keys";
+import { computeErrorBudget } from "../services/controlled-automation.service";
 
 const SLI_TYPES = ["AVAILABILITY", "ERROR_RATE", "LATENCY"] as const;
 const TARGET_TYPES = ["APP", "MODULE", "WORKFLOW", "COMPONENT", "SERVICE"] as const;
@@ -55,7 +56,18 @@ export const listSloDefinitionsByProject = async (req: AuthRequest, res: Respons
     where: { projectId: ctx.projectId, ...(!includeArchived ? { archivedAt: null } : {}), ...(typeof req.query.enabled === "string" ? { enabled: req.query.enabled === "true" } : {}) },
     include: { Service: true, SLOWindow: { orderBy: { windowEnd: "desc" }, take: 2 } }, orderBy: [{ enabled: "desc" }, { updatedAt: "desc" }]
   });
-  res.json(rows.map(row => ({ ...row, currentWindow: row.SLOWindow[0] ?? null, longWindow: row.SLOWindow[1] ?? null })));
+  res.json(rows.map(row => ({
+    ...row,
+    currentWindow: row.SLOWindow[0] ?? null,
+    longWindow: row.SLOWindow[1] ?? null,
+    errorBudget: computeErrorBudget({
+      targetPct: row.targetPct,
+      availabilityPct: row.SLOWindow[0]?.availabilityPct ?? null,
+      burnRate: row.SLOWindow[0]?.burnRate ?? null,
+      status: row.SLOWindow[0]?.status ?? "UNKNOWN",
+      windowMinutes: row.SLOWindow[0]?.windowMinutes ?? null
+    })
+  })));
 };
 
 export const createSloDefinitionByProject = async (req: AuthRequest, res: Response) => {

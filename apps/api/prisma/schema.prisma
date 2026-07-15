@@ -415,12 +415,18 @@ model OperationalEntity {
   tagsJson              Json?
   metadataJson          Json?
   lifecycle             String                    @default("ACTIVE")
+  /// Phase 7 ownership / routing on graph entities
+  ownerUserId           String?
+  ownerTeam             String?
+  runbookUrl            String?
+  escalationContact     String?
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime
   Organization          Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   Project               Project?                  @relation(fields: [projectId], references: [id], onDelete: SetNull)
   OperationalLocation   OperationalLocation?      @relation(fields: [operationalLocationId], references: [id], onDelete: SetNull)
   LegacyService         Service?                  @relation(fields: [legacyServiceId], references: [id], onDelete: SetNull)
+  OwnerUser             User?                     @relation("OperationalEntityOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   OutgoingRelationships OperationalRelationship[] @relation("OperationalRelationshipSource")
   IncomingRelationships OperationalRelationship[] @relation("OperationalRelationshipTarget")
 
@@ -428,6 +434,7 @@ model OperationalEntity {
   @@index([organizationId, projectId, entityType])
   @@index([organizationId, operationalLocationId, health])
   @@index([organizationId, provenance, lifecycle])
+  @@index([organizationId, ownerUserId])
 }
 
 /// Flexible graph edge. LEARNED relationships must be created as pending and
@@ -694,6 +701,11 @@ model Service {
   criticality               String                     @default("MEDIUM")
   baseUrl                   String?
   isCritical                Boolean                    @default(false)
+  /// Phase 7 ownership / routing
+  ownerUserId               String?
+  ownerTeam                 String?
+  runbookUrl                String?
+  escalationContact         String?
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime
   Alert                     Alert[]
@@ -707,6 +719,10 @@ model Service {
   MaintenanceWindowServices MaintenanceWindowService[]
   OperationalEntity         OperationalEntity?
   ChangeLedgerEntry         ChangeLedgerEntry[]
+  OwnerUser                 User?                      @relation("ServiceOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, ownerUserId])
+  @@index([projectId, ownerTeam])
 }
 
 model ChangeEvent {
@@ -884,6 +900,8 @@ model User {
   AuditLog       AuditLog[]
   Organization   Organization? @relation(fields: [organizationId], references: [id])
   UserSession    UserSession[]
+  OwnedServices  Service[]            @relation("ServiceOwner")
+  OwnedEntities  OperationalEntity[]  @relation("OperationalEntityOwner")
 
   @@index([organizationId])
 }

@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { randomUUID } from "crypto";
 import type { AuthRequest } from "../middleware/auth";
 import { hasPermission } from "../auth/permissions";
 import { planAutomationForIncident } from "../services/automation/automation-planner.service";
@@ -9,6 +10,11 @@ import {
   requestAutomationApproval
 } from "../services/automation/automation-run-executor.service";
 import { prisma } from "../lib/prisma";
+import {
+  REMEDIATION_REGISTRY,
+  type RemediationAction
+} from "../services/remediation/actions";
+import { runAutomationTestMode } from "../services/controlled-automation.service";
 
 const orgIdOr403 = (req: AuthRequest, res: Response): string | null => {
   const orgId = req.user?.organizationId;
@@ -264,4 +270,35 @@ export const requestAutomationApprovalHandler = async (
   } catch (error: any) {
     res.status(400).json({ error: error?.message ?? "Unable to request approval" });
   }
+};
+
+export const postAutomationTestModeHandler = async (req: AuthRequest, res: Response): Promise<void> => {
+  const orgId = orgIdOr403(req, res);
+  if (!orgId) return;
+  if (!hasPermission(req.user?.role, "automation:plan:observe")) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const action = typeof req.body?.action === "string" ? req.body.action : "";
+  if (!action || !(action in REMEDIATION_REGISTRY)) {
+    res.status(400).json({ error: "Valid remediation action is required" });
+    return;
+  }
+
+  const result = runAutomationTestMode(action as RemediationAction);
+  await prisma.auditLog.create({
+    data: {
+      id: randomUUID(),
+      userId: typeof req.user?.sub === "string" ? req.user.sub : null,
+      action: "AUTOMATION_TEST_MODE",
+      entityType: "RemediationAction",
+      entityId: action,
+      metadataJson: {
+        organizationId: orgId,
+        ...result
+      }
+    }
+  });
+  res.json(result);
 };

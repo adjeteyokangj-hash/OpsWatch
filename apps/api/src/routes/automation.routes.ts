@@ -6,6 +6,7 @@ import {
   createAutomationPlan,
   getAutomationRun,
   listAutomationPlaybooks,
+  postAutomationTestModeHandler,
   rejectAutomationRunHandler,
   requestAutomationApprovalHandler
 } from "../controllers/automation.controller";
@@ -44,5 +45,6 @@ router.post("/automation/runs/:runId/request-approval", requirePermission("autom
 router.post("/automation/runs/:runId/approve", requirePermission("automation:plan:approve"), approveAutomationRunHandler);
 router.post("/automation/runs/:runId/reject", requirePermission("automation:plan:approve"), rejectAutomationRunHandler);
 router.post("/automation/runs/:runId/cancel", requirePermission("automation:plan:observe"), cancelAutomationRunHandler);
+router.post("/automation/test-mode", requirePermission("automation:plan:observe"), postAutomationTestModeHandler);
 
 export default router;
