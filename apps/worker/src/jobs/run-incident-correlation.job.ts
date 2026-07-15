@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { logger } from "../lib/logger";
@@ -84,11 +84,16 @@ const createIncidentsForUnlinkedAlerts = async (): Promise<number> => {
         if (suppressed) continue;
       }
       const incidentId = randomUUID();
+      const fingerprints = group
+        .map((alert) => `${alert.projectId}|${alert.serviceId ?? ""}|${alert.title}`)
+        .sort();
+      const fingerprint = createHash("sha256").update(fingerprints.join(",")).digest("hex").slice(0, 32);
       await prisma.incident.create({
         data: {
           id: incidentId, projectId, severity: lead.severity,
           title: group.length > 1 ? `${lead.title} and ${group.length - 1} related alert${group.length > 2 ? "s" : ""}` : lead.title,
           openedAt: group[0]!.firstSeenAt,
+          fingerprint,
           IncidentAlert: { create: group.map(alert => ({ alertId: alert.id })) }
         }
       });

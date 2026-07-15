@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { prisma } from "../lib/prisma";
 import { dispatchAlertNotifications } from "./notifications/notification.service";
 import { findActiveMaintenanceForService } from "./maintenance-window-policy.service";
+import { assessFlapping, buildAlertFingerprint } from "./alert-correlation.service";
 
 export const createAlert = async (input: {
   projectId: string;
@@ -23,6 +24,14 @@ export const createAlert = async (input: {
   if (!project?.organizationId) {
     return;
   }
+
+  const fingerprint = buildAlertFingerprint({
+    projectId: input.projectId,
+    serviceId: input.serviceId,
+    sourceType: input.sourceType,
+    sourceId: input.sourceId,
+    title: input.title
+  });
 
   const maintenance = await findActiveMaintenanceForService({
     organizationId: project.organizationId,
@@ -46,6 +55,8 @@ export const createAlert = async (input: {
         status: AlertStatus.RESOLVED,
         maintenanceSuppressed: true,
         maintenanceWindowId: maintenance.windowId ?? null,
+        fingerprint,
+        occurrenceCount: 1,
         resolvedAt: new Date()
       }
     });
@@ -58,26 +69,43 @@ export const createAlert = async (input: {
   const existingAlert = await prisma.alert.findFirst({
     where: {
       projectId: input.projectId,
-      serviceId: input.serviceId ?? null,
-      sourceType: input.sourceType,
-      ...(dedupeBySourceId ? { sourceId: input.sourceId ?? null } : {}),
-      title: input.title,
-      status: AlertStatus.OPEN
-    }
+      status: AlertStatus.OPEN,
+      OR: [
+        { fingerprint },
+        {
+          serviceId: input.serviceId ?? null,
+          sourceType: input.sourceType,
+          ...(dedupeBySourceId ? { sourceId: input.sourceId ?? null } : {}),
+          title: input.title
+        }
+      ]
+    },
+    orderBy: { lastSeenAt: "desc" }
   });
 
   if (existingAlert) {
+    const now = new Date();
+    const occurrenceCount = (existingAlert.occurrenceCount ?? 1) + 1;
+    const flapping = assessFlapping({
+      occurrenceCount,
+      firstSeenAt: existingAlert.firstSeenAt,
+      lastSeenAt: now
+    });
     const updatedAlert = await prisma.alert.update({
       where: { id: existingAlert.id },
       data: {
         severity: input.severity,
         ...(input.category ? { category: input.category } : {}),
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),
-        message: input.message,
-        lastSeenAt: new Date()
+        message: flapping.isFlapping
+          ? `${input.message} [flapping: ${flapping.reason}]`
+          : input.message,
+        lastSeenAt: now,
+        fingerprint: existingAlert.fingerprint ?? fingerprint,
+        occurrenceCount
       }
     });
-    if (updatedAlert.severity !== existingAlert.severity) {
+    if (updatedAlert.severity !== existingAlert.severity || flapping.isFlapping) {
       alertToDispatchId = updatedAlert.id;
     }
   } else {
@@ -93,7 +121,9 @@ export const createAlert = async (input: {
         category: input.category,
         title: input.title,
         message: input.message,
-        status: AlertStatus.OPEN
+        status: AlertStatus.OPEN,
+        fingerprint,
+        occurrenceCount: 1
       }
     });
     alertToDispatchId = createdAlert.id;

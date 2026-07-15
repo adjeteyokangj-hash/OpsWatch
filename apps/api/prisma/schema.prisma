@@ -28,10 +28,16 @@ model Alert {
   integrationId         String?
   maintenanceSuppressed Boolean         @default(false)
   maintenanceWindowId   String?
+  /// Stable signal grouping key (source + service + title hash). Used for dedupe/flapping.
+  fingerprint           String?
+  /// How many times this open alert fingerprint has been observed.
+  occurrenceCount       Int             @default(1)
   User                  User?           @relation(fields: [assignedToUserId], references: [id])
   Project               Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   Service               Service?        @relation(fields: [serviceId], references: [id])
   IncidentAlert         IncidentAlert[]
+
+  @@index([projectId, fingerprint, status])
 }
 
 model AuditLog {
@@ -136,15 +142,25 @@ model Incident {
   resolvedAt            DateTime?
   rootCause             String?
   resolutionNotes       String?
+  /// Fingerprint for reopen/cooldown matching across alert groups.
+  fingerprint           String?
+  /// When this incident was merged into another (soft merge).
+  mergedIntoIncidentId  String?
+  reopenCount           Int                        @default(0)
+  lastReopenedAt        DateTime?
   ChangeEvent           ChangeEvent[]
   ChangeLedgerEntry     ChangeLedgerEntry[]
   IncidentTimelineEvent IncidentTimelineEvent[]
   Project               Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   IncidentAlert         IncidentAlert[]
   CorrelationGroup      OrganizationIncidentGroup? @relation(fields: [correlationGroupId], references: [id], onDelete: SetNull)
+  MergedInto            Incident?                  @relation("IncidentMerge", fields: [mergedIntoIncidentId], references: [id], onDelete: SetNull)
+  MergedFrom            Incident[]                 @relation("IncidentMerge")
 
   @@index([projectId, openedAt])
   @@index([correlationGroupId])
+  @@index([projectId, fingerprint])
+  @@index([mergedIntoIncidentId])
 }
 
 model IncidentAlert {

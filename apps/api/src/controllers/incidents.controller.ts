@@ -6,7 +6,10 @@ import {
 	listIncidents,
 	listIncidentRootCauseCandidates,
 	listIncidentTimeline,
-	mapIncidentDetail
+	mapIncidentDetail,
+	getIncidentIntelligenceSummary,
+	mergeIncidents,
+	reopenIncident
 } from "../services/incidents.service";
 import { indexIncidentMemory } from "../services/ai/incident-memory.service";
 import { buildIncidentDiagnosis } from "../services/remediation/remediation-suggest.service";
@@ -104,6 +107,50 @@ export const getIncidentRootCauseCandidates = async (req: AuthRequest, res: Resp
 	}
 
 	res.json(rows);
+};
+
+export const getIncidentIntelligence = async (req: AuthRequest, res: Response) => {
+	const orgId = requireOrg(req, res);
+	if (!orgId) return;
+
+	const summary = await getIncidentIntelligenceSummary(orgId, String(req.params.incidentId));
+	if (!summary) {
+		res.status(404).json({ error: "Incident not found" });
+		return;
+	}
+
+	res.json(summary);
+};
+
+export const postMergeIncident = async (req: AuthRequest, res: Response) => {
+	const orgId = requireOrg(req, res);
+	if (!orgId) return;
+
+	const targetIncidentId =
+		typeof req.body?.targetIncidentId === "string" ? req.body.targetIncidentId : "";
+	if (!targetIncidentId) {
+		res.status(400).json({ error: "targetIncidentId is required" });
+		return;
+	}
+
+	const result = await mergeIncidents(orgId, String(req.params.incidentId), targetIncidentId);
+	if (!result.ok) {
+		res.status(result.status).json({ error: result.error });
+		return;
+	}
+	res.json({ ok: true });
+};
+
+export const postReopenIncident = async (req: AuthRequest, res: Response) => {
+	const orgId = requireOrg(req, res);
+	if (!orgId) return;
+
+	const result = await reopenIncident(orgId, String(req.params.incidentId));
+	if (!result.ok) {
+		res.status(result.status).json({ error: result.error });
+		return;
+	}
+	res.json({ ok: true });
 };
 
 export const listChangeEvents = async (req: AuthRequest, res: Response) => {

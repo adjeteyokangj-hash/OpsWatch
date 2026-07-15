@@ -123,7 +123,11 @@ export type RootCauseCandidateDto = {
   referenceId: string;
   title: string;
   score: number;
+  /** Evidence-derived only — never invents certainty without supporting signals. */
+  confidenceLabel: "POSSIBLE" | "PROBABLE" | "CONFIRMED";
   rationale: string;
+  alternativeCauses?: string[];
+  evidenceSummary?: string[];
   metadata: Record<string, unknown>;
 };
 
