@@ -4,6 +4,7 @@ import { hasPermission } from "../auth/permissions";
 import { buildIntelligenceSnapshot } from "../services/intelligence/brain-snapshot.service";
 import { prisma } from "../lib/prisma";
 import { isPredictionsEnabled } from "../services/intelligence/intelligence-constants";
+import { listFeatureGates } from "../services/intelligence/feature-gates.service";
 
 const orgIdOr403 = (req: AuthRequest, res: Response): string | null => {
   const orgId = req.user?.organizationId;
@@ -176,6 +177,23 @@ export const getPredictionStatusHandler = async (
     message: isPredictionsEnabled()
       ? "Predictions flag is on, but product emission still requires confidence thresholds."
       : "Predictions are disabled. Framework tables exist for future use; no predictive claims are shown.",
-    flag: "OPSWATCH_PREDICTIONS_ENABLED"
+    flag: "OPSWATCH_PREDICTIONS_ENABLED",
+    gates: listFeatureGates()
+  });
+};
+
+export const getFeatureGatesHandler = async (req: AuthRequest, res: Response): Promise<void> => {
+  const orgId = orgIdOr403(req, res);
+  if (!orgId) return;
+  if (!hasPermission(req.user?.role, "diagnosis:read")) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const gates = listFeatureGates();
+  res.json({
+    gates,
+    defaultsOff: gates.every((gate) => gate.defaultEnabled === false),
+    anyEnabled: gates.some((gate) => gate.enabled)
   });
 };

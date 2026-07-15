@@ -3,6 +3,7 @@ import { requirePermission } from "../middleware/require-permission";
 import {
   getAiDecisionAuditHandler,
   getAutomationIntelligenceHistoryHandler,
+  getFeatureGatesHandler,
   getIntelligenceSnapshotHandler,
   getOperationsTimelineHandler,
   getPredictionStatusHandler
@@ -34,6 +35,11 @@ router.get(
   "/intelligence/predictions/status",
   requirePermission("diagnosis:read"),
   getPredictionStatusHandler
+);
+router.get(
+  "/intelligence/feature-gates",
+  requirePermission("diagnosis:read"),
+  getFeatureGatesHandler
 );
 
 export default router;
