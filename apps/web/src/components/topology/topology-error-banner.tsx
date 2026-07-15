@@ -7,39 +7,60 @@ type Props = {
   error: ClassifiedTopologyError;
   lastSuccessfulAt: string | null;
   autoRetrying?: boolean;
+  onRetry?: () => void;
 };
 
-export function TopologyRefreshBanner({ error, lastSuccessfulAt, autoRetrying = true }: Props) {
+export function TopologyRefreshBanner({
+  error,
+  lastSuccessfulAt,
+  autoRetrying = true,
+  onRetry
+}: Props) {
   const [expanded, setExpanded] = useState(false);
+  const lastLabel = lastSuccessfulAt
+    ? `Last good ${new Date(lastSuccessfulAt).toLocaleTimeString()}`
+    : "No successful update yet";
 
   return (
     <section
-      className="panel topology-refresh-banner"
+      className={`topology-refresh-banner topology-refresh-banner--compact topology-refresh-banner--${error.kind}`}
       role="status"
       aria-live="polite"
       data-testid="topology-refresh-banner"
       data-kind={error.kind}
     >
       <div className="topology-refresh-banner-main">
-        <div>
-          <p className="topology-refresh-banner-title">{error.title}</p>
-          <p className="topology-refresh-banner-body">{error.explanation}</p>
+        <div className="topology-refresh-banner-copy">
+          <p className="topology-refresh-banner-title">
+            <span className="topology-refresh-banner-dot" aria-hidden="true" />
+            {error.title}
+          </p>
           <p className="topology-refresh-banner-meta">
-            {lastSuccessfulAt
-              ? `Last successful update ${new Date(lastSuccessfulAt).toLocaleString()}`
-              : "No successful update in this session yet"}
-            {autoRetrying ? " · Retrying automatically…" : null}
+            {error.explanation} · {lastLabel}
+            {autoRetrying ? " · Retrying…" : null}
           </p>
         </div>
-        <button
-          type="button"
-          className="secondary-button topology-refresh-banner-toggle"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
-          data-testid="topology-refresh-banner-toggle"
-        >
-          {expanded ? "Hide details" : "View details"}
-        </button>
+        <div className="topology-refresh-banner-actions">
+          {onRetry ? (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={onRetry}
+              data-testid="topology-refresh-banner-retry"
+            >
+              Retry now
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="secondary-button topology-refresh-banner-toggle"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+            data-testid="topology-refresh-banner-toggle"
+          >
+            {expanded ? "Hide details" : "Details"}
+          </button>
+        </div>
       </div>
       {expanded ? (
         <pre className="topology-refresh-banner-details" data-testid="topology-refresh-banner-details">

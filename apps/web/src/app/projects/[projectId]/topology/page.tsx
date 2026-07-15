@@ -150,13 +150,6 @@ export default function ProjectTopologyPage() {
         </section>
 
         {projectError ? <section className="panel error-panel">{projectError}</section> : null}
-        {error ? (
-          <TopologyRefreshBanner
-            error={error}
-            lastSuccessfulAt={lastSuccessfulAt ?? topology?.generatedAt ?? null}
-            autoRetrying={!paused}
-          />
-        ) : null}
 
         {maintenance.length > 0 ? (
           <section className="panel maintenance-banner">
@@ -201,6 +194,14 @@ export default function ProjectTopologyPage() {
 
         {topology && topology.nodes.length > 0 ? (
           <>
+            {error ? (
+              <TopologyRefreshBanner
+                error={error}
+                lastSuccessfulAt={lastSuccessfulAt ?? topology.generatedAt ?? null}
+                autoRetrying={!paused}
+                onRetry={() => void load(true)}
+              />
+            ) : null}
             {viewMode === "list" ? <TopologySummaryCards topology={topology} /> : null}
             <TopologyFilterBar
               typeFilter={typeFilter}
@@ -268,6 +269,15 @@ export default function ProjectTopologyPage() {
               </div>
             </div>
           </>
+        ) : null}
+
+        {!topology && error ? (
+          <TopologyRefreshBanner
+            error={error}
+            lastSuccessfulAt={lastSuccessfulAt}
+            autoRetrying={!paused}
+            onRetry={() => void load(true)}
+          />
         ) : null}
       </div>
     </Shell>

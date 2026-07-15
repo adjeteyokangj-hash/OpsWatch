@@ -32,12 +32,14 @@ describe("TopologyRefreshBanner", () => {
         error={error}
         lastSuccessfulAt="2026-07-14T11:00:00.000Z"
         autoRetrying
+        onRetry={() => undefined}
       />
     );
 
     expect(screen.getByTestId("topology-refresh-banner")).toBeInTheDocument();
     expect(screen.getByText(/Topology refresh delayed/i)).toBeInTheDocument();
-    expect(screen.getByText(/Retrying automatically/i)).toBeInTheDocument();
+    expect(screen.getByText(/Retrying/i)).toBeInTheDocument();
+    expect(screen.getByTestId("topology-refresh-banner-retry")).toBeInTheDocument();
     expect(screen.queryByTestId("topology-refresh-banner-details")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("topology-refresh-banner-toggle"));
