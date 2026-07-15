@@ -7054,6 +7054,44 @@ button.text-link {
   margin-bottom: 16px;
 }
 
+.page-section-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.page-section-summary::-webkit-details-marker {
+  display: none;
+}
+
+.page-section-summary > div:first-of-type {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-section-summary::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-top: 0.45rem;
+  border-right: 2px solid var(--ink-soft);
+  border-bottom: 2px solid var(--ink-soft);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+details.page-section[open] > .page-section-summary::before {
+  transform: rotate(45deg);
+}
+
+details.page-section:not([open]) > .page-section-summary {
+  margin-bottom: 0;
+}
+
 .section-actions {
   display: flex;
   gap: 8px;

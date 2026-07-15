@@ -305,7 +305,11 @@ export default function IntelligencePage() {
           </section>
 
           <section className="two-col">
-            <PageSection title="Operations timeline" description="Chronological factual events for this organization.">
+            <PageSection
+              title="Operations timeline"
+              description="Chronological factual events for this organization."
+              defaultCollapsed
+            >
               {data.recentTimeline.length === 0 ? (
                 <EmptyState title="Timeline is empty" description="Deployments, alerts, automation, and baseline updates will land here." />
               ) : (
@@ -324,7 +328,11 @@ export default function IntelligencePage() {
               )}
             </PageSection>
 
-            <PageSection title="Incident memory" description="Permanent retention of known resolution facts only.">
+            <PageSection
+              title="Incident memory"
+              description="Permanent retention of known resolution facts only."
+              defaultCollapsed
+            >
               {data.incidentMemories.length === 0 ? (
                 <EmptyState title="No incident memories" description="Resolved incidents with recorded diagnosis will appear here." />
               ) : (
@@ -347,7 +355,11 @@ export default function IntelligencePage() {
           </section>
 
           <section className="two-col">
-            <PageSection title="Deployment intelligence" description="Deployments correlated with resulting incidents/alerts in-window.">
+            <PageSection
+              title="Deployment intelligence"
+              description="Deployments correlated with resulting incidents/alerts in-window."
+              defaultCollapsed
+            >
               {data.deployments.length === 0 ? (
                 <EmptyState title="No deployments recorded" description="Change events and deploy webhooks populate this list." />
               ) : (
@@ -369,7 +381,11 @@ export default function IntelligencePage() {
               )}
             </PageSection>
 
-            <PageSection title="Automation history" description="Trigger, reason, success, and verification from real runs.">
+            <PageSection
+              title="Automation history"
+              description="Trigger, reason, success, and verification from real runs."
+              defaultCollapsed
+            >
               {data.automationHistory.length === 0 ? (
                 <EmptyState title="No automation history" description="Planned and executed automation runs will appear here." />
               ) : (
