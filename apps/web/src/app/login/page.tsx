@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
 import { APP_NAME, API_BASE_URL } from "../../lib/constants";
+import { SESSION_FETCH_TIMEOUT_MS } from "../../lib/auth";
 
 const DEV_LOGIN_EMAIL =
   process.env.NODE_ENV === "development" ? "admin@opswatch.local" : "";
@@ -59,7 +60,7 @@ export default function LoginPage() {
       }
 
       const sessionController = new AbortController();
-      const sessionTimer = window.setTimeout(() => sessionController.abort(), 12_000);
+      const sessionTimer = window.setTimeout(() => sessionController.abort(), SESSION_FETCH_TIMEOUT_MS);
       let sessionCheck: Response;
       try {
         sessionCheck = await fetch(`${API_BASE_URL}/auth/session`, {

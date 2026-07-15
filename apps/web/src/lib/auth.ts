@@ -117,7 +117,7 @@ export const refreshAuthSession = async (
       return user;
     } catch {
       // Timed out or network error — do not treat as signed-out; pages can still
-      // load org-scoped data with existing cookies, and Shell unlocks via finally.
+      // load org-scoped data with existing cookies. Shell may show a non-blocking retry.
       return sessionCache?.user ?? null;
     } finally {
       clearTimeout(timer);
