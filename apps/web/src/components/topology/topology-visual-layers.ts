@@ -48,6 +48,11 @@ export const visualLayerCountLabel = (layer: VisualLayer, count: number): string
 export const visualLayerLabel = (layer: VisualLayer, count: number): string =>
   `${visualLayerTitle(layer)} (${visualLayerCountLabel(layer, count)})`;
 
+/**
+ * Hierarchy edges use a fixed documented grey (`HIERARCHY_EDGE_COLOR`).
+ * This layer palette (including WORKFLOW purple #9F7AEA) is for node accents / sparklines only —
+ * never for painted dependency or hierarchy relationship lines.
+ */
 export const layerEdgeColor = (layer: VisualLayer): string => {
   if (layer === "MODULE") return "#48BB78";
   if (layer === "WORKFLOW") return "#9F7AEA";

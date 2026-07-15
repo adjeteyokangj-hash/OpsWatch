@@ -204,4 +204,118 @@ describe("TopologyCanvas", () => {
     const edges = screen.getByTestId("topology-edges");
     expect(bands.compareDocumentPosition(edges) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it("loads node cards collapsed by default and expands only the selected card", () => {
+    const { rerender } = render(
+      <TopologyCanvas
+        topology={topology}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+        typeFilter="ALL"
+        healthFilter="ALL"
+        cardsExpanded="selected"
+      />
+    );
+
+    expect(screen.getByTestId("topology-node-redis")).toHaveAttribute("data-expanded", "false");
+
+    rerender(
+      <TopologyCanvas
+        topology={topology}
+        selectedNodeId="redis"
+        onSelectNode={vi.fn()}
+        typeFilter="ALL"
+        healthFilter="ALL"
+        cardsExpanded="selected"
+      />
+    );
+    expect(screen.getByTestId("topology-node-redis")).toHaveAttribute("data-expanded", "true");
+  });
+
+  it("selects a dependency edge when clicked", () => {
+    const onSelectEdge = vi.fn();
+    render(
+      <TopologyCanvas
+        topology={topology}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+        onSelectEdge={onSelectEdge}
+        typeFilter="ALL"
+        healthFilter="ALL"
+      />
+    );
+
+    fireEvent.click(screen.getByTestId("topology-edge-edge-1"));
+    expect(onSelectEdge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "edge-1",
+        kind: "dependency",
+        sourceId: "app",
+        targetId: "redis",
+        writtenHealth: "Unknown"
+      })
+    );
+  });
+
+  it("renders hierarchy edges with documented grey, not layer purple", () => {
+    const hierarchyTopology: ProjectTopologyResponse = {
+      ...topology,
+      nodes: [
+        ...topology.nodes,
+        {
+          id: "mod",
+          name: "Orders",
+          type: "MODULE",
+          status: "HEALTHY",
+          parentId: "app",
+          metrics: {
+            availabilityPercent: 99,
+            latencyMs: 10,
+            errorRatePercent: 0,
+            sloBurnRate: 1,
+            availabilityTrend: [99]
+          },
+          risk: { openAlerts: 0, unresolvedIncidents: 0 }
+        }
+      ],
+      edges: [
+        ...topology.edges,
+        {
+          id: "hier-1",
+          sourceId: "mod",
+          targetId: "app",
+          type: "HIERARCHY",
+          critical: false,
+          status: "HEALTHY"
+        }
+      ],
+      nodeContext: {
+        ...topology.nodeContext,
+        mod: {
+          monitoringState: "MONITORED",
+          lastCheckAt: new Date().toISOString(),
+          lastCheckStatus: "PASS",
+          sloStatus: "HEALTHY",
+          openAlerts: [],
+          unresolvedIncidents: [],
+          upstreamIds: [],
+          downstreamIds: []
+        }
+      }
+    };
+
+    render(
+      <TopologyCanvas
+        topology={hierarchyTopology}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+        typeFilter="ALL"
+        healthFilter="ALL"
+      />
+    );
+
+    const hierarchyLine = document.querySelector(".topology-edge-line--hierarchy");
+    expect(hierarchyLine).toBeTruthy();
+    expect(hierarchyLine?.getAttribute("stroke")).toBe("#94a3b8");
+  });
 });

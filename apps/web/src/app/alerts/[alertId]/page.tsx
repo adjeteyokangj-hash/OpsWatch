@@ -25,11 +25,32 @@ type AlertDetail = {
   resolvedAt: string | null;
 };
 
+type AlertAutomationEvaluation = {
+  alertId: string;
+  evaluationStatus: string;
+  evaluationTimestamp: string;
+  automationMode: string;
+  matchingPolicy: string | null;
+  availableActions: string[];
+  selectedAction: string | null;
+  requiredPermissions: string[];
+  approvalRequired: boolean;
+  reasonNoAction: string | null;
+  executionStatus: string | null;
+  verificationStatus: string | null;
+  finalOutcome: string | null;
+  recoveryTimestamp: string | null;
+  autoResolutionReason: string | null;
+  remediationCausedRecovery: boolean | null;
+  timeline: Array<{ stage: string; at: string | null; detail: string }>;
+};
+
 export default function AlertDetailPage() {
   const params = useParams<{ alertId: string }>();
   const alertId = params?.alertId ?? "";
 
   const [alert, setAlert] = useState<AlertDetail | null>(null);
+  const [automation, setAutomation] = useState<AlertAutomationEvaluation | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,11 +60,16 @@ export default function AlertDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const row = await apiFetch<AlertDetail>(`/alerts/${alertId}`);
+      const [row, evaluation] = await Promise.all([
+        apiFetch<AlertDetail>(`/alerts/${alertId}`),
+        apiFetch<AlertAutomationEvaluation>(`/alerts/${alertId}/automation`).catch(() => null)
+      ]);
       setAlert(row);
+      setAutomation(evaluation);
     } catch (err: any) {
       setError(err?.message || "Failed to load alert");
       setAlert(null);
+      setAutomation(null);
     } finally {
       setLoading(false);
     }
@@ -62,6 +88,10 @@ export default function AlertDetailPage() {
         method: "PATCH"
       });
       setAlert(updated);
+      const evaluation = await apiFetch<AlertAutomationEvaluation>(`/alerts/${alert.id}/automation`).catch(
+        () => null
+      );
+      setAutomation(evaluation);
     } catch (err: any) {
       setError(err?.message || `Failed to ${action} alert`);
     } finally {
@@ -114,7 +144,8 @@ export default function AlertDetailPage() {
               )}
             </p>
             <p>
-              <strong>Service:</strong> {alert.service ? <Link href={`/checks?serviceId=${alert.service.id}`}>{alert.service.name}</Link> : "-"}
+              <strong>Service:</strong>{" "}
+              {alert.service ? <Link href={`/checks?serviceId=${alert.service.id}`}>{alert.service.name}</Link> : "-"}
             </p>
             <p>
               <strong>Source:</strong> {alert.sourceType} · {alert.category}
@@ -123,13 +154,15 @@ export default function AlertDetailPage() {
               <strong>Message:</strong> {alert.message}
             </p>
             <p>
-              <strong>Acknowledged:</strong> {alert.acknowledgedAt ? new Date(alert.acknowledgedAt).toLocaleString() : "-"}
+              <strong>Acknowledged:</strong>{" "}
+              {alert.acknowledgedAt ? new Date(alert.acknowledgedAt).toLocaleString() : "-"}
             </p>
             <p>
               <strong>Resolved:</strong> {alert.resolvedAt ? new Date(alert.resolvedAt).toLocaleString() : "-"}
             </p>
             <p>
-              <strong>Assigned to:</strong> {alert.assignedTo ? `${alert.assignedTo.name} (${alert.assignedTo.email})` : "-"}
+              <strong>Assigned to:</strong>{" "}
+              {alert.assignedTo ? `${alert.assignedTo.name} (${alert.assignedTo.email})` : "-"}
             </p>
 
             <h3>Linked incidents</h3>
@@ -140,7 +173,9 @@ export default function AlertDetailPage() {
                 {alert.incidents?.map((incident) => (
                   <li key={incident.id}>
                     <Link href={`/incidents/${incident.id}`}>{incident.title}</Link>
-                    <div className="dashboard-subtle">{incident.status} · {incident.severity} · Opened {new Date(incident.openedAt).toLocaleString()}</div>
+                    <div className="dashboard-subtle">
+                      {incident.status} · {incident.severity} · Opened {new Date(incident.openedAt).toLocaleString()}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -168,6 +203,105 @@ export default function AlertDetailPage() {
                 {saving ? "Saving..." : "Resolve"}
               </button>
             </div>
+          </section>
+
+          <section className="panel" data-testid="alert-automation-recovery">
+            <div className="section-head">
+              <div>
+                <h2>Automation and recovery</h2>
+                <p>Did OpsWatch only detect this, attempt a repair, or verify recovery?</p>
+              </div>
+            </div>
+            {!automation ? (
+              <p className="dashboard-subtle">Automation evaluation is unavailable for this alert.</p>
+            ) : (
+              <>
+                <dl className="topology-detail-grid">
+                  <div>
+                    <dt>Detection status</dt>
+                    <dd>{alert.status}</dd>
+                  </div>
+                  <div>
+                    <dt>Evaluation status</dt>
+                    <dd data-testid="alert-evaluation-status">{automation.evaluationStatus}</dd>
+                  </div>
+                  <div>
+                    <dt>Automation mode</dt>
+                    <dd>{automation.automationMode}</dd>
+                  </div>
+                  <div>
+                    <dt>Matching policy</dt>
+                    <dd>{automation.matchingPolicy ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Remediation availability</dt>
+                    <dd>
+                      {automation.availableActions.length > 0
+                        ? automation.availableActions.join(", ")
+                        : "No approved action available"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Selected action</dt>
+                    <dd>{automation.selectedAction ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Approval required</dt>
+                    <dd>{automation.approvalRequired ? "Yes" : "No"}</dd>
+                  </div>
+                  <div>
+                    <dt>Execution status</dt>
+                    <dd>{automation.executionStatus ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Verification</dt>
+                    <dd>{automation.verificationStatus ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Final outcome</dt>
+                    <dd>{automation.finalOutcome ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Recovery timestamp</dt>
+                    <dd>
+                      {automation.recoveryTimestamp
+                        ? new Date(automation.recoveryTimestamp).toLocaleString()
+                        : "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Auto-resolution reason</dt>
+                    <dd>{automation.autoResolutionReason ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Remediation caused recovery</dt>
+                    <dd>
+                      {automation.remediationCausedRecovery == null
+                        ? "—"
+                        : automation.remediationCausedRecovery
+                          ? "Yes"
+                          : "No — recovered without remediation"}
+                    </dd>
+                  </div>
+                </dl>
+                {automation.reasonNoAction ? (
+                  <p className="alert-automation-reason" data-testid="alert-no-action-reason" role="status">
+                    {automation.reasonNoAction}
+                  </p>
+                ) : null}
+                <h3>Remediation evidence timeline</h3>
+                <ol className="alert-automation-timeline">
+                  {automation.timeline.map((step) => (
+                    <li key={`${step.stage}-${step.at ?? "pending"}`}>
+                      <strong>{step.stage}</strong>
+                      <div className="dashboard-subtle">
+                        {step.at ? new Date(step.at).toLocaleString() : "Not started"} · {step.detail}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
           </section>
         </>
       )}

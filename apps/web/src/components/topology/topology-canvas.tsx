@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ProjectTopologyResponse,
+  TopologyEdge,
   TopologyHealthStatus,
   TopologyNodeType,
   TopologyOverlays
@@ -18,13 +19,20 @@ import {
 import { resolveDependencyDisplayLinks, resolveHierarchyDisplayLinks } from "./topology-edge-resolve";
 import { edgeTrafficWeight, replayNodeStatus } from "./topology-metrics";
 import type { VisualLayer } from "./topology-visual-layers";
-import { classifyVisualLayer, layerEdgeColor, visualLayerCountLabel, visualLayerTitle } from "./topology-visual-layers";
+import { classifyVisualLayer, visualLayerCountLabel, visualLayerTitle } from "./topology-visual-layers";
 import {
   buildNodeRelationshipDiagnostics,
   isolationBadgeLabel,
   matchesConnectionFilter,
   type ConnectionFilter
 } from "./topology-relationship";
+import {
+  HIERARCHY_EDGE_COLOR,
+  dependencyEdgeColorClass,
+  describeSelectedEdge,
+  edgeTooltipLines,
+  type SelectedTopologyEdge
+} from "./topology-edge-style";
 
 const moreLayerLabel = (layer: VisualLayer): string => {
   if (layer === "MODULE") return "modules";
@@ -39,6 +47,8 @@ type Props = {
   topology: ProjectTopologyResponse;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
+  selectedEdgeId?: string | null;
+  onSelectEdge?: (edge: SelectedTopologyEdge | null) => void;
   typeFilter: TopologyNodeType | "ALL";
   healthFilter: TopologyHealthStatus | "ALL";
   onInteractingChange?: (interacting: boolean) => void;
@@ -52,10 +62,14 @@ type Props = {
   searchQuery?: string;
   fitToken?: number;
   connectionFilter?: ConnectionFilter;
+  cardsExpanded?: "none" | "selected" | "all";
+  onExpandAll?: () => void;
+  onCollapseAll?: () => void;
 };
 
 const NODE_WIDTH = LAYOUT.nodeWidth;
 const NODE_HEIGHT = LAYOUT.nodeHeight;
+const NODE_HEIGHT_COLLAPSED: number = 64;
 
 const trafficTone = (status: TopologyHealthStatus): string => {
   if (status === "HEALTHY") return "healthy";
@@ -110,6 +124,8 @@ export const TopologyCanvas = ({
   topology,
   selectedNodeId,
   onSelectNode,
+  selectedEdgeId = null,
+  onSelectEdge,
   typeFilter,
   healthFilter,
   onInteractingChange,
@@ -122,7 +138,10 @@ export const TopologyCanvas = ({
   replayMinutesAgo = 0,
   searchQuery = "",
   fitToken = 0,
-  connectionFilter = "ALL"
+  connectionFilter = "ALL",
+  cardsExpanded = "selected",
+  onExpandAll,
+  onCollapseAll
 }: Props) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
@@ -482,36 +501,70 @@ export const TopologyCanvas = ({
             const parentPos = graphLayout.positions.get(link.parentId);
             if (!childPos || !parentPos) return null;
 
-            const start = nodeAnchor(parentPos, "bottom");
-            const end = nodeAnchor(childPos, "top");
+            const start = nodeAnchor(parentPos, "bottom", NODE_HEIGHT_COLLAPSED);
+            const end = nodeAnchor(childPos, "top", NODE_HEIGHT_COLLAPSED);
             const pathD = edgePath(start, end, true);
             const edgeDimmed =
               shouldDim &&
               focusNodeIds.size > 0 &&
               (!focusNodeIds.has(link.childId) || !focusNodeIds.has(link.parentId));
-            const layerColor = layerEdgeColor(link.parentLayer);
+            const apiEdge =
+              topology.edges.find(
+                (row) =>
+                  row.type === "HIERARCHY" &&
+                  ((row.sourceId === link.childId && row.targetId === link.parentId) ||
+                    (row.sourceId === link.parentId && row.targetId === link.childId))
+              ) ?? null;
+            const selected =
+              selectedEdgeId != null &&
+              (selectedEdgeId === apiEdge?.id || selectedEdgeId === link.key);
 
             return (
               <g
                 key={link.key}
-                className={`topology-edge topology-edge-hierarchy${edgeDimmed ? " dimmed" : ""}`}
-                style={{ color: layerColor }}
+                className={`topology-edge topology-edge-hierarchy${edgeDimmed ? " dimmed" : ""}${selected ? " selected" : ""}`}
+                style={{ color: HIERARCHY_EDGE_COLOR }}
+                data-testid={`topology-edge-${link.key}`}
+                data-edge-kind="hierarchy"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (!onSelectEdge) return;
+                  const sourceNode = nodeById.get(link.parentId);
+                  const targetNode = nodeById.get(link.childId);
+                  if (!sourceNode || !targetNode) return;
+                  const edge =
+                    apiEdge ??
+                    ({
+                      id: link.key,
+                      sourceId: link.childId,
+                      targetId: link.parentId,
+                      type: "HIERARCHY" as const,
+                      critical: false,
+                      status: "UNKNOWN" as const
+                    } satisfies TopologyEdge);
+                  onSelectEdge(describeSelectedEdge(edge, nodeById, "hierarchy"));
+                  onSelectNode(null);
+                }}
               >
+                <path d={pathD} className="topology-edge-hit" />
                 <path
                   d={pathD}
                   className="topology-edge-line topology-edge-line--hierarchy"
-                  stroke={layerColor}
-                  strokeWidth={2.5}
-                  filter="url(#topology-edge-glow)"
+                  stroke={HIERARCHY_EDGE_COLOR}
+                  strokeWidth={2.2}
                 />
-                <TrafficPackets
-                  pathD={pathD}
-                  edgeKey={link.key}
-                  tone="hierarchy-flow"
-                  dimmed={edgeDimmed}
-                  live={replayMinutesAgo === 0}
-                  fill={layerColor}
-                />
+                <title>{edgeTooltipLines(describeSelectedEdge(
+                  apiEdge ?? {
+                    id: link.key,
+                    sourceId: link.childId,
+                    targetId: link.parentId,
+                    type: "HIERARCHY",
+                    critical: false,
+                    status: "UNKNOWN"
+                  },
+                  nodeById,
+                  "hierarchy"
+                ))}</title>
               </g>
             );
           })}
@@ -522,25 +575,38 @@ export const TopologyCanvas = ({
             if (!source || !target) return null;
 
             const replayStatus = displayStatusFor(link.edge.targetId, link.edge.status);
-            const pathD = edgePath(nodeAnchor(source, "bottom"), nodeAnchor(target, "top"), true);
+            const pathD = edgePath(
+              nodeAnchor(source, "bottom", NODE_HEIGHT_COLLAPSED),
+              nodeAnchor(target, "top", NODE_HEIGHT_COLLAPSED),
+              true
+            );
             const weight = edgeTrafficWeight(link.edge, topology.nodes);
             const edgeDimmed =
               shouldDim &&
               focusNodeIds.size > 0 &&
               (!focusNodeIds.has(link.sourceId) || !focusNodeIds.has(link.targetId));
+            const selected = selectedEdgeId === link.edge.id || selectedEdgeId === link.key;
 
             return (
               <g
                 key={link.key}
-                className={`topology-edge topology-edge-dependency${edgeDimmed ? " dimmed" : ""}`}
+                className={`topology-edge topology-edge-dependency${edgeDimmed ? " dimmed" : ""}${selected ? " selected" : ""}`}
+                data-testid={`topology-edge-${link.edge.id}`}
+                data-edge-kind="dependency"
+                data-edge-health={replayStatus}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectEdge?.(describeSelectedEdge(link.edge, nodeById, "dependency"));
+                  onSelectNode(null);
+                }}
               >
+                <path d={pathD} className="topology-edge-hit" />
                 <path
                   d={pathD}
-                  className={`topology-edge-line topology-edge-line--dependency ${healthClassName(replayStatus)}${link.edge.critical ? " critical" : ""}`}
+                  className={`topology-edge-line topology-edge-line--dependency ${dependencyEdgeColorClass(replayStatus)}${link.edge.critical ? " critical" : ""}`}
                   markerEnd="url(#topology-arrow)"
                   strokeWidth={edgeStrokeWidth(weight)}
-                  opacity={0.85}
-                  filter="url(#topology-edge-glow)"
+                  opacity={0.92}
                 />
                 <TrafficPackets
                   pathD={pathD}
@@ -550,6 +616,7 @@ export const TopologyCanvas = ({
                   dimmed={edgeDimmed}
                   live={replayMinutesAgo === 0}
                 />
+                <title>{edgeTooltipLines(describeSelectedEdge(link.edge, nodeById, "dependency"))}</title>
               </g>
             );
           })}
@@ -588,31 +655,37 @@ export const TopologyCanvas = ({
             const displayStatus = displayStatusFor(node.id, node.status);
             const dimmed = shouldDim && focusNodeIds.size > 0 && !focusNodeIds.has(node.id);
             const childCount = countHierarchyChildren(node.id, topology.edges, topology.nodes);
-            const collapsed = collapsedNodeIds.has(node.id);
             const relationship = relationshipByNode.get(node.id);
             const isolationLabel = relationship
               ? isolationBadgeLabel(relationship.connectionState)
               : null;
+            const expanded =
+              cardsExpanded === "all" ||
+              (cardsExpanded === "selected" && selectedNodeId === node.id);
+            const cardHeight = expanded ? NODE_HEIGHT : NODE_HEIGHT_COLLAPSED;
+            const openAlerts = node.risk.openAlerts;
 
             return (
               <g
                 key={node.id}
-                className={`topology-node ${healthClassName(displayStatus)}${selected ? " selected" : ""}${overlays?.affectedNodeIds?.includes(node.id) ? " affected" : ""}${overlays?.incidentNodeIds?.includes(node.id) ? " incident-linked" : ""}${rootCause ? " root-cause" : ""}${dimmed ? " dimmed" : ""}${selected && traceFocus ? " trace-focus" : ""}${isolationLabel ? " topology-node--isolated" : ""}`}
-                transform={`translate(${position.x - NODE_WIDTH / 2} ${position.y - NODE_HEIGHT / 2})`}
+                className={`topology-node ${healthClassName(displayStatus)}${selected ? " selected" : ""}${overlays?.affectedNodeIds?.includes(node.id) ? " affected" : ""}${overlays?.incidentNodeIds?.includes(node.id) ? " incident-linked" : ""}${rootCause ? " root-cause" : ""}${dimmed ? " dimmed" : ""}${selected && traceFocus ? " trace-focus" : ""}${isolationLabel ? " topology-node--isolated" : ""}${expanded ? " is-expanded" : " is-collapsed"}`}
+                transform={`translate(${position.x - NODE_WIDTH / 2} ${position.y - cardHeight / 2})`}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onSelectNode(node.id);
+                  onSelectEdge?.(null);
+                  onSelectNode(selected ? null : node.id);
                 }}
                 data-testid={`topology-node-${node.id}`}
                 data-connection-state={relationship?.connectionState ?? "connected"}
+                data-expanded={expanded ? "true" : "false"}
                 data-root-cause-rank={rootCause?.rank}
                 aria-label={`${node.name}, ${healthLabel(displayStatus)}`}
                 role="button"
                 tabIndex={0}
               >
-                <rect width={NODE_WIDTH} height={NODE_HEIGHT} rx={14} className="topology-node-surface" />
+                <rect width={NODE_WIDTH} height={cardHeight} rx={14} className="topology-node-surface" />
                 <circle cx={NODE_WIDTH / 2} cy={4} r={3.5} className="topology-node-anchor topology-node-anchor--top" />
-                <circle cx={NODE_WIDTH / 2} cy={NODE_HEIGHT - 4} r={3.5} className="topology-node-anchor topology-node-anchor--bottom" />
+                <circle cx={NODE_WIDTH / 2} cy={cardHeight - 4} r={3.5} className="topology-node-anchor topology-node-anchor--bottom" />
                 {rootCause ? (
                   <g className="topology-root-badge">
                     <rect x={NODE_WIDTH - 34} y={8} width={26} height={18} rx={9} />
@@ -621,14 +694,15 @@ export const TopologyCanvas = ({
                     </text>
                   </g>
                 ) : null}
-                <foreignObject x={0} y={0} width={NODE_WIDTH} height={NODE_HEIGHT}>
+                <foreignObject x={0} y={0} width={NODE_WIDTH} height={cardHeight}>
                   <TopologyNodeCard
                     node={node}
                     displayStatus={displayStatus}
                     compact
-                    childCount={childCount}
-                    collapsed={collapsed}
+                    collapsed={!expanded}
+                    alertCount={openAlerts}
                     isolationLabel={isolationLabel}
+                    childCount={childCount}
                     onToggleCollapse={() => toggleCollapse(node.id)}
                   />
                 </foreignObject>
@@ -647,7 +721,7 @@ export const TopologyCanvas = ({
               <g
                 key={more.id}
                 className="topology-node topology-more-node"
-                transform={`translate(${position.x - NODE_WIDTH / 2} ${position.y - NODE_HEIGHT / 2})`}
+                transform={`translate(${position.x - NODE_WIDTH / 2} ${position.y - NODE_HEIGHT_COLLAPSED / 2})`}
                 onClick={(event) => {
                   event.stopPropagation();
                   toggleLayerExpand(more.layer);
@@ -657,8 +731,8 @@ export const TopologyCanvas = ({
                 role="button"
                 tabIndex={0}
               >
-                <rect width={NODE_WIDTH} height={NODE_HEIGHT} rx={14} className="topology-node-surface topology-more-node-surface" />
-                <foreignObject x={0} y={0} width={NODE_WIDTH} height={NODE_HEIGHT}>
+                <rect width={NODE_WIDTH} height={NODE_HEIGHT_COLLAPSED} rx={14} className="topology-node-surface topology-more-node-surface" />
+                <foreignObject x={0} y={0} width={NODE_WIDTH} height={NODE_HEIGHT_COLLAPSED}>
                   <TopologyMoreCard count={more.hiddenCount} label={moreLayerLabel(more.layer)} />
                 </foreignObject>
               </g>
@@ -719,24 +793,36 @@ export const TopologyCanvas = ({
 
       <div className="topology-canvas-footer" onPointerDown={(event) => event.stopPropagation()}>
         <div className="topology-legend-v2">
-          <span><i className="dot healthy" /> Healthy traffic</span>
-          <span><i className="dot degraded" /> Slow traffic</span>
-          <span><i className="dot critical" /> Failing traffic</span>
+          <span><i className="dot healthy" /> Healthy</span>
+          <span><i className="dot degraded" /> Degraded</span>
+          <span><i className="dot critical" /> Failing</span>
           <span><i className="dot unknown" /> Unknown</span>
           <span><i className="line dependency" /> Dependency</span>
           <span><i className="line indirect" /> Hierarchy</span>
         </div>
-        <div className="topology-zoom-controls">
-          <button type="button" className="secondary-button" onClick={() => zoomBy(0.88)} aria-label="Zoom out">
-            −
-          </button>
-          <span className="topology-zoom-level">{zoomPercent}%</span>
-          <button type="button" className="secondary-button" onClick={() => zoomBy(1.12)} aria-label="Zoom in">
-            +
-          </button>
-          <button type="button" className="secondary-button" onClick={fitToScreen}>
-            Fit
-          </button>
+        <div className="topology-canvas-footer-actions">
+          {onExpandAll ? (
+            <button type="button" className="secondary-button" onClick={onExpandAll} data-testid="topology-expand-all">
+              Expand all
+            </button>
+          ) : null}
+          {onCollapseAll ? (
+            <button type="button" className="secondary-button" onClick={onCollapseAll} data-testid="topology-collapse-all">
+              Collapse all
+            </button>
+          ) : null}
+          <div className="topology-zoom-controls">
+            <button type="button" className="secondary-button" onClick={() => zoomBy(0.88)} aria-label="Zoom out">
+              −
+            </button>
+            <span className="topology-zoom-level">{zoomPercent}%</span>
+            <button type="button" className="secondary-button" onClick={() => zoomBy(1.12)} aria-label="Zoom in">
+              +
+            </button>
+            <button type="button" className="secondary-button" onClick={fitToScreen}>
+              Fit
+            </button>
+          </div>
         </div>
       </div>
     </div>

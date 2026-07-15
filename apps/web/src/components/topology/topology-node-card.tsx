@@ -10,7 +10,9 @@ type Props = {
   displayStatus?: TopologyNode["status"];
   compact?: boolean;
   childCount?: number;
+  /** When true, show icon/name/health/alerts only (default topology card). */
   collapsed?: boolean;
+  alertCount?: number;
   isolationLabel?: string | null;
   onToggleCollapse?: () => void;
 };
@@ -36,7 +38,8 @@ export function TopologyNodeCard({
   displayStatus = node.status,
   compact = true,
   childCount = 0,
-  collapsed = false,
+  collapsed = true,
+  alertCount = 0,
   isolationLabel = null,
   onToggleCollapse
 }: Props) {
@@ -50,7 +53,8 @@ export function TopologyNodeCard({
   if (compact) {
     return (
       <div
-        className={`topology-node-card topology-node-card--compact topology-node-card--layer-${visualLayer.toLowerCase()}`}
+        className={`topology-node-card topology-node-card--compact topology-node-card--layer-${visualLayer.toLowerCase()}${collapsed ? " is-collapsed" : " is-detail"}`}
+        data-collapsed={collapsed ? "true" : "false"}
       >
         <div className="topology-node-card-compact-head">
           {icon ? (
@@ -65,32 +69,37 @@ export function TopologyNodeCard({
           <strong className="topology-node-card-name">{node.name}</strong>
           <span className={`topology-node-card-dot topology-node-card-dot--${statusTone}`} aria-hidden="true" />
         </div>
-        <div className="topology-node-card-compact-body">
-          <TopologySparkline points={metrics.availabilityTrend} seed={`${node.id}:${displayStatus}`} tone={layerTone} />
-          <span className="topology-node-card-availability">
-            {availability == null ? "—" : `${availability.toFixed(2)}%`}
-          </span>
+        <div className="topology-node-card-compact-meta">
+          {alertCount > 0 ? <span className="topology-node-alert-count">{alertCount} alert{alertCount === 1 ? "" : "s"}</span> : null}
+          {isolationLabel ? (
+            <span className="topology-node-isolation-badge" data-testid={`topology-isolation-${node.id}`}>
+              {isolationLabel}
+            </span>
+          ) : null}
         </div>
-        {isolationLabel ? (
-          <span className="topology-node-isolation-badge" data-testid={`topology-isolation-${node.id}`}>
-            {isolationLabel}
-          </span>
-        ) : null}
-        {availability == null ? (
-          <span className="topology-node-card-awaiting">{healthLabel(displayStatus)}</span>
-        ) : null}
-        {childCount > 0 ? (
-          <button
-            type="button"
-            className="topology-node-card-expand"
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleCollapse?.();
-            }}
-            data-action="local-ui"
-          >
-            {collapsed ? `▸ ${childCount} beneath` : `▾ ${childCount} beneath`}
-          </button>
+        {!collapsed ? (
+          <>
+            <div className="topology-node-card-compact-body">
+              <TopologySparkline points={metrics.availabilityTrend} seed={`${node.id}:${displayStatus}`} tone={layerTone} />
+              <span className="topology-node-card-availability">
+                {availability == null ? "—" : `${availability.toFixed(2)}%`}
+              </span>
+            </div>
+            <p className="dashboard-subtle topology-node-card-status">{healthLabel(displayStatus)}</p>
+            {childCount > 0 ? (
+              <button
+                type="button"
+                className="topology-node-card-expand"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleCollapse?.();
+                }}
+                data-action="local-ui"
+              >
+                ▾ {childCount} beneath
+              </button>
+            ) : null}
+          </>
         ) : null}
       </div>
     );

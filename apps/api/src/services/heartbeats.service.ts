@@ -1,12 +1,13 @@
 import { ProjectStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { prisma } from "../lib/prisma";
-import { createAlert, resolveAlertsBySourceType } from "./alerting.service";
+import { createAlert } from "./alerting.service";
 import {
   recordObservation,
   recordOperationsTimelineEvent
 } from "./intelligence/observation.service";
 import { OBSERVATION_SOURCE, TIMELINE_EVENT } from "./intelligence/intelligence-constants";
+import { progressHeartbeatAlertRecovery } from "./alert-automation-evaluation.service";
 
 export const ingestHeartbeat = async (projectId: string, body: any): Promise<void> => {
   await prisma.heartbeat.create({
@@ -76,5 +77,5 @@ export const ingestHeartbeat = async (projectId: string, body: any): Promise<voi
     return;
   }
 
-  await resolveAlertsBySourceType(projectId, "HEARTBEAT");
+  await progressHeartbeatAlertRecovery(projectId);
 };

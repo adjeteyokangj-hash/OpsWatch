@@ -1025,6 +1025,9 @@ enum AlertSeverity {
 enum AlertStatus {
   OPEN
   ACKNOWLEDGED
+  REMEDIATING
+  VERIFYING
+  RECOVERING
   RESOLVED
 }
 

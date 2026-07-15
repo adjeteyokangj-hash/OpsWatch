@@ -202,7 +202,7 @@ export const edgeStrokeWidth = (weight: number): number => {
 export const nodeAnchor = (
   position: NodePosition,
   side: "top" | "bottom",
-  nodeHeight = LAYOUT.nodeHeight
+  nodeHeight: number = LAYOUT.nodeHeight
 ): NodePosition => ({
   x: position.x,
   y: position.y + (side === "top" ? -nodeHeight / 2 : nodeHeight / 2)

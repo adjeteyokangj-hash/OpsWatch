@@ -140,3 +140,24 @@ export const resolveAlert = async (req: AuthRequest, res: Response) => {
 	res.json(mapAlertDetail(updated as any));
 };
 
+export const getAlertAutomationEvaluation = async (req: AuthRequest, res: Response) => {
+	const orgId = requireOrg(req, res);
+	if (!orgId) return;
+
+	try {
+		const { evaluateAlertAutomation } = await import("../services/alert-automation-evaluation.service");
+		const evaluation = await evaluateAlertAutomation({
+			alertId: String(req.params.alertId),
+			organizationId: orgId
+		});
+		res.json(evaluation);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "Failed to evaluate automation";
+		if (/not found/i.test(message)) {
+			res.status(404).json({ error: message });
+			return;
+		}
+		res.status(500).json({ error: message });
+	}
+};
+

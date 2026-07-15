@@ -26,6 +26,12 @@ import {
   type ConnectionFilter
 } from "../../../../components/topology/topology-relationship";
 import { TopologyRelationshipSummary } from "../../../../components/topology/topology-relationship-summary";
+import { TopologyKey } from "../../../../components/topology/topology-key";
+import {
+  TopologyRelationshipDrawer,
+  evaluateRelationshipAutomation
+} from "../../../../components/topology/topology-relationship-drawer";
+import type { SelectedTopologyEdge } from "../../../../components/topology/topology-edge-style";
 import { resolveDependencyDisplayLinks, resolveHierarchyDisplayLinks } from "../../../../components/topology/topology-edge-resolve";
 import { computeLayeredLayout } from "../../../../components/topology/topology-layout";
 import { classifyVisualLayer } from "../../../../components/topology/topology-visual-layers";
@@ -58,6 +64,9 @@ export default function ProjectTopologyPage() {
   const [viewMode, setViewMode] = useState<TopologyViewMode>("map");
   const [replayMinutesAgo, setReplayMinutesAgo] = useState(0);
   const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter>("ALL");
+  const [selectedEdge, setSelectedEdge] = useState<SelectedTopologyEdge | null>(null);
+  const [cardsExpanded, setCardsExpanded] = useState<"none" | "selected" | "all">("selected");
+  const [fixActing, setFixActing] = useState(false);
 
   const relationshipDiagnostics = useMemo(
     () => (topology ? buildNodeRelationshipDiagnostics(topology) : []),
@@ -258,19 +267,31 @@ export default function ProjectTopologyPage() {
               onViewModeChange={setViewMode}
             />
             <TopologyRelationshipSummary topology={topology} diagnostics={relationshipDiagnostics} />
+            <TopologyKey />
             <TopologyTimeReplay minutesAgo={replayMinutesAgo} onChange={setReplayMinutesAgo} />
             <div className="topology-workspace">
               {viewMode === "map" ? (
                 <TopologyCanvas
                   topology={topology}
                   selectedNodeId={selectedNodeId}
-                  onSelectNode={setSelectedNodeId}
+                  onSelectNode={(nodeId) => {
+                    setSelectedNodeId(nodeId);
+                    if (nodeId) setSelectedEdge(null);
+                  }}
+                  selectedEdgeId={selectedEdge?.id ?? null}
+                  onSelectEdge={setSelectedEdge}
                   typeFilter={typeFilter}
                   healthFilter={healthFilter}
                   connectionFilter={connectionFilter}
                   searchQuery={searchQuery}
                   fitToken={fitToken}
                   replayMinutesAgo={replayMinutesAgo}
+                  cardsExpanded={cardsExpanded}
+                  onExpandAll={() => setCardsExpanded("all")}
+                  onCollapseAll={() => {
+                    setCardsExpanded("none");
+                    setSelectedNodeId(null);
+                  }}
                   traceFocus
                   onInteractingChange={setPaused}
                 />
@@ -285,14 +306,41 @@ export default function ProjectTopologyPage() {
                 />
               )}
               <div className="topology-side-stack">
-                <TopologyLiveOpsFeed
-                  projectId={projectId}
-                  topology={topology}
-                  project={project}
-                  selectedNode={selectedNode}
-                  paused={paused}
-                />
-                {selectedNode ? (
+                {selectedEdge ? (
+                  <TopologyRelationshipDrawer
+                    edge={selectedEdge}
+                    topology={topology}
+                    projectId={projectId}
+                    evaluation={evaluateRelationshipAutomation({
+                      edge: selectedEdge,
+                      projectAutomationMode: project?.automationMode
+                    })}
+                    acting={fixActing}
+                    onClose={() => setSelectedEdge(null)}
+                    onFixWithAutomation={() => {
+                      const evaluation = evaluateRelationshipAutomation({
+                        edge: selectedEdge,
+                        projectAutomationMode: project?.automationMode
+                      });
+                      if (evaluation.buttonState === "setup_required" || evaluation.buttonState === "no_automated_fix") {
+                        return;
+                      }
+                      const confirmed = window.confirm("Run approved automated repair");
+                      if (!confirmed) return;
+                      setFixActing(true);
+                      window.setTimeout(() => setFixActing(false), 800);
+                    }}
+                  />
+                ) : (
+                  <TopologyLiveOpsFeed
+                    projectId={projectId}
+                    topology={topology}
+                    project={project}
+                    selectedNode={selectedNode}
+                    paused={paused}
+                  />
+                )}
+                {!selectedEdge && selectedNode ? (
                   <TopologyNodeDrawer
                     topology={topology}
                     node={selectedNode}
@@ -300,9 +348,10 @@ export default function ProjectTopologyPage() {
                     project={project}
                     onClose={() => setSelectedNodeId(null)}
                   />
-                ) : (
+                ) : null}
+                {!selectedEdge && !selectedNode ? (
                   <TopologyApplicationPanel topology={topology} projectId={projectId} project={project} />
-                )}
+                ) : null}
                 <section className="panel topology-intel-slot">
                   <h3>Intelligence</h3>
                   <p className="dashboard-subtle">
