@@ -2,6 +2,12 @@
  * Poll local API + web + DB until ready for Playwright smoke.
  *
  *   pnpm exec tsx scripts/wait-local-stack.ts
+ *
+ * Smoke stack (scripts/start-local-smoke-stack.ps1) must start the API with:
+ *   NODE_ENV=development
+ *   OPSWATCH_E2E_RELAX_AUTH_RATE_LIMIT=true
+ *   OPSWATCH_ALLOW_E2E_RATE_LIMIT_BYPASS=true  (honors x-opswatch-e2e-rate-limit-bypass)
+ * Those flags are ignored when NODE_ENV or VERCEL_ENV is production.
  */
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
