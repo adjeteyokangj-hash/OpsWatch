@@ -5677,6 +5677,23 @@ button {
 .topology-relationship-drawer {
   max-height: min(78vh, 860px);
   overflow: auto;
+  pointer-events: auto;
+  position: relative;
+  z-index: 2;
+}
+
+.topology-setup-links {
+  margin: 0 0 12px;
+}
+
+.topology-setup-link {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.topology-setup-link:hover {
+  color: var(--brand-hover);
 }
 
 .topology-node-card.compact.is-collapsed,

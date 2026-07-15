@@ -2,7 +2,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   TopologyRelationshipDrawer,
-  evaluateRelationshipAutomation
+  evaluateRelationshipAutomation,
+  relationshipSetupHrefs
 } from "./topology-relationship-drawer";
 import type { SelectedTopologyEdge } from "./topology-edge-style";
 import type { ProjectTopologyResponse } from "./topology-types";
@@ -122,7 +123,7 @@ describe("TopologyRelationshipDrawer", () => {
     expect(screen.getAllByText(/Payments dependency failing/i).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("disables Fix with automation when setup is required (no connector)", () => {
+  it("renders an enabled Connect provider CTA linking to connections when setup is required", () => {
     const evaluation = evaluateRelationshipAutomation({ edge, projectAutomationMode: "APPROVAL" });
     expect(evaluation.buttonState).toBe("setup_required");
     render(
@@ -135,9 +136,32 @@ describe("TopologyRelationshipDrawer", () => {
         onFixWithAutomation={vi.fn()}
       />
     );
-    const button = screen.getByTestId("topology-fix-with-automation");
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute("data-state", "setup_required");
+
+    const cta = screen.getByTestId("topology-fix-with-automation");
+    expect(cta).toHaveAttribute("data-state", "setup_required");
+    expect(cta).toHaveAttribute("href", "/connections");
+    expect(cta).toHaveTextContent("Connect provider");
+    expect(cta.tagName).toBe("A");
+    expect(cta).not.toBeDisabled();
+
+    expect(screen.getByTestId("topology-setup-config-link")).toHaveAttribute(
+      "href",
+      "/projects/proj-1/settings"
+    );
+    expect(screen.getByTestId("topology-setup-connections-link")).toHaveAttribute(
+      "href",
+      "/connections"
+    );
+    expect(screen.getByTestId("topology-setup-required-status")).toHaveTextContent("Setup required");
+  });
+});
+
+describe("relationshipSetupHrefs", () => {
+  it("points at real project settings and connections routes", () => {
+    expect(relationshipSetupHrefs("proj-1")).toEqual({
+      configuration: "/projects/proj-1/settings",
+      connections: "/connections"
+    });
   });
 });
 

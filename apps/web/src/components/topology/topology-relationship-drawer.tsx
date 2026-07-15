@@ -32,9 +32,15 @@ type Props = {
 const buttonLabel = (state: AutomationButtonState): string => {
   if (state === "ready") return "Fix with automation";
   if (state === "approval_required") return "Request approval to fix";
-  if (state === "setup_required") return "Setup required";
+  if (state === "setup_required") return "Connect provider";
   return "No automated fix";
 };
+
+/** Destinations for setup_required CTAs — real app routes. */
+export const relationshipSetupHrefs = (projectId: string) => ({
+  configuration: `/projects/${projectId}/settings`,
+  connections: "/connections"
+});
 
 export function TopologyRelationshipDrawer({
   edge,
@@ -74,6 +80,7 @@ export function TopologyRelationshipDrawer({
   const buttonState = evaluation?.buttonState ?? "no_automated_fix";
   const canClick =
     buttonState === "ready" || buttonState === "approval_required";
+  const setupHrefs = relationshipSetupHrefs(projectId);
 
   return (
     <aside className="panel topology-relationship-drawer" data-testid="topology-relationship-drawer">
@@ -234,22 +241,49 @@ export function TopologyRelationshipDrawer({
               </dl>
             ) : null}
             {buttonState === "setup_required" ? (
-              <p>
-                <Link href={`/projects/${projectId}/settings`}>Open configuration</Link>
+              <p className="topology-setup-links">
+                <span className="dashboard-subtle" data-testid="topology-setup-required-status">
+                  Setup required
+                </span>
                 {" · "}
-                <Link href="/connections">Open connections</Link>
+                <Link
+                  href={setupHrefs.configuration}
+                  data-testid="topology-setup-config-link"
+                  className="topology-setup-link"
+                >
+                  Open configuration
+                </Link>
+                {" · "}
+                <Link
+                  href={setupHrefs.connections}
+                  data-testid="topology-setup-connections-link"
+                  className="topology-setup-link"
+                >
+                  Open connections
+                </Link>
               </p>
             ) : null}
-            <button
-              type="button"
-              className="primary-button"
-              disabled={!canClick || acting}
-              onClick={onFixWithAutomation}
-              data-testid="topology-fix-with-automation"
-              data-state={buttonState}
-            >
-              {acting ? "Working…" : buttonLabel(buttonState)}
-            </button>
+            {buttonState === "setup_required" ? (
+              <Link
+                href={setupHrefs.connections}
+                className="primary-button"
+                data-testid="topology-fix-with-automation"
+                data-state={buttonState}
+              >
+                {buttonLabel(buttonState)}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                className="primary-button"
+                disabled={!canClick || acting}
+                onClick={onFixWithAutomation}
+                data-testid="topology-fix-with-automation"
+                data-state={buttonState}
+              >
+                {acting ? "Working…" : buttonLabel(buttonState)}
+              </button>
+            )}
             {canClick ? (
               <p className="dashboard-subtle">Confirmation wording: “Run approved automated repair”</p>
             ) : null}
