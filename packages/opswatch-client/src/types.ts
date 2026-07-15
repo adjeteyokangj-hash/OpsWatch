@@ -21,3 +21,34 @@ export type SendEventInput = Omit<EventPayload, "projectSlug" | "source"> & {
 };
 
 export type BuildHealthInput = Omit<HealthSnapshot, "timestamp">;
+
+export type OtelBridgeSignalKind = "METRIC" | "LOG" | "SPAN";
+
+export type OtelBridgePayload = {
+	resource: {
+		serviceName: string;
+		serviceVersion?: string;
+		deploymentEnvironment?: string;
+		hostName?: string;
+		containerId?: string;
+		attributes?: Record<string, unknown>;
+	};
+	signals: Array<{
+		kind: OtelBridgeSignalKind;
+		name: string;
+		timestamp?: string;
+		severity?: "INFO" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+		value?: number;
+		body?: string;
+		traceId?: string;
+		spanId?: string;
+		parentSpanId?: string;
+		attributes?: Record<string, unknown>;
+	}>;
+};
+
+export type OtelBridgeClientConfig = {
+	baseUrl: string;
+	connectionId: string;
+	signingSecret: string;
+};

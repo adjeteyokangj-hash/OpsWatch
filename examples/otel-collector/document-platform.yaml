@@ -1,0 +1,49 @@
+receivers:
+  otlp:
+    protocols:
+      grpc: {}
+      http: {}
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  batch:
+    send_batch_size: 200
+    timeout: 5s
+  attributes/redact-at-collector:
+    actions:
+      - key: http.request.header.authorization
+        action: delete
+      - key: enduser.id
+        action: delete
+
+exporters:
+  http/opswatch:
+    endpoint: ${env:OPSWATCH_BRIDGE_ENDPOINT}
+    metrics_endpoint: ${env:OPSWATCH_BRIDGE_ENDPOINT}
+    logs_endpoint: ${env:OPSWATCH_BRIDGE_ENDPOINT}
+    traces_endpoint: ${env:OPSWATCH_BRIDGE_ENDPOINT}
+    encoding: json
+    headers:
+      x-opswatch-connection-key: ${env:OPSWATCH_CONNECTION_KEY}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 5m
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redact-at-collector, batch]
+      exporters: [http/opswatch]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redact-at-collector, batch]
+      exporters: [http/opswatch]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redact-at-collector, batch]
+      exporters: [http/opswatch]

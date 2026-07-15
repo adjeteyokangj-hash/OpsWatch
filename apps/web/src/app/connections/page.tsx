@@ -19,6 +19,7 @@ type Manifest = {
   version: string; displayName: string; requiredCapabilities: string[]; supportedAuthMethods: string[]; availableCapabilities: string[];
   configurationSchema: Array<{ key: string; label: string; type: "url" | "string" | "number" | "select"; required?: boolean; description?: string; options?: string[] }>;
   foundationHooks: Array<{ key: string; supported: false; reason: string }>;
+  otelIngestionEnabled?: boolean;
 };
 type LedgerEntry = { id: string; kind: string; summary: string; source: string; occurredAt: string; project: Project | null; connection: { id: string; name: string } | null };
 
@@ -183,6 +184,12 @@ export default function ConnectionsPage() {
             ) : null}
             <div className="form-actions"><button className="secondary-button" type="button" onClick={() => setShowForm(false)}>Cancel</button><button className="primary-button" disabled={submitting}>{submitting ? "Saving…" : "Save connection"}</button></div>
           </form>
+          {mode === "OTEL_COLLECTOR" && manifest?.otelIngestionEnabled === false ? (
+            <aside className="notice-panel" role="status">
+              <strong>Collector ingestion is disabled</strong>
+              <p>Setup details are available now, but the bridge refuses telemetry until an administrator sets <code>OPSWATCH_OTEL_INGESTION_ENABLED=true</code>. Configure a secure credential reference and use the documented official Collector bridge endpoint; OpsWatch does not expose a native OTLP server.</p>
+            </aside>
+          ) : null}
           {manifest?.foundationHooks.length ? <p className="dashboard-subtle">Not implemented: {manifest.foundationHooks.map((hook) => hook.key).join(", ")}. They are not advertised as capabilities.</p> : null}
         </section>
       ) : null}

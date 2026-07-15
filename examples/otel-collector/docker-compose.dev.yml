@@ -1,0 +1,12 @@
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.129.0
+    command: ["--config=/etc/otelcol-contrib/document-platform.yaml"]
+    environment:
+      OPSWATCH_BRIDGE_ENDPOINT: ${OPSWATCH_BRIDGE_ENDPOINT:-http://host.docker.internal:4000/api/internal/otel/v1/bridge/connections/replace-with-connection-id}
+      OPSWATCH_CONNECTION_KEY: ${OPSWATCH_CONNECTION_KEY:?Set a connection credential}
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - ./document-platform.yaml:/etc/otelcol-contrib/document-platform.yaml:ro

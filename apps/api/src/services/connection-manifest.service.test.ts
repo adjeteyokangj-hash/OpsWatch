@@ -30,7 +30,7 @@ describe("connection manifest", () => {
       mode: "OTEL_COLLECTOR",
       authMethod: "API_KEY",
       capabilities: ["telemetry_ingest", "traces"],
-      configuration: { endpoint: "https://collector.internal" },
+      configuration: { serviceName: "document-api" },
       secretRef: "vault://opswatch/collector"
     })).toBeNull();
     expect(getConnectionManifest("OTEL_COLLECTOR").supportedAuthMethods).not.toContain("NONE");

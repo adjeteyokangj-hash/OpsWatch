@@ -14,6 +14,7 @@ import {
   discoverApiConnection,
   testAgentlessConnection
 } from "../services/agentless-connection.service";
+import { isOtelIngestionEnabled } from "../services/otel-bridge.service";
 
 const requireOrg = (req: AuthRequest, res: Response): string | null => {
   const orgId = req.user?.organizationId;
@@ -73,7 +74,11 @@ export const getConnectionManifestHandler = async (req: AuthRequest, res: Respon
     res.status(400).json({ error: "Unknown connection mode" });
     return;
   }
-  res.json({ mode, ...getConnectionManifest(mode) });
+  res.json({
+    mode,
+    ...getConnectionManifest(mode),
+    ...(mode === "OTEL_COLLECTOR" ? { otelIngestionEnabled: isOtelIngestionEnabled() } : {})
+  });
 };
 
 export const negotiateConnectionCapabilities = async (req: AuthRequest, res: Response) => {
