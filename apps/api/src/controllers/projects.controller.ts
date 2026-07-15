@@ -31,7 +31,8 @@ const normalizeProjectRow = (row: any) => {
 		events: row.events ?? row.Event ?? [],
 		integrations: row.integrations ?? row.ProjectIntegration ?? [],
 		notificationChannels: row.notificationChannels ?? row.NotificationChannel ?? [],
-		billing: row.billing ?? row.ProjectBilling ?? null
+		billing: row.billing ?? row.ProjectBilling ?? null,
+		connections: row.connections ?? row.Connection ?? []
 	};
 };
 

@@ -180,6 +180,10 @@ export const projectInclude = {
   Incident: { where: { status: { in: ["OPEN", "INVESTIGATING", "MONITORING"] as ("OPEN" | "INVESTIGATING" | "MONITORING")[] } } },
   Heartbeat: { orderBy: { receivedAt: "desc" as const }, take: 1 },
   ProjectBilling: true,
+  Connection: {
+    where: { isActive: true },
+    select: { id: true, name: true }
+  },
   NotificationChannel: {
     where: { isActive: true },
     select: { type: true, target: true, name: true }
