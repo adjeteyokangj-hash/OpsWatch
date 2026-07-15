@@ -123,7 +123,7 @@ describe("TopologyRelationshipDrawer", () => {
     expect(screen.getAllByText(/Payments dependency failing/i).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders an enabled Connect provider CTA linking to connections when setup is required", () => {
+  it("renders an enabled Connect provider CTA linking to the remediator integration when setup is required", () => {
     const evaluation = evaluateRelationshipAutomation({ edge, projectAutomationMode: "APPROVAL" });
     expect(evaluation.buttonState).toBe("setup_required");
     render(
@@ -139,7 +139,9 @@ describe("TopologyRelationshipDrawer", () => {
 
     const cta = screen.getByTestId("topology-fix-with-automation");
     expect(cta).toHaveAttribute("data-state", "setup_required");
-    expect(cta).toHaveAttribute("href", "/connections");
+    const href = cta.getAttribute("href") ?? "";
+    expect(href).toContain("/projects/proj-1/integrations/worker_provider?");
+    expect(href).toContain("returnTo=");
     expect(cta).toHaveTextContent("Connect provider");
     expect(cta.tagName).toBe("A");
     expect(cta).not.toBeDisabled();
@@ -148,26 +150,42 @@ describe("TopologyRelationshipDrawer", () => {
       "href",
       "/projects/proj-1/settings"
     );
-    expect(screen.getByTestId("topology-setup-connections-link")).toHaveAttribute(
-      "href",
-      "/connections"
+    expect(screen.getByTestId("topology-setup-connections-link").getAttribute("href") ?? "").toContain(
+      "/connections?"
+    );
+    expect(screen.getByTestId("topology-setup-remediator-link").getAttribute("href") ?? "").toContain(
+      "/integrations/worker_provider"
     );
     expect(screen.getByTestId("topology-setup-required-status")).toHaveTextContent("Setup required");
   });
 });
 
 describe("relationshipSetupHrefs", () => {
-  it("points at real project settings and connections routes", () => {
-    expect(relationshipSetupHrefs("proj-1")).toEqual({
-      configuration: "/projects/proj-1/settings",
-      connections: "/connections"
-    });
+  it("points at remediator, project settings, and project-scoped connections with return path", () => {
+    const hrefs = relationshipSetupHrefs("proj-1", { edgeId: "edge-critical" });
+    expect(hrefs.configuration).toBe("/projects/proj-1/settings");
+    expect(hrefs.remediator).toContain("/projects/proj-1/integrations/worker_provider?");
+    expect(hrefs.remediator).toContain("returnTo=");
+    expect(hrefs.remediator).toContain("edgeId=edge-critical");
+    expect(hrefs.connections).toContain("/connections?");
+    expect(hrefs.connections).toContain("projectId=proj-1");
   });
 });
 
 describe("evaluateRelationshipAutomation", () => {
   it("returns setup_required when no remediation capability exists", () => {
     expect(evaluateRelationshipAutomation({ edge }).buttonState).toBe("setup_required");
+  });
+
+  it("returns remediating when an active run targets the edge", () => {
+    const result = evaluateRelationshipAutomation({
+      edge,
+      projectAutomationMode: "APPROVAL",
+      hasRemediationCapability: true,
+      activeRun: { id: "run-1", incidentId: "inc-1", status: "VERIFYING" }
+    });
+    expect(result.buttonState).toBe("remediating");
+    expect(result.activeIncidentId).toBe("inc-1");
   });
 
   it("returns no_automated_fix in Observe mode even when a remediator exists", () => {

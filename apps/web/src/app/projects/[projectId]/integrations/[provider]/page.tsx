@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ProviderConfigForm } from "../../../../../components/integrations/provider-config-form";
 import { ProviderDashboard } from "../../../../../components/integrations/provider-dashboard";
 import { ProjectWorkspaceShell } from "../../../../../components/projects/project-workspace-shell";
@@ -23,9 +23,16 @@ type IntegrationDraft = {
   configJson: Record<string, unknown>;
 };
 
+const safeReturnPath = (value: string | null): string | null => {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
+  return value;
+};
+
 export default function ProviderIntegrationDetailPage() {
   const params = useParams<{ projectId: string; provider: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = safeReturnPath(searchParams.get("returnTo"));
   const { project, loading: projectLoading, error: projectError } = useProjectWorkspace(params.projectId);
   const providerType = useMemo(() => parseIntegrationType(params.provider || "webhook"), [params.provider]);
   const preset = useMemo(() => PROVIDER_PRESETS[providerType] ?? {}, [providerType]);
@@ -227,6 +234,18 @@ export default function ProviderIntegrationDetailPage() {
     >
       {error ? <section className="panel error-panel">{error}</section> : null}
       {message ? <section className="panel success-panel">{message}</section> : null}
+      {returnTo ? (
+        <aside className="notice-panel" role="status" data-testid="integration-return-banner">
+          <strong>Return to topology</strong>
+          <p>
+            After this remediator validates as connected, return to the relationship drawer to re-evaluate Fix with
+            automation.
+          </p>
+          <Link className="secondary-button" href={returnTo} data-testid="integration-return-link">
+            ← Back to topology
+          </Link>
+        </aside>
+      ) : null}
 
       <section className="two-col settings-grid provider-layout">
         <section className="panel">
@@ -303,8 +322,8 @@ export default function ProviderIntegrationDetailPage() {
               <p>Fill in the connection settings and validate before relying on this provider for alerts or automation.</p>
             )}
 
-            <Link className="secondary-button" href={`/projects/${params.projectId}`}>
-              Back to project
+            <Link className="secondary-button" href={returnTo ?? `/projects/${params.projectId}`}>
+              {returnTo ? "← Back to topology" : "Back to project"}
             </Link>
           </aside>
         </div>

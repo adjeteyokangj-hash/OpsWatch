@@ -249,6 +249,71 @@ export const cancelAutomationRunHandler = async (req: AuthRequest, res: Response
   }
 };
 
+const ACTIVE_REMEDIATION_STATUSES = ["APPROVED", "EXECUTING", "VERIFYING"] as const;
+
+/** Active remediating/verifying runs for topology amber-pulse + recovery UX. */
+export const listProjectActiveAutomationRuns = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  const orgId = orgIdOr403(req, res);
+  if (!orgId) return;
+  if (!hasPermission(req.user?.role, "automation:plan:observe")) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const projectId = String(req.params.projectId || "");
+  if (!projectId) {
+    res.status(400).json({ error: "projectId is required" });
+    return;
+  }
+
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, organizationId: orgId },
+    select: { id: true }
+  });
+  if (!project) {
+    res.status(404).json({ error: "Project not found" });
+    return;
+  }
+
+  const runs = await prisma.automationRun.findMany({
+    where: {
+      organizationId: orgId,
+      projectId,
+      status: { in: [...ACTIVE_REMEDIATION_STATUSES] }
+    },
+    include: {
+      Steps: { select: { targetServiceId: true, status: true } }
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 50
+  });
+
+  res.json(
+    runs.map((run) => {
+      const affected = Array.isArray(run.affectedServiceIds)
+        ? (run.affectedServiceIds as unknown[]).filter((id): id is string => typeof id === "string")
+        : [];
+      const targetServiceIds = [
+        ...new Set(
+          run.Steps.map((step) => step.targetServiceId).filter(
+            (id): id is string => typeof id === "string" && id.length > 0
+          )
+        )
+      ];
+      return {
+        id: run.id,
+        incidentId: run.incidentId,
+        status: run.status,
+        affectedServiceIds: affected,
+        targetServiceIds
+      };
+    })
+  );
+};
+
 export const requestAutomationApprovalHandler = async (
   req: AuthRequest,
   res: Response

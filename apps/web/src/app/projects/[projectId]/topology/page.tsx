@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { Shell } from "../../../../components/layout/shell";
 import { Header } from "../../../../components/layout/header";
 import { ProjectWorkspaceNav } from "../../../../components/projects/project-workspace-nav";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../lib/api";
+import type { ProjectIntegration } from "../../../../lib/integrations";
 import { TopologyCanvas } from "../../../../components/topology/topology-canvas";
 import { TopologyNodeDrawer } from "../../../../components/topology/topology-node-drawer";
 import { TopologySummaryCards } from "../../../../components/topology/topology-summary-cards";
@@ -31,7 +32,14 @@ import {
   TopologyRelationshipDrawer,
   evaluateRelationshipAutomation
 } from "../../../../components/topology/topology-relationship-drawer";
+import {
+  type ActiveAutomationRunSummary,
+  projectHasRemediationCapability,
+  relatedIncidentsForEdge,
+  remediatingEdgeIdsFromRuns
+} from "../../../../components/topology/topology-automation-link";
 import type { SelectedTopologyEdge } from "../../../../components/topology/topology-edge-style";
+import { describeSelectedEdge } from "../../../../components/topology/topology-edge-style";
 import { resolveDependencyDisplayLinks, resolveHierarchyDisplayLinks } from "../../../../components/topology/topology-edge-resolve";
 import { computeLayeredLayout } from "../../../../components/topology/topology-layout";
 import { classifyVisualLayer } from "../../../../components/topology/topology-visual-layers";
@@ -46,13 +54,23 @@ type MaintenanceBanner = {
   suppressIncidents: boolean;
 };
 
+type AutomationPlanResponse = {
+  runId?: string;
+  status?: string;
+  permissions?: { canApprove?: boolean };
+};
+
 export default function ProjectTopologyPage() {
   const { projectId } = useParams<{ projectId: string }>();
+  const searchParams = useSearchParams();
   const { project, loading: projectLoading, error: projectError } = useProjectWorkspace(projectId);
   const [topology, setTopology] = useState<ProjectTopologyResponse | null>(null);
   const [maintenance, setMaintenance] = useState<MaintenanceBanner[]>([]);
+  const [integrations, setIntegrations] = useState<ProjectIntegration[]>([]);
+  const [activeRuns, setActiveRuns] = useState<ActiveAutomationRunSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ClassifiedTopologyError | null>(null);
+  const [fixError, setFixError] = useState<string | null>(null);
   const [lastSuccessfulAt, setLastSuccessfulAt] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<TopologyNodeType | "ALL">("ALL");
@@ -67,11 +85,44 @@ export default function ProjectTopologyPage() {
   const [selectedEdge, setSelectedEdge] = useState<SelectedTopologyEdge | null>(null);
   const [cardsExpanded, setCardsExpanded] = useState<"none" | "selected" | "all">("selected");
   const [fixActing, setFixActing] = useState(false);
+  const [restoredEdgeId, setRestoredEdgeId] = useState<string | null>(null);
 
   const relationshipDiagnostics = useMemo(
     () => (topology ? buildNodeRelationshipDiagnostics(topology) : []),
     [topology]
   );
+
+  const hasRemediationCapability = useMemo(
+    () => (projectId ? projectHasRemediationCapability(integrations, projectId) : false),
+    [integrations, projectId]
+  );
+
+  const remediatingEdgeIds = useMemo(
+    () => (topology ? remediatingEdgeIdsFromRuns(topology, activeRuns) : new Set<string>()),
+    [topology, activeRuns]
+  );
+
+  const activeRunForSelectedEdge = useMemo(() => {
+    if (!selectedEdge || !topology) return null;
+    const edgeIds = remediatingEdgeIdsFromRuns(topology, activeRuns);
+    if (!edgeIds.has(selectedEdge.id)) return null;
+    return (
+      activeRuns.find((run) => {
+        const ids = new Set([...run.affectedServiceIds, ...run.targetServiceIds]);
+        return ids.has(selectedEdge.sourceId) || ids.has(selectedEdge.targetId);
+      }) ?? null
+    );
+  }, [selectedEdge, topology, activeRuns]);
+
+  const relationshipEvaluation = useMemo(() => {
+    if (!selectedEdge) return null;
+    return evaluateRelationshipAutomation({
+      edge: selectedEdge,
+      projectAutomationMode: project?.automationMode,
+      hasRemediationCapability,
+      activeRun: activeRunForSelectedEdge
+    });
+  }, [selectedEdge, project?.automationMode, hasRemediationCapability, activeRunForSelectedEdge]);
 
   useEffect(() => {
     if (!selectedEdge) return;
@@ -148,12 +199,20 @@ export default function ProjectTopologyPage() {
       if (!projectId) return;
       if (manual) setRefreshing(true);
       try {
-        const [row, activeMaintenance] = await Promise.all([
+        const [row, activeMaintenance, integrationRows, runRows] = await Promise.all([
           apiFetch<ProjectTopologyResponse>(`/projects/${projectId}/topology`),
-          apiFetch<MaintenanceBanner[]>(`/maintenance-windows/active?projectId=${projectId}`)
+          apiFetch<MaintenanceBanner[]>(`/maintenance-windows/active?projectId=${projectId}`),
+          apiFetch<ProjectIntegration[]>(
+            `/settings/integrations?projectId=${encodeURIComponent(projectId)}`
+          ).catch(() => [] as ProjectIntegration[]),
+          apiFetch<ActiveAutomationRunSummary[]>(
+            `/automation/projects/${encodeURIComponent(projectId)}/active-runs`
+          ).catch(() => [] as ActiveAutomationRunSummary[])
         ]);
         setTopology(row);
         setMaintenance(activeMaintenance);
+        setIntegrations(integrationRows);
+        setActiveRuns(runRows);
         setLastSuccessfulAt(row.generatedAt || new Date().toISOString());
         setError(null);
       } catch (err: unknown) {
@@ -177,6 +236,94 @@ export default function ProjectTopologyPage() {
     }, REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [load, paused]);
+
+  // Deep-link restore after Connect provider → returnTo=?edgeId=
+  useEffect(() => {
+    if (!topology || restoredEdgeId) return;
+    const edgeId = searchParams.get("edgeId");
+    if (!edgeId) return;
+    const edge = topology.edges.find((row) => row.id === edgeId);
+    if (!edge) {
+      setRestoredEdgeId(edgeId);
+      return;
+    }
+    const nodeById = new Map(topology.nodes.map((node) => [node.id, node]));
+    const kind = edge.type === "HIERARCHY" ? "hierarchy" : "dependency";
+    setSelectedEdge(describeSelectedEdge(edge, nodeById, kind));
+    setSelectedNodeId(null);
+    setRestoredEdgeId(edgeId);
+  }, [topology, searchParams, restoredEdgeId]);
+
+  const runFixWithAutomation = useCallback(async () => {
+    if (!selectedEdge || !topology || !projectId) return;
+    const evaluation = evaluateRelationshipAutomation({
+      edge: selectedEdge,
+      projectAutomationMode: project?.automationMode,
+      hasRemediationCapability,
+      activeRun: activeRunForSelectedEdge
+    });
+    if (
+      evaluation.buttonState === "setup_required" ||
+      evaluation.buttonState === "no_automated_fix" ||
+      evaluation.buttonState === "remediating"
+    ) {
+      return;
+    }
+
+    const incidents = relatedIncidentsForEdge(topology, selectedEdge);
+    if (incidents.length === 0) {
+      setFixError(
+        "No related incident on this relationship. Open a linked alert and create an incident before requesting automated repair."
+      );
+      return;
+    }
+
+    const confirmed = window.confirm("Run approved automated repair");
+    if (!confirmed) return;
+
+    const incidentId = incidents[0]!.id;
+    setFixActing(true);
+    setFixError(null);
+    try {
+      const plan = await apiFetch<AutomationPlanResponse>(
+        `/automation/incidents/${incidentId}/plan`,
+        { method: "POST" }
+      );
+      if (evaluation.buttonState === "approval_required" && plan.runId) {
+        if (plan.status !== "APPROVAL_PENDING") {
+          await apiFetch(`/automation/runs/${plan.runId}/request-approval`, { method: "POST" }).catch(
+            () => undefined
+          );
+        }
+      } else if (
+        evaluation.buttonState === "ready" &&
+        plan.runId &&
+        plan.permissions?.canApprove
+      ) {
+        await apiFetch(`/automation/runs/${plan.runId}/approve`, {
+          method: "POST",
+          body: JSON.stringify({
+            approved: true,
+            reason: "Approved from topology relationship drawer"
+          })
+        });
+      }
+      await load(true);
+      window.location.assign(`/incidents/${incidentId}`);
+    } catch (err: unknown) {
+      setFixError(err instanceof Error ? err.message : "Failed to start automated repair");
+    } finally {
+      setFixActing(false);
+    }
+  }, [
+    selectedEdge,
+    topology,
+    projectId,
+    project?.automationMode,
+    hasRemediationCapability,
+    activeRunForSelectedEdge,
+    load
+  ]);
 
   const selectedNode = topology?.nodes.find((row) => row.id === selectedNodeId) ?? null;
   const projectName = topology?.project.name ?? project?.name ?? "Project";
@@ -244,6 +391,11 @@ export default function ProjectTopologyPage() {
         </section>
 
         {projectError ? <section className="panel error-panel">{projectError}</section> : null}
+        {fixError ? (
+          <section className="panel error-panel" role="alert" data-testid="topology-fix-error">
+            {fixError}
+          </section>
+        ) : null}
 
         {maintenance.length > 0 ? (
           <section className="panel maintenance-banner">
@@ -271,7 +423,11 @@ export default function ProjectTopologyPage() {
             <EmptyState
               title="No topology data"
               description="Register services and dependencies to build the live service map."
-              action={<Link className="primary-button" href={`/projects/${projectId}/components`}>Open components</Link>}
+              action={
+                <Link className="primary-button" href={`/projects/${projectId}/components`}>
+                  Open components
+                </Link>
+              }
             />
           </section>
         ) : null}
@@ -281,7 +437,11 @@ export default function ProjectTopologyPage() {
             <EmptyState
               title="Topology is empty"
               description="This application has no monitored nodes yet. Add modules, workflows, or services to populate the map."
-              action={<Link className="primary-button" href={`/projects/${projectId}/modules`}>Add modules</Link>}
+              action={
+                <Link className="primary-button" href={`/projects/${projectId}/modules`}>
+                  Add modules
+                </Link>
+              }
             />
           </section>
         ) : null}
@@ -323,6 +483,7 @@ export default function ProjectTopologyPage() {
                   }}
                   selectedEdgeId={selectedEdge?.id ?? null}
                   onSelectEdge={setSelectedEdge}
+                  remediatingEdgeIds={remediatingEdgeIds}
                   typeFilter={typeFilter}
                   healthFilter={healthFilter}
                   connectionFilter={connectionFilter}
@@ -354,24 +515,11 @@ export default function ProjectTopologyPage() {
                     edge={selectedEdge}
                     topology={topology}
                     projectId={projectId}
-                    evaluation={evaluateRelationshipAutomation({
-                      edge: selectedEdge,
-                      projectAutomationMode: project?.automationMode
-                    })}
+                    evaluation={relationshipEvaluation}
                     acting={fixActing}
                     onClose={() => setSelectedEdge(null)}
                     onFixWithAutomation={() => {
-                      const evaluation = evaluateRelationshipAutomation({
-                        edge: selectedEdge,
-                        projectAutomationMode: project?.automationMode
-                      });
-                      if (evaluation.buttonState === "setup_required" || evaluation.buttonState === "no_automated_fix") {
-                        return;
-                      }
-                      const confirmed = window.confirm("Run approved automated repair");
-                      if (!confirmed) return;
-                      setFixActing(true);
-                      window.setTimeout(() => setFixActing(false), 800);
+                      void runFixWithAutomation();
                     }}
                   />
                 ) : (
@@ -398,7 +546,8 @@ export default function ProjectTopologyPage() {
                 <section className="panel topology-intel-slot">
                   <h3>Intelligence</h3>
                   <p className="dashboard-subtle">
-                    Predictions stay disabled. Patterns and deploy correlation live on the Intelligence tab when evidence exists.
+                    Predictions stay disabled. Patterns and deploy correlation live on the Intelligence tab when evidence
+                    exists.
                   </p>
                   <Link className="text-link" href={`/projects/${projectId}/insights`}>
                     Open Intelligence →

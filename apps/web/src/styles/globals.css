@@ -4448,6 +4448,25 @@ button {
   stroke: #94a3b8;
 }
 
+.topology-health-remediating {
+  color: #d97706;
+  stroke: #d97706;
+  stroke-dasharray: 6 4;
+  animation: topology-edge-remediating-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes topology-edge-remediating-pulse {
+  0%,
+  100% {
+    stroke: #d97706;
+    opacity: 0.72;
+  }
+  50% {
+    stroke: #fbbf24;
+    opacity: 1;
+  }
+}
+
 .topology-node rect {
   fill: #ffffff;
   stroke-width: 2;

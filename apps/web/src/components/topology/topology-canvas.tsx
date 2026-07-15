@@ -22,7 +22,8 @@ import {
   classifyVisualLayer,
   moreLayerPlural,
   visualLayerCountLabel,
-  visualLayerTitle
+  visualLayerTitle,
+  type VisualLayer
 } from "./topology-visual-layers";
 import {
   buildNodeRelationshipDiagnostics,
@@ -45,6 +46,8 @@ type Props = {
   onSelectNode: (nodeId: string | null) => void;
   selectedEdgeId?: string | null;
   onSelectEdge?: (edge: SelectedTopologyEdge | null) => void;
+  /** Dependency edges currently remediating / verifying — amber pulse. */
+  remediatingEdgeIds?: ReadonlySet<string>;
   typeFilter: TopologyNodeType | "ALL";
   healthFilter: TopologyHealthStatus | "ALL";
   onInteractingChange?: (interacting: boolean) => void;
@@ -122,6 +125,7 @@ export const TopologyCanvas = ({
   onSelectNode,
   selectedEdgeId = null,
   onSelectEdge,
+  remediatingEdgeIds,
   typeFilter,
   healthFilter,
   onInteractingChange,
@@ -647,6 +651,7 @@ export const TopologyCanvas = ({
               focusNodeIds.size > 0 &&
               (!focusNodeIds.has(link.sourceId) || !focusNodeIds.has(link.targetId));
             const selected = selectedEdgeId === link.edge.id || selectedEdgeId === link.key;
+            const remediating = remediatingEdgeIds?.has(link.edge.id) ?? false;
             const selectedDesc = describeSelectedEdge(link.edge, nodeById, "dependency", edgeDescribeOptions);
 
             const selectDependency = (event: React.SyntheticEvent) => {
@@ -658,14 +663,15 @@ export const TopologyCanvas = ({
             return (
               <g
                 key={link.key}
-                className={`topology-edge topology-edge-dependency${edgeDimmed ? " dimmed" : ""}${selected ? " selected" : ""}`}
+                className={`topology-edge topology-edge-dependency${edgeDimmed ? " dimmed" : ""}${selected ? " selected" : ""}${remediating ? " remediating" : ""}`}
                 data-testid={`topology-edge-${link.edge.id}`}
                 data-edge-kind="dependency"
                 data-edge-health={edgeHealth}
+                data-edge-remediating={remediating ? "true" : "false"}
                 data-edge-id={link.edge.id}
                 role="button"
                 tabIndex={0}
-                aria-label={`Relationship ${selectedDesc.sourceName} to ${selectedDesc.targetName}, ${selectedDesc.writtenHealth}`}
+                aria-label={`Relationship ${selectedDesc.sourceName} to ${selectedDesc.targetName}, ${remediating ? "remediating" : selectedDesc.writtenHealth}`}
                 onClick={selectDependency}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -677,7 +683,7 @@ export const TopologyCanvas = ({
                 <path d={pathD} className="topology-edge-hit" />
                 <path
                   d={pathD}
-                  className={`topology-edge-line topology-edge-line--dependency ${dependencyEdgeColorClass(edgeHealth)}${link.edge.critical ? " critical" : ""}`}
+                  className={`topology-edge-line topology-edge-line--dependency ${remediating ? "topology-health-remediating" : dependencyEdgeColorClass(edgeHealth)}${link.edge.critical ? " critical" : ""}`}
                   markerEnd="url(#topology-arrow)"
                   strokeWidth={edgeStrokeWidth(weight)}
                   opacity={0.92}
@@ -685,7 +691,7 @@ export const TopologyCanvas = ({
                 <TrafficPackets
                   pathD={pathD}
                   edgeKey={link.key}
-                  tone={trafficTone(edgeHealth)}
+                  tone={remediating ? "degraded" : trafficTone(edgeHealth)}
                   critical={link.edge.critical}
                   dimmed={edgeDimmed}
                   live={replayMinutesAgo === 0}

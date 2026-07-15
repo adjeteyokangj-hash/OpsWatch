@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Header } from "../../components/layout/header";
 import { Shell } from "../../components/layout/shell";
 import { EmptyState } from "../../components/ui/empty-state";
@@ -44,13 +46,23 @@ type HealthSnapshot = {
   calculatedAt: string;
 };
 
+const safeReturnPath = (value: string | null): string | null => {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
+  return value;
+};
+
 export default function ConnectionsPage() {
+  const searchParams = useSearchParams();
+  const returnTo = safeReturnPath(searchParams.get("returnTo"));
+  const scopedProjectId = searchParams.get("projectId") || "";
+  const edgeId = searchParams.get("edgeId");
+
   const [connections, setConnections] = useState<Connection[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(Boolean(scopedProjectId));
   const [mode, setMode] = useState("AGENTLESS");
   const [authMethod, setAuthMethod] = useState("NONE");
   const [manifest, setManifest] = useState<Manifest | null>(null);
@@ -79,6 +91,11 @@ export default function ConnectionsPage() {
     for (const row of health?.entities ?? []) map.set(row.entityId, row);
     return map;
   }, [health]);
+
+  const scopedProjectName = useMemo(
+    () => projects.find((row) => row.id === scopedProjectId)?.name ?? null,
+    [projects, scopedProjectId]
+  );
 
   const loadTopology = async (provenance: (typeof provenanceFilters)[number]) => {
     const query = new URLSearchParams({ includePendingLearned: "true" });
@@ -164,6 +181,9 @@ export default function ConnectionsPage() {
       setCapabilities([]);
       setShowForm(false);
       await load();
+      if (returnTo) {
+        window.location.assign(returnTo);
+      }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Failed to create connection");
     } finally {
@@ -208,6 +228,20 @@ export default function ConnectionsPage() {
         description="Configure evidence-producing operational connections. Credentials are stored as existing secure references, never entered into this form."
         actions={<button type="button" className="primary-button" onClick={() => setShowForm(true)}>+ Add connection</button>}
       />
+      {returnTo ? (
+        <aside className="notice-panel" role="status" data-testid="connections-return-banner">
+          <strong>Return to topology</strong>
+          <p>
+            {scopedProjectName
+              ? `Configuring connections for ${scopedProjectName}${edgeId ? ` · relationship ${edgeId}` : ""}.`
+              : "You came here from a topology relationship that needs a provider."}{" "}
+            After saving, OpsWatch can send you back to finish the Fix with automation journey.
+          </p>
+          <Link className="secondary-button" href={returnTo} data-testid="connections-return-link">
+            ← Back to topology
+          </Link>
+        </aside>
+      ) : null}
       {error ? <section className="panel error-panel" role="alert">{error}</section> : null}
       {showForm ? (
         <section className="panel" aria-label="Add connection">
@@ -227,7 +261,14 @@ export default function ConnectionsPage() {
               </select>
             </label>
             <label>Application
-              <select name="projectId" defaultValue=""><option value="">Organization-wide</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>
+              <select name="projectId" defaultValue={scopedProjectId}>
+                <option value="">Organization-wide</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>Environment<input name="environment" defaultValue="production" maxLength={80} /></label>
             <label>Secure credential reference<input name="secretRef" placeholder="env://WEBHOOK_SECRET" maxLength={300} /></label>

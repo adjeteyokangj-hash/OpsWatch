@@ -4,8 +4,14 @@ import Link from "next/link";
 import type { SelectedTopologyEdge } from "./topology-edge-style";
 import type { ProjectTopologyResponse } from "./topology-types";
 import { buildNodeRelationshipDiagnostics } from "./topology-relationship";
+import { topologyReturnPath } from "./topology-automation-link";
 
-export type AutomationButtonState = "ready" | "approval_required" | "setup_required" | "no_automated_fix";
+export type AutomationButtonState =
+  | "ready"
+  | "approval_required"
+  | "setup_required"
+  | "no_automated_fix"
+  | "remediating";
 
 export type RelationshipAutomationEvaluation = {
   buttonState: AutomationButtonState;
@@ -16,6 +22,9 @@ export type RelationshipAutomationEvaluation = {
   riskLevel: "LOW" | "MEDIUM" | "HIGH" | null;
   verificationMethod: string | null;
   rollbackMethod: string | null;
+  /** When remediating, link to the incident carrying the active run. */
+  activeIncidentId?: string | null;
+  activeRunId?: string | null;
 };
 
 type Props = {
@@ -33,14 +42,25 @@ const buttonLabel = (state: AutomationButtonState): string => {
   if (state === "ready") return "Fix with automation";
   if (state === "approval_required") return "Request approval to fix";
   if (state === "setup_required") return "Connect provider";
+  if (state === "remediating") return "View repair in progress";
   return "No automated fix";
 };
 
-/** Destinations for setup_required CTAs — real app routes. */
-export const relationshipSetupHrefs = (projectId: string) => ({
-  configuration: `/projects/${projectId}/settings`,
-  connections: "/connections"
-});
+/** Destinations for setup_required CTAs — remediator first, then connections + settings. */
+export const relationshipSetupHrefs = (
+  projectId: string,
+  opts?: { edgeId?: string | null }
+) => {
+  const returnTo = topologyReturnPath(projectId, opts?.edgeId);
+  const params = new URLSearchParams({ projectId, returnTo });
+  if (opts?.edgeId) params.set("edgeId", opts.edgeId);
+  const query = params.toString();
+  return {
+    configuration: `/projects/${projectId}/settings`,
+    connections: `/connections?${query}`,
+    remediator: `/projects/${projectId}/integrations/worker_provider?${query}`
+  };
+};
 
 export function TopologyRelationshipDrawer({
   edge,
@@ -79,8 +99,8 @@ export function TopologyRelationshipDrawer({
         : null;
   const buttonState = evaluation?.buttonState ?? "no_automated_fix";
   const canClick =
-    buttonState === "ready" || buttonState === "approval_required";
-  const setupHrefs = relationshipSetupHrefs(projectId);
+    buttonState === "ready" || buttonState === "approval_required" || buttonState === "remediating";
+  const setupHrefs = relationshipSetupHrefs(projectId, { edgeId: edge.id });
 
   return (
     <aside className="panel topology-relationship-drawer" data-testid="topology-relationship-drawer">
@@ -277,6 +297,14 @@ export function TopologyRelationshipDrawer({
                 </span>
                 {" · "}
                 <Link
+                  href={setupHrefs.remediator}
+                  data-testid="topology-setup-remediator-link"
+                  className="topology-setup-link"
+                >
+                  Connect remediator
+                </Link>
+                {" · "}
+                <Link
                   href={setupHrefs.configuration}
                   data-testid="topology-setup-config-link"
                   className="topology-setup-link"
@@ -295,7 +323,16 @@ export function TopologyRelationshipDrawer({
             ) : null}
             {buttonState === "setup_required" ? (
               <Link
-                href={setupHrefs.connections}
+                href={setupHrefs.remediator}
+                className="primary-button"
+                data-testid="topology-fix-with-automation"
+                data-state={buttonState}
+              >
+                {buttonLabel(buttonState)}
+              </Link>
+            ) : buttonState === "remediating" && evaluation.activeIncidentId ? (
+              <Link
+                href={`/incidents/${evaluation.activeIncidentId}`}
                 className="primary-button"
                 data-testid="topology-fix-with-automation"
                 data-state={buttonState}
@@ -314,7 +351,7 @@ export function TopologyRelationshipDrawer({
                 {acting ? "Working…" : buttonLabel(buttonState)}
               </button>
             )}
-            {canClick ? (
+            {buttonState === "ready" || buttonState === "approval_required" ? (
               <p className="dashboard-subtle">Confirmation wording: “Run approved automated repair”</p>
             ) : null}
           </>
@@ -328,12 +365,18 @@ export function TopologyRelationshipDrawer({
   );
 }
 
+/** Shared setup/no-action wording — keep aligned with alert automation evaluation. */
+export const RELATIONSHIP_NO_REMEDIATOR_REASON =
+  "OpsWatch detected this problem, but no approved automated repair is currently configured. Connect a provider with a scoped remediation action (worker / service restart webhook), then set organisation policy to Approval or Autonomous.";
+
 /** Client-side evaluation until a relationship-scoped remediation connector is registered. */
 export const evaluateRelationshipAutomation = (input: {
   edge: SelectedTopologyEdge;
   projectAutomationMode?: string | null;
   /** When true, a scoped remediator is registered (tests / future connectors). Default: false. */
   hasRemediationCapability?: boolean;
+  /** Active remediating/verifying run for endpoints of this edge. */
+  activeRun?: { id: string; incidentId: string; status: string } | null;
 }): RelationshipAutomationEvaluation => {
   const modeRaw = (input.projectAutomationMode || "OBSERVE").toUpperCase();
   const automationMode =
@@ -352,6 +395,21 @@ export const evaluateRelationshipAutomation = (input: {
       riskLevel: null,
       verificationMethod: null,
       rollbackMethod: null
+    };
+  }
+
+  if (input.activeRun) {
+    return {
+      buttonState: "remediating",
+      automationMode,
+      reason: `Automated repair is ${input.activeRun.status.toLowerCase().replaceAll("_", " ")}. OpsWatch will verify recovery on this dependency after the run completes.`,
+      proposedAction: "Repair in progress",
+      requiredScope: "remediation:execute",
+      riskLevel: null,
+      verificationMethod: "Dependency health after consecutive successful checks",
+      rollbackMethod: null,
+      activeIncidentId: input.activeRun.incidentId,
+      activeRunId: input.activeRun.id
     };
   }
 
@@ -381,8 +439,7 @@ export const evaluateRelationshipAutomation = (input: {
     return {
       buttonState: "setup_required",
       automationMode,
-      reason:
-        "OpsWatch detected this problem, but no approved automated repair is configured for this dependency. Connect a provider with a scoped remediation action, then set organisation policy to Approval or Autonomous.",
+      reason: RELATIONSHIP_NO_REMEDIATOR_REASON,
       ...proposed
     };
   }

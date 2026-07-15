@@ -108,7 +108,7 @@ export const evaluateAlertAutomation = async (input: {
       requiredPermissions: ["remediation:execute", "connector:heartbeat-worker"],
       approvalRequired: automationMode === "APPROVAL" || automationMode === "AUTONOMOUS",
       reasonNoAction:
-        "OpsWatch detected this problem, but no approved automated repair is currently configured. The heartbeat is ingested via an OpsWatch API key; no connector can restart the client sender, worker, or scheduled job.",
+        "OpsWatch detected this problem, but no approved automated repair is currently configured. The heartbeat is ingested via an OpsWatch API key; no connector can restart the client sender, worker, or scheduled job. Connect a worker / service remediator on the project Integrations page if automated restart becomes available.",
       executionStatus: "NOT_ATTEMPTED",
       verificationStatus: alert.status === ("RECOVERING" as AlertStatus) ? "IN_PROGRESS" : null,
       finalOutcome: null,
@@ -153,7 +153,7 @@ export const evaluateAlertAutomation = async (input: {
     requiredPermissions: [],
     approvalRequired: false,
     reasonNoAction:
-      "OpsWatch detected this problem, but no approved automated repair is currently configured for this alert type.",
+      "OpsWatch detected this problem, but no approved automated repair is currently configured for this alert type. Connect a scoped remediator (worker / service restart webhook) on the project Integrations page when an approved action exists.",
     executionStatus: "NOT_ATTEMPTED",
     verificationStatus: null,
     finalOutcome: null,

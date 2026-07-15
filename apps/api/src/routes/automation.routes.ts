@@ -6,6 +6,7 @@ import {
   createAutomationPlan,
   getAutomationRun,
   listAutomationPlaybooks,
+  listProjectActiveAutomationRuns,
   postAutomationTestModeHandler,
   rejectAutomationRunHandler,
   requestAutomationApprovalHandler
@@ -40,6 +41,11 @@ router.post(
 );
 router.post("/automation/plan", requirePermission("automation:plan:observe"), createAutomationPlan);
 router.post("/automation/incidents/:incidentId/plan", requirePermission("automation:plan:observe"), createAutomationPlan);
+router.get(
+  "/automation/projects/:projectId/active-runs",
+  requirePermission("automation:plan:observe"),
+  listProjectActiveAutomationRuns
+);
 router.get("/automation/runs/:runId", requirePermission("automation:plan:observe"), getAutomationRun);
 router.post("/automation/runs/:runId/request-approval", requirePermission("automation:plan:observe"), requestAutomationApprovalHandler);
 router.post("/automation/runs/:runId/approve", requirePermission("automation:plan:approve"), approveAutomationRunHandler);
