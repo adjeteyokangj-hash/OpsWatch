@@ -51,6 +51,7 @@ const cards = [
 
 export default function AutomationHubPage() {
   const [items, setItems] = useState<HistoryItem[]>([]);
+  const [gates, setGates] = useState<Array<{ key: string; enabled: boolean; description: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,8 +60,18 @@ export default function AutomationHubPage() {
       setLoading(true);
       setError(null);
       try {
-        const payload = await apiFetch<{ items: HistoryItem[] }>("/intelligence/automation-history?limit=20");
+        const [payload, gatePayload] = await Promise.all([
+          apiFetch<{ items: HistoryItem[] }>("/intelligence/automation-history?limit=20"),
+          apiFetch<{ gates: Array<{ key: string; enabled: boolean; description: string }> }>(
+            "/intelligence/feature-gates"
+          ).catch(() => ({ gates: [] }))
+        ]);
         setItems(payload.items ?? []);
+        setGates(
+          (gatePayload.gates ?? []).filter((gate) =>
+            ["AUTO_REPAIR", "AUTOMATION_TEST_MODE", "PREDICTIONS"].includes(gate.key)
+          )
+        );
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to load automation history");
       } finally {
@@ -82,8 +93,22 @@ export default function AutomationHubPage() {
     <Shell>
       <Header title="Automation Centre" />
       <p className="dashboard-subtle">
-        Playbooks, approvals, verification, and evidence-backed run history. No autonomous claims without recorded outcomes.
+        Playbooks, approvals, verification, and evidence-backed run history. High-impact auto-repair stays blocked unless explicitly enabled.
       </p>
+
+      {gates.length > 0 ? (
+        <PageSection title="Controlled automation gates" description="Live flags for repair and prediction emission.">
+          <div className="feature-gate-grid">
+            {gates.map((gate) => (
+              <article className="feature-gate-card" key={gate.key}>
+                <strong>{gate.key.replace(/_/g, " ")}</strong>
+                <StatusBadge label={gate.enabled ? "Enabled" : "Off"} tone={gate.enabled ? "warning" : "muted"} />
+                <p className="dashboard-subtle">{gate.description}</p>
+              </article>
+            ))}
+          </div>
+        </PageSection>
+      ) : null}
 
       <section className="grid-6 dashboard-metrics">
         <StatCard label="Recent runs" value={loading ? "-" : items.length} />

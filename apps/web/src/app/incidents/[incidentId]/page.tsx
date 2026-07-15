@@ -78,8 +78,22 @@ type RootCauseCandidate = {
   referenceId: string;
   title: string;
   score: number;
+  confidenceLabel?: "POSSIBLE" | "PROBABLE" | "CONFIRMED";
   rationale: string;
+  evidenceSummary?: string[];
+  alternativeCauses?: string[];
   metadata: Record<string, unknown>;
+};
+
+type IncidentIntelligence = {
+  signalLayer: "SIGNAL" | "ALERT" | "CORRELATED_INCIDENT";
+  fingerprint: string;
+  mergedIntoIncidentId: string | null;
+  mergedFromCount: number;
+  reopenCount: number;
+  alertCount: number;
+  evidenceOnly: boolean;
+  topCandidate: RootCauseCandidate | null;
 };
 
 const SEVERITY_STYLES: Record<string, string> = {
@@ -123,6 +137,8 @@ export default function IncidentDetailPage() {
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<IncidentTimelineEvent[]>([]);
   const [rootCauseCandidates, setRootCauseCandidates] = useState<RootCauseCandidate[]>([]);
+  const [intelligence, setIntelligence] = useState<IncidentIntelligence | null>(null);
+  const [reopening, setReopening] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [autoHealing, setAutoHealing] = useState(false);
   const [autoHealMessage, setAutoHealMessage] = useState<string | null>(null);
@@ -159,16 +175,18 @@ export default function IncidentDetailPage() {
       setLoading(true);
       setLoadError(null);
       try {
-        const [inc, timelineRows, candidateRows] = await Promise.all([
+        const [inc, timelineRows, candidateRows, intelligenceRow] = await Promise.all([
           apiFetch<Incident>(`/incidents/${incidentId}`),
           apiFetch<IncidentTimelineEvent[]>(`/incidents/${incidentId}/timeline`),
-          apiFetch<RootCauseCandidate[]>(`/incidents/${incidentId}/root-cause-candidates`)
+          apiFetch<RootCauseCandidate[]>(`/incidents/${incidentId}/root-cause-candidates`),
+          apiFetch<IncidentIntelligence>(`/incidents/${incidentId}/intelligence`).catch(() => null)
         ]);
         setIncident(inc);
         setStatus(inc.status);
         setRootCause(inc.rootCause ?? "");
         setTimeline(Array.isArray(timelineRows) ? timelineRows : []);
         setRootCauseCandidates(Array.isArray(candidateRows) ? candidateRows : []);
+        setIntelligence(intelligenceRow);
         setAnalysisError(null);
       } catch (err: any) {
         setLoadError(err?.message || "Failed to load incident");
@@ -176,6 +194,7 @@ export default function IncidentDetailPage() {
         setIncident(null);
         setTimeline([]);
         setRootCauseCandidates([]);
+        setIntelligence(null);
       } finally {
         setLoading(false);
       }
@@ -862,14 +881,26 @@ export default function IncidentDetailPage() {
             <button
               type="button"
               className="secondary-button"
-              disabled={saving}
+              disabled={saving || reopening}
               onClick={() => {
-                if (window.confirm("Reopen this incident? Resolved time will be cleared.")) {
-                  void saveIncident("OPEN");
-                }
+                if (!window.confirm("Reopen this incident? Cooldown rules still apply.")) return;
+                void (async () => {
+                  setReopening(true);
+                  setSaveMsg(null);
+                  try {
+                    await apiFetch(`/incidents/${incident.id}/reopen`, { method: "POST", body: "{}" });
+                    setStatus("OPEN");
+                    setIncident({ ...incident, status: "OPEN", resolvedAt: null });
+                    setSaveMsg("Incident reopened");
+                  } catch (err: any) {
+                    setSaveMsg(err?.message || "Could not reopen incident");
+                  } finally {
+                    setReopening(false);
+                  }
+                })();
               }}
             >
-              Reopen
+              {reopening ? "Reopening…" : "Reopen"}
             </button>
           ) : null}
           {incident.status !== "RESOLVED" && incident.status !== "OPEN" ? (
@@ -945,6 +976,34 @@ export default function IncidentDetailPage() {
           </section>
 
           <section className="panel">
+            <h2>Correlation intelligence</h2>
+            {intelligence ? (
+              <div className="dashboard-list">
+                <article className="dashboard-item">
+                  <div className="root-cause-candidate-head">
+                    <strong>Signal layer</strong>
+                    <span className="pill">{intelligence.signalLayer.replace(/_/g, " ")}</span>
+                  </div>
+                  <p className="dashboard-subtle">
+                    {intelligence.alertCount} linked alert{intelligence.alertCount === 1 ? "" : "s"}
+                    {intelligence.mergedFromCount > 0 ? ` · ${intelligence.mergedFromCount} merged in` : ""}
+                    {intelligence.reopenCount > 0 ? ` · reopened ${intelligence.reopenCount}×` : ""}
+                  </p>
+                  <p className="dashboard-subtle mono-meta">Fingerprint {intelligence.fingerprint}</p>
+                  {intelligence.topCandidate ? (
+                    <p className="dashboard-subtle">
+                      Top evidence candidate: {intelligence.topCandidate.confidenceLabel ?? "POSSIBLE"} —{" "}
+                      {intelligence.topCandidate.title}
+                    </p>
+                  ) : null}
+                </article>
+              </div>
+            ) : (
+              <p className="dashboard-subtle">Correlation intelligence is unavailable for this incident.</p>
+            )}
+          </section>
+
+          <section className="panel">
             <h2>Root-cause candidates</h2>
             {rootCauseCandidates.length === 0 ? (
               <p className="dashboard-subtle">No ranked root-cause candidates are available yet.</p>
@@ -954,11 +1013,27 @@ export default function IncidentDetailPage() {
                   <article key={candidate.referenceId} className="dashboard-item root-cause-candidate-card">
                     <div className="root-cause-candidate-head">
                       <strong>{candidate.title}</strong>
-                      <span className="confidence-badge medium">Score {Math.round(candidate.score * 100)}%</span>
+                      <span
+                        className={`confidence-badge ${(candidate.confidenceLabel ?? "POSSIBLE").toLowerCase()}`}
+                      >
+                        {candidate.confidenceLabel ?? "POSSIBLE"} · {Math.round(candidate.score * 100)}%
+                      </span>
                     </div>
                     <p className="dashboard-subtle root-cause-candidate-meta">
                       {candidate.kind.replace(/_/g, " ")} • {candidate.rationale}
                     </p>
+                    {candidate.evidenceSummary && candidate.evidenceSummary.length > 0 ? (
+                      <ul className="intelligence-muted-list">
+                        {candidate.evidenceSummary.slice(0, 3).map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {candidate.alternativeCauses && candidate.alternativeCauses.length > 0 ? (
+                      <p className="dashboard-subtle">
+                        Alternatives: {candidate.alternativeCauses.slice(0, 2).join(" · ")}
+                      </p>
+                    ) : null}
                   </article>
                 ))}
               </div>

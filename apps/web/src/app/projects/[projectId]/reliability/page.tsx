@@ -7,10 +7,39 @@ import { ProjectWorkspaceShell } from "../../../../components/projects/project-w
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../lib/api";
 
-type Service = { id: string; name: string; type: string; isCritical: boolean };
+type Service = {
+  id: string;
+  name: string;
+  type: string;
+  isCritical: boolean;
+  ownerTeam?: string | null;
+  runbookUrl?: string | null;
+  escalationContact?: string | null;
+};
 type Dependency = { id: string; fromServiceId: string; toServiceId: string; dependencyType: string; criticality: string; isActive: boolean; FromService: Service; ToService: Service };
-type Window = { availabilityPct?: number; errorRatePct?: number; burnRate?: number; status: string };
-type Slo = { id: string; name: string; serviceId?: string; targetType: string; sliType: string; targetPct: number; windowType: string; windowDays: number; latencyThresholdMs?: number; enabled: boolean; Service?: Service; currentWindow?: Window };
+type Window = { availabilityPct?: number; errorRatePct?: number; burnRate?: number; status: string; windowMinutes?: number };
+type ErrorBudget = {
+  targetPct: number;
+  availabilityPct: number | null;
+  errorBudgetRemainingPct: number | null;
+  burnRate: number | null;
+  status: string;
+};
+type Slo = {
+  id: string;
+  name: string;
+  serviceId?: string;
+  targetType: string;
+  sliType: string;
+  targetPct: number;
+  windowType: string;
+  windowDays: number;
+  latencyThresholdMs?: number;
+  enabled: boolean;
+  Service?: Service;
+  currentWindow?: Window;
+  errorBudget?: ErrorBudget;
+};
 
 const emptyDependency = { fromServiceId: "", toServiceId: "", dependencyType: "RUNTIME", criticality: "HIGH", isActive: true };
 const emptySlo = { name: "", serviceId: "", targetType: "SERVICE", sliType: "AVAILABILITY", targetPct: 99.9, windowType: "ROLLING", windowDays: 30, latencyThresholdMs: 500, enabled: true };
@@ -25,6 +54,8 @@ export default function ReliabilityManagementPage() {
   const [slo, setSlo] = useState<any>(emptySlo);
   const [editingDependency, setEditingDependency] = useState<string | null>(null);
   const [editingSlo, setEditingSlo] = useState<string | null>(null);
+  const [ownershipServiceId, setOwnershipServiceId] = useState("");
+  const [ownership, setOwnership] = useState({ ownerTeam: "", runbookUrl: "", escalationContact: "" });
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -99,6 +130,25 @@ export default function ReliabilityManagementPage() {
     }
   };
 
+  const saveOwnership = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!ownershipServiceId) return;
+    try {
+      await apiFetch(`/services/${ownershipServiceId}/ownership`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ownerTeam: ownership.ownerTeam || null,
+          runbookUrl: ownership.runbookUrl || null,
+          escalationContact: ownership.escalationContact || null
+        })
+      });
+      await load();
+      setError(null);
+    } catch (err: any) {
+      setError(err?.message || "Could not save ownership");
+    }
+  };
+
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
@@ -122,6 +172,54 @@ export default function ReliabilityManagementPage() {
           ))}
         </div>
         <p className="dashboard-subtle">Dependencies connect monitored components. SLO scope keeps app, module, workflow and component health distinct.</p>
+      </section>
+
+      <section className="panel">
+        <h2>Ownership & runbooks</h2>
+        <p className="dashboard-subtle">Route ownership and runbook links for components used in automation and incident response.</p>
+        <form className="stack-form reliability-form" onSubmit={saveOwnership}>
+          <div className="ownership-grid">
+            <label>
+              Service
+              <select
+                required
+                value={ownershipServiceId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setOwnershipServiceId(id);
+                  const row = services.find((service) => service.id === id);
+                  setOwnership({
+                    ownerTeam: row?.ownerTeam ?? "",
+                    runbookUrl: row?.runbookUrl ?? "",
+                    escalationContact: row?.escalationContact ?? ""
+                  });
+                }}
+              >
+                <option value="">Select…</option>
+                {services.map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Owner team
+              <input value={ownership.ownerTeam} onChange={(e) => setOwnership({ ...ownership, ownerTeam: e.target.value })} />
+            </label>
+            <label>
+              Runbook URL
+              <input value={ownership.runbookUrl} onChange={(e) => setOwnership({ ...ownership, runbookUrl: e.target.value })} />
+            </label>
+            <label>
+              Escalation contact
+              <input value={ownership.escalationContact} onChange={(e) => setOwnership({ ...ownership, escalationContact: e.target.value })} />
+            </label>
+          </div>
+          <button className="primary-button" type="submit" disabled={!ownershipServiceId}>
+            Save ownership
+          </button>
+        </form>
       </section>
 
       <section className="panel">
@@ -297,6 +395,7 @@ export default function ReliabilityManagementPage() {
                 <th>Scope</th>
                 <th>Objective</th>
                 <th>Compliance</th>
+                <th>Error budget</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -304,12 +403,12 @@ export default function ReliabilityManagementPage() {
             <tbody>
               {slos.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="table-empty">No SLOs configured yet.</td>
+                  <td colSpan={7} className="table-empty">No SLOs configured yet.</td>
                 </tr>
               ) : (
                 slos.map((row) => {
                   const compliance = row.currentWindow?.availabilityPct;
-                  const remaining = compliance == null ? null : Math.max(0, 100 - (100 - compliance) / Math.max(0.0001, 100 - row.targetPct) * 100);
+                  const budget = row.errorBudget?.errorBudgetRemainingPct;
                   const status = row.currentWindow?.status || (row.enabled ? "AWAITING DATA" : "DISABLED");
                   return (
                     <tr key={row.id}>
@@ -323,9 +422,12 @@ export default function ReliabilityManagementPage() {
                         {row.targetType} · {row.Service?.name || "Project-wide"}
                       </td>
                       <td>{row.targetPct}%</td>
+                      <td>{compliance == null ? "—" : `${compliance.toFixed(2)}%`}</td>
                       <td>
-                        {compliance == null ? "—" : `${compliance.toFixed(2)}%`}
-                        {remaining == null ? "" : ` · budget ${remaining.toFixed(1)}%`}
+                        {budget == null ? "—" : `${budget.toFixed(1)}% remaining`}
+                        {row.errorBudget?.burnRate != null ? (
+                          <div className="table-subtle">burn {row.errorBudget.burnRate.toFixed(2)}×</div>
+                        ) : null}
                       </td>
                       <td>
                         <HealthBadge status={status === "HEALTHY" ? "HEALTHY" : status === "DISABLED" ? "PAUSED" : "DEGRADED"} displayLabel={status} />

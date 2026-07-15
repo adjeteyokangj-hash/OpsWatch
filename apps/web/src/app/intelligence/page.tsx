@@ -99,6 +99,14 @@ type IntelligenceSnapshot = {
   emptyReason: string | null;
 };
 
+type FeatureGate = {
+  key: string;
+  envVar: string;
+  enabled: boolean;
+  defaultEnabled: boolean;
+  description: string;
+};
+
 const formatWhen = (value: string | null | undefined) => {
   if (!value) return "—";
   try {
@@ -110,6 +118,7 @@ const formatWhen = (value: string | null | undefined) => {
 
 export default function IntelligencePage() {
   const [data, setData] = useState<IntelligenceSnapshot | null>(null);
+  const [gates, setGates] = useState<FeatureGate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,8 +127,12 @@ export default function IntelligencePage() {
       setLoading(true);
       setError(null);
       try {
-        const snapshot = await apiFetch<IntelligenceSnapshot>("/intelligence");
+        const [snapshot, gatePayload] = await Promise.all([
+          apiFetch<IntelligenceSnapshot>("/intelligence"),
+          apiFetch<{ gates: FeatureGate[] }>("/intelligence/feature-gates").catch(() => ({ gates: [] }))
+        ]);
         setData(snapshot);
+        setGates(gatePayload.gates ?? []);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to load intelligence";
         setError(message);
@@ -201,6 +214,27 @@ export default function IntelligencePage() {
               </div>
             </div>
           </PageSection>
+
+          {gates.length > 0 ? (
+            <PageSection
+              title="Learning & capability gates"
+              description="Phase 5–8 capabilities stay additive; defaults remain OFF until explicitly enabled."
+            >
+              <div className="feature-gate-grid">
+                {gates.map((gate) => (
+                  <article className="feature-gate-card" key={gate.key}>
+                    <strong>{gate.key.replace(/_/g, " ")}</strong>
+                    <StatusBadge
+                      label={gate.enabled ? "Enabled" : "Off"}
+                      tone={gate.enabled ? "warning" : "muted"}
+                    />
+                    <p className="dashboard-subtle">{gate.description}</p>
+                    <p className="dashboard-subtle mono-meta">{gate.envVar}</p>
+                  </article>
+                ))}
+              </div>
+            </PageSection>
+          ) : null}
 
           <section className="two-col">
             <PageSection title="Learning baselines" description="Accumulated from checks, recoveries, and traffic facts.">
