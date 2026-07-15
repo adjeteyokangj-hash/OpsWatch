@@ -58,10 +58,23 @@ export default function LoginPage() {
         return;
       }
 
-      const sessionCheck = await fetch(`${API_BASE_URL}/auth/session`, {
-        credentials: "include",
-        cache: "no-store"
-      });
+      const sessionController = new AbortController();
+      const sessionTimer = window.setTimeout(() => sessionController.abort(), 12_000);
+      let sessionCheck: Response;
+      try {
+        sessionCheck = await fetch(`${API_BASE_URL}/auth/session`, {
+          credentials: "include",
+          cache: "no-store",
+          signal: sessionController.signal
+        });
+      } catch {
+        setError(
+          "Sign-in succeeded but session confirmation timed out. Refresh the page or try again; if this persists, the API may be overloaded."
+        );
+        return;
+      } finally {
+        window.clearTimeout(sessionTimer);
+      }
       if (!sessionCheck.ok) {
         setError("Sign-in succeeded but the session cookie was not established. Clear site cookies and try again.");
         return;
@@ -110,7 +123,7 @@ export default function LoginPage() {
           <h2>Sign in</h2>
           <p className="dashboard-subtle">Use your OpsWatch platform account.</p>
           {mounted ? (
-            <form onSubmit={onSubmit}>
+            <form onSubmit={onSubmit} data-testid="login-form">
               <label>
                 Email
                 <input
@@ -120,6 +133,7 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  data-testid="login-email"
                 />
               </label>
               <label>
@@ -131,15 +145,23 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  data-testid="login-password"
                 />
               </label>
-              {error ? <div className="error-chip" role="alert">{error}</div> : null}
-              <button type="submit" className="primary-button auth-submit" disabled={submitting} data-action="api" data-endpoint="/auth/login">
+              {error ? <div className="error-chip" role="alert" data-testid="login-error">{error}</div> : null}
+              <button
+                type="submit"
+                className="primary-button auth-submit"
+                disabled={submitting}
+                data-action="api"
+                data-endpoint="/auth/login"
+                data-testid="login-submit"
+              >
                 {submitting ? "Signing in…" : "Sign in"}
               </button>
             </form>
           ) : (
-            <div className="dashboard-subtle" aria-live="polite">
+            <div className="dashboard-subtle" aria-live="polite" data-testid="login-hydrating">
               Loading sign-in…
             </div>
           )}

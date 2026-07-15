@@ -3396,10 +3396,13 @@ button {
   }
 
   .sidebar {
+    /* Brand/menu bar only — never a 100vh opaque sheet over metrics after login. */
     position: sticky;
     top: 0;
-    z-index: 12;
+    z-index: 5;
     height: auto;
+    max-height: none;
+    overflow: visible;
     padding: 12px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.12);
     border-right: 0;

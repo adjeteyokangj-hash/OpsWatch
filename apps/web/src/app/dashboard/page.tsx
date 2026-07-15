@@ -111,10 +111,9 @@ export default function DashboardPage() {
       setError(null);
       setSessionOrgMissing(false);
       try {
-        const sessionUser = await fetchSessionUser();
-        if (!sessionUser?.organizationId) {
-          setSessionOrgMissing(true);
-        }
+        // Do not block live metrics on /auth/session — a hung session probe previously
+        // left mobile (and desktop) stuck on “Loading live metrics…” forever.
+        const sessionPromise = fetchSessionUser().catch(() => null);
 
         const [projectsResult, alertsResult, incidentsResult, checksResult, insightsResult, layerHealthResult, intelligenceResult] =
           await Promise.allSettled([
@@ -126,6 +125,12 @@ export default function DashboardPage() {
             apiFetch<LayerHealthRow[]>('/analytics/layer-health', { suppressAuthRedirect: true }),
             apiFetch<IntelligenceTeaser>('/intelligence?harvest=false', { suppressAuthRedirect: true })
           ]);
+
+        const sessionUser = await sessionPromise;
+        // Only flag missing org when session resolved to a user without org — not on timeout/null.
+        if (sessionUser && !sessionUser.organizationId) {
+          setSessionOrgMissing(true);
+        }
 
         const failures: string[] = [];
 
@@ -226,7 +231,12 @@ export default function DashboardPage() {
   return (
     <Shell>
       <Header title="Dashboard" />
-      {loading ? <section className="panel workspace-loading"><div className="loading-pulse" /><p>Loading live metrics…</p></section> : null}
+      {loading ? (
+        <section className="panel workspace-loading" data-testid="dashboard-loading">
+          <div className="loading-pulse" />
+          <p>Loading live metrics…</p>
+        </section>
+      ) : null}
       {!loading && projects.length === 0 && alerts.length === 0 && incidents.length === 0 ? (
         <section className="panel error-panel">
           <EmptyState
