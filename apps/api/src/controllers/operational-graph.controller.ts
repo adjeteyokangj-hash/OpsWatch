@@ -3,10 +3,22 @@ import type { Response } from "express";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import type { AuthRequest } from "../middleware/auth";
+import {
+  IMPACT_ROLE_VALUES,
+  isLearnedTopologyEnabled,
+  normalizeImpactRole
+} from "../services/operational-health-rollup.service";
+import {
+  getOperationalGraphHealth,
+  observeOperationalRelationship,
+  recalculateAndPersistOperationalGraphHealth
+} from "../services/operational-health-persist.service";
 
 const HEALTH_VALUES = new Set(["HEALTHY", "DEGRADED", "AT_RISK", "DOWN", "UNKNOWN", "MAINTENANCE", "DISABLED"]);
 const PROVENANCE_VALUES = new Set(["DECLARED", "DISCOVERED", "LEARNED"]);
+const APPROVAL_VALUES = new Set(["PENDING", "APPROVED", "REJECTED", "IGNORED"]);
 const TOPOLOGY_MODE_VALUES = new Set(["CENTRALISED", "DISTRIBUTED", "HYBRID"]);
+const IMPACT_ROLE_SET = new Set<string>(IMPACT_ROLE_VALUES);
 
 const requireOrg = (req: AuthRequest, res: Response): string | null => {
   const orgId = req.user?.organizationId;
@@ -73,13 +85,50 @@ export const listOperationalGraph = async (req: AuthRequest, res: Response) => {
   if (!orgId) return;
   const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
   const locationId = typeof req.query.locationId === "string" ? req.query.locationId : undefined;
+  const provenance = typeof req.query.provenance === "string" ? req.query.provenance : undefined;
+  const approvalStatus = typeof req.query.approvalStatus === "string" ? req.query.approvalStatus : undefined;
+  const includePendingLearned =
+    req.query.includePendingLearned === "true" ||
+    req.query.includePendingLearned === "1" ||
+    approvalStatus === "PENDING";
+
+  if (provenance && !PROVENANCE_VALUES.has(provenance)) {
+    res.status(400).json({ error: "provenance must be DECLARED, DISCOVERED, or LEARNED" });
+    return;
+  }
+  if (approvalStatus && !APPROVAL_VALUES.has(approvalStatus)) {
+    res.status(400).json({ error: "approvalStatus must be PENDING, APPROVED, REJECTED, or IGNORED" });
+    return;
+  }
+
+  const relationshipWhere: Prisma.OperationalRelationshipWhereInput = {
+    organizationId: orgId,
+    ...(projectId ? { projectId } : {}),
+    ...(provenance ? { provenance } : {}),
+    ...(approvalStatus
+      ? { approvalStatus }
+      : includePendingLearned
+        ? {}
+        : {
+            OR: [
+              { approvalStatus: "APPROVED" },
+              { provenance: { not: "LEARNED" } }
+            ]
+          })
+  };
+
   const [entities, relationships] = await Promise.all([
     prisma.operationalEntity.findMany({
-      where: { organizationId: orgId, ...(projectId ? { projectId } : {}), ...(locationId ? { operationalLocationId: locationId } : {}) },
+      where: {
+        organizationId: orgId,
+        ...(projectId ? { projectId } : {}),
+        ...(locationId ? { operationalLocationId: locationId } : {}),
+        ...(provenance ? { provenance } : {})
+      },
       orderBy: { name: "asc" }
     }),
     prisma.operationalRelationship.findMany({
-      where: { organizationId: orgId, ...(projectId ? { projectId } : {}) },
+      where: relationshipWhere,
       orderBy: { createdAt: "desc" }
     })
   ]);
@@ -88,8 +137,39 @@ export const listOperationalGraph = async (req: AuthRequest, res: Response) => {
     entities,
     relationships: locationId
       ? relationships.filter((relationship) => entityIds.has(relationship.sourceEntityId) || entityIds.has(relationship.targetEntityId))
-      : relationships
+      : relationships,
+    filters: {
+      projectId: projectId ?? null,
+      locationId: locationId ?? null,
+      provenance: provenance ?? null,
+      approvalStatus: approvalStatus ?? null,
+      includePendingLearned,
+      learnedTopologyEnabled: isLearnedTopologyEnabled()
+    }
   });
+};
+
+export const getOperationalGraphHealthHandler = async (req: AuthRequest, res: Response) => {
+  const orgId = requireOrg(req, res);
+  if (!orgId) return;
+  const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
+  const locationId = typeof req.query.locationId === "string" ? req.query.locationId : undefined;
+  const snapshot = await getOperationalGraphHealth({ organizationId: orgId, projectId, locationId });
+  res.json(snapshot);
+};
+
+export const recalculateOperationalGraphHealthHandler = async (req: AuthRequest, res: Response) => {
+  const orgId = requireOrg(req, res);
+  if (!orgId) return;
+  const body = req.body ?? {};
+  const projectId = typeof body.projectId === "string" ? body.projectId : undefined;
+  const locationId = typeof body.locationId === "string" ? body.locationId : undefined;
+  const snapshot = await recalculateAndPersistOperationalGraphHealth({
+    organizationId: orgId,
+    projectId,
+    locationId
+  });
+  res.json(snapshot);
 };
 
 export const createOperationalEntity = async (req: AuthRequest, res: Response) => {
@@ -155,17 +235,27 @@ export const createOperationalRelationship = async (req: AuthRequest, res: Respo
     where: { organizationId: orgId, id: { in: [sourceEntityId, targetEntityId] } },
     select: { id: true, projectId: true }
   });
-  const [sourceEntity, targetEntity] = entities;
-  if (entities.length !== 2 || !sourceEntity || !targetEntity) {
+  if (entities.length !== 2) {
     res.status(400).json({ error: "relationship entities must belong to your organization" });
     return;
   }
+  const sourceEntity = entities.find((entity) => entity.id === sourceEntityId)!;
+  const targetEntity = entities.find((entity) => entity.id === targetEntityId)!;
   const provenance = typeof body.provenance === "string" ? body.provenance : "DECLARED";
   if (!PROVENANCE_VALUES.has(provenance)) {
     res.status(400).json({ error: "provenance must be DECLARED, DISCOVERED, or LEARNED" });
     return;
   }
+  if (body.impactRole !== undefined && body.impactRole !== null && !IMPACT_ROLE_SET.has(String(body.impactRole))) {
+    res.status(400).json({ error: "impactRole must be REQUIRED, OPTIONAL, REDUNDANT, DEGRADED, or BUSINESS_CRITICAL" });
+    return;
+  }
   const isLearned = provenance === "LEARNED";
+  // Auto-approval of LEARNED is never allowed; discovery auto-create is gated separately.
+  if (isLearned && body.autoApprove === true) {
+    res.status(400).json({ error: "LEARNED relationships cannot be auto-approved" });
+    return;
+  }
   const row = await prisma.operationalRelationship.create({
     data: {
       id: randomUUID(),
@@ -174,6 +264,8 @@ export const createOperationalRelationship = async (req: AuthRequest, res: Respo
       sourceEntityId, targetEntityId, relationshipType, provenance,
       approvalStatus: isLearned ? "PENDING" : "APPROVED",
       requiresApproval: isLearned,
+      impactRole: normalizeImpactRole(typeof body.impactRole === "string" ? body.impactRole : undefined),
+      observationCount: typeof body.observationCount === "number" && body.observationCount >= 0 ? Math.floor(body.observationCount) : 0,
       criticality: typeof body.criticality === "string" ? body.criticality : "MEDIUM",
       confidence: typeof body.confidence === "number" ? body.confidence : null,
       ...(recordOrNull(body.evidence) ? { evidenceJson: recordOrNull(body.evidence) as Prisma.InputJsonValue } : {}),
@@ -182,6 +274,118 @@ export const createOperationalRelationship = async (req: AuthRequest, res: Respo
     }
   });
   res.status(201).json(row);
+};
+
+/**
+ * Manual LEARNED PENDING proposal (admin). Always PENDING; never auto-APPROVED.
+ * Observation-driven auto discovery remains gated by OPSWATCH_LEARNED_TOPOLOGY_ENABLED.
+ */
+export const proposeLearnedOperationalRelationship = async (req: AuthRequest, res: Response) => {
+  const orgId = requireOrg(req, res);
+  if (!orgId) return;
+  const body = req.body ?? {};
+  const sourceEntityId = String(body.sourceEntityId || "");
+  const targetEntityId = String(body.targetEntityId || "");
+  const relationshipType = typeof body.relationshipType === "string" ? body.relationshipType.trim() : "";
+  if (!sourceEntityId || !targetEntityId || sourceEntityId === targetEntityId || !relationshipType) {
+    res.status(400).json({ error: "distinct sourceEntityId, targetEntityId, and relationshipType are required" });
+    return;
+  }
+  const entities = await prisma.operationalEntity.findMany({
+    where: { organizationId: orgId, id: { in: [sourceEntityId, targetEntityId] } },
+    select: { id: true, projectId: true }
+  });
+  if (entities.length !== 2) {
+    res.status(400).json({ error: "relationship entities must belong to your organization" });
+    return;
+  }
+  const sourceEntity = entities.find((entity) => entity.id === sourceEntityId)!;
+  const targetEntity = entities.find((entity) => entity.id === targetEntityId)!;
+  if (body.impactRole !== undefined && body.impactRole !== null && !IMPACT_ROLE_SET.has(String(body.impactRole))) {
+    res.status(400).json({ error: "impactRole must be REQUIRED, OPTIONAL, REDUNDANT, DEGRADED, or BUSINESS_CRITICAL" });
+    return;
+  }
+
+  const existing = await prisma.operationalRelationship.findFirst({
+    where: { organizationId: orgId, sourceEntityId, targetEntityId, relationshipType }
+  });
+  if (existing) {
+    if (existing.provenance === "LEARNED" || existing.provenance === "DISCOVERED") {
+      const strengthened = await observeOperationalRelationship({
+        organizationId: orgId,
+        relationshipId: existing.id,
+        confidenceBoost: typeof body.confidenceBoost === "number" ? body.confidenceBoost : 0.05
+      });
+      res.status(200).json({
+        relationship: strengthened.relationship ?? existing,
+        learnedTopologyEnabled: isLearnedTopologyEnabled(),
+        created: false,
+        strengthened: strengthened.reason === "observed"
+      });
+      return;
+    }
+    res.status(409).json({ error: "relationship already exists", relationship: existing });
+    return;
+  }
+
+  const row = await prisma.operationalRelationship.create({
+    data: {
+      id: randomUUID(),
+      organizationId: orgId,
+      projectId: sourceEntity.projectId === targetEntity.projectId ? sourceEntity.projectId : null,
+      sourceEntityId,
+      targetEntityId,
+      relationshipType,
+      provenance: "LEARNED",
+      approvalStatus: "PENDING",
+      requiresApproval: true,
+      impactRole: normalizeImpactRole(typeof body.impactRole === "string" ? body.impactRole : undefined),
+      observationCount: 1,
+      criticality: typeof body.criticality === "string" ? body.criticality : "MEDIUM",
+      confidence: typeof body.confidence === "number" ? body.confidence : 0.55,
+      ...(recordOrNull(body.evidence) ? { evidenceJson: recordOrNull(body.evidence) as Prisma.InputJsonValue } : {}),
+      discoveredAt: new Date(),
+      lastObservedAt: new Date(),
+      lifecycle: "ACTIVE",
+      updatedAt: new Date()
+    }
+  });
+  res.status(201).json({
+    relationship: row,
+    learnedTopologyEnabled: isLearnedTopologyEnabled(),
+    created: true,
+    strengthened: false
+  });
+};
+
+export const observeOperationalRelationshipHandler = async (req: AuthRequest, res: Response) => {
+  const orgId = requireOrg(req, res);
+  if (!orgId) return;
+  const body = req.body ?? {};
+  const result = await observeOperationalRelationship({
+    organizationId: orgId,
+    relationshipId: typeof body.relationshipId === "string" ? body.relationshipId : undefined,
+    sourceEntityId: typeof body.sourceEntityId === "string" ? body.sourceEntityId : undefined,
+    targetEntityId: typeof body.targetEntityId === "string" ? body.targetEntityId : undefined,
+    relationshipType: typeof body.relationshipType === "string" ? body.relationshipType : undefined,
+    confidenceBoost: typeof body.confidenceBoost === "number" ? body.confidenceBoost : undefined
+  });
+  if (result.reason === "learned_topology_disabled" && !result.relationship) {
+    res.status(404).json({
+      error: "Relationship not found; auto-discovery requires OPSWATCH_LEARNED_TOPOLOGY_ENABLED=true",
+      learnedTopologyEnabled: false
+    });
+    return;
+  }
+  if (!result.relationship) {
+    res.status(404).json({ error: "Relationship not found", reason: result.reason });
+    return;
+  }
+  if (result.reason === "provenance_not_observable") {
+    res.status(400).json({ error: "Only DISCOVERED or LEARNED relationships accept observation bumps" });
+    return;
+  }
+  res.json({ relationship: result.relationship, learnedTopologyEnabled: isLearnedTopologyEnabled() });
 };
 
 export const reviewLearnedOperationalRelationship = async (req: AuthRequest, res: Response) => {
@@ -199,9 +403,15 @@ export const reviewLearnedOperationalRelationship = async (req: AuthRequest, res
     res.status(404).json({ error: "Pending learned relationship not found" });
     return;
   }
+  const approved = decision === "APPROVE";
   const row = await prisma.operationalRelationship.update({
     where: { id: existing.id },
-    data: { approvalStatus: decision === "APPROVE" ? "APPROVED" : decision === "REJECT" ? "REJECTED" : "IGNORED", lifecycle: decision === "APPROVE" ? "ACTIVE" : "INACTIVE", updatedAt: new Date() }
+    data: {
+      approvalStatus: approved ? "APPROVED" : decision === "REJECT" ? "REJECTED" : "IGNORED",
+      lifecycle: approved ? "ACTIVE" : "INACTIVE",
+      requiresApproval: false,
+      updatedAt: new Date()
+    }
   });
   res.json(row);
 };

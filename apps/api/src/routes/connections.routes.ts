@@ -15,8 +15,12 @@ import {
   createOperationalEntity,
   createOperationalLocation,
   createOperationalRelationship,
+  getOperationalGraphHealthHandler,
   listOperationalGraph,
   listOperationalLocations,
+  observeOperationalRelationshipHandler,
+  proposeLearnedOperationalRelationship,
+  recalculateOperationalGraphHealthHandler,
   reviewLearnedOperationalRelationship
 } from "../controllers/operational-graph.controller";
 
@@ -36,6 +40,10 @@ connectionsRouter.post("/change-ledger", createChangeLedger);
 connectionsRouter.get("/operational-locations", listOperationalLocations);
 connectionsRouter.post("/operational-locations", createOperationalLocation);
 connectionsRouter.get("/operational-graph", listOperationalGraph);
+connectionsRouter.get("/operational-graph/health", getOperationalGraphHealthHandler);
+connectionsRouter.post("/operational-graph/health/recalculate", requireAdmin, recalculateOperationalGraphHealthHandler);
 connectionsRouter.post("/operational-entities", createOperationalEntity);
 connectionsRouter.post("/operational-relationships", createOperationalRelationship);
+connectionsRouter.post("/operational-relationships/propose-learned", requireAdmin, proposeLearnedOperationalRelationship);
+connectionsRouter.post("/operational-relationships/observe", observeOperationalRelationshipHandler);
 connectionsRouter.post("/operational-relationships/:relationshipId/review", requireAdmin, reviewLearnedOperationalRelationship);

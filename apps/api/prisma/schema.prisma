@@ -426,6 +426,9 @@ model OperationalRelationship {
   provenance       String            @default("DECLARED")
   approvalStatus   String            @default("APPROVED")
   requiresApproval Boolean           @default(false)
+  /// REQUIRED | OPTIONAL | REDUNDANT | DEGRADED | BUSINESS_CRITICAL
+  impactRole       String            @default("REQUIRED")
+  observationCount Int               @default(0)
   criticality      String            @default("MEDIUM")
   confidence       Float?
   evidenceJson     Json?

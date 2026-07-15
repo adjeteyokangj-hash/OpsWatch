@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Header } from "../../components/layout/header";
 import { Shell } from "../../components/layout/shell";
@@ -8,6 +8,7 @@ import { EmptyState } from "../../components/ui/empty-state";
 import { apiFetch } from "../../lib/api";
 
 const modes = ["AGENTLESS", "HEARTBEAT", "WEBHOOK", "API", "SYNTHETIC", "OTEL_COLLECTOR", "SDK", "CLOUD_CONNECTOR", "DATABASE_CONNECTOR", "CUSTOM_CONNECTOR"];
+const provenanceFilters = ["ALL", "DECLARED", "DISCOVERED", "LEARNED"] as const;
 
 type Project = { id: string; name: string };
 type Connection = {
@@ -22,6 +23,26 @@ type Manifest = {
   otelIngestionEnabled?: boolean;
 };
 type LedgerEntry = { id: string; kind: string; summary: string; source: string; occurredAt: string; project: Project | null; connection: { id: string; name: string } | null };
+type GraphEntity = {
+  id: string; name: string; entityType: string; health: string; healthReason: string | null; provenance: string;
+};
+type GraphRelationship = {
+  id: string; sourceEntityId: string; targetEntityId: string; relationshipType: string; provenance: string;
+  approvalStatus: string; impactRole?: string; requiresApproval?: boolean; confidence: number | null;
+};
+type GraphResponse = {
+  entities: GraphEntity[];
+  relationships: GraphRelationship[];
+  filters?: { learnedTopologyEnabled?: boolean };
+};
+type HealthExplanation = {
+  entityId: string; currentHealth: string; reason: string; dependencyCause: string | null; confidence: number;
+};
+type HealthSnapshot = {
+  organization: { health: string; topologyMode: string; reason: string };
+  entities: HealthExplanation[];
+  calculatedAt: string;
+};
 
 export default function ConnectionsPage() {
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -36,7 +57,39 @@ export default function ConnectionsPage() {
   const [capabilities, setCapabilities] = useState<string[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [provenanceFilter, setProvenanceFilter] = useState<(typeof provenanceFilters)[number]>("ALL");
+  const [graph, setGraph] = useState<GraphResponse | null>(null);
+  const [health, setHealth] = useState<HealthSnapshot | null>(null);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
   const availableAuthMethods = manifest?.supportedAuthMethods ?? ["NONE"];
+
+  const entityNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entity of graph?.entities ?? []) map.set(entity.id, entity.name);
+    return map;
+  }, [graph]);
+
+  const pendingLearned = useMemo(
+    () => (graph?.relationships ?? []).filter((row) => row.provenance === "LEARNED" && row.approvalStatus === "PENDING"),
+    [graph]
+  );
+
+  const healthByEntityId = useMemo(() => {
+    const map = new Map<string, HealthExplanation>();
+    for (const row of health?.entities ?? []) map.set(row.entityId, row);
+    return map;
+  }, [health]);
+
+  const loadTopology = async (provenance: (typeof provenanceFilters)[number]) => {
+    const query = new URLSearchParams({ includePendingLearned: "true" });
+    if (provenance !== "ALL") query.set("provenance", provenance);
+    const [graphRows, healthRows] = await Promise.all([
+      apiFetch<GraphResponse>(`/operational-graph?${query.toString()}`),
+      apiFetch<HealthSnapshot>("/operational-graph/health")
+    ]);
+    setGraph(graphRows);
+    setHealth(healthRows);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -50,6 +103,7 @@ export default function ConnectionsPage() {
       setConnections(connectionRows);
       setProjects(projectRows);
       setLedger(ledgerRows);
+      await loadTopology(provenanceFilter);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load connections");
     } finally {
@@ -72,6 +126,13 @@ export default function ConnectionsPage() {
       });
     return () => { cancelled = true; };
   }, [mode]);
+
+  useEffect(() => {
+    if (loading) return;
+    void loadTopology(provenanceFilter).catch((topologyError) => {
+      setError(topologyError instanceof Error ? topologyError.message : "Failed to load operational graph");
+    });
+  }, [provenanceFilter]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -121,6 +182,22 @@ export default function ConnectionsPage() {
       await load();
     } finally {
       setTestingId(null);
+    }
+  };
+
+  const reviewLearned = async (relationshipId: string, decision: "APPROVE" | "REJECT" | "IGNORE") => {
+    setReviewingId(relationshipId);
+    setError(null);
+    try {
+      await apiFetch(`/operational-relationships/${relationshipId}/review`, {
+        method: "POST",
+        body: JSON.stringify({ decision })
+      });
+      await loadTopology(provenanceFilter);
+    } catch (reviewError) {
+      setError(reviewError instanceof Error ? reviewError.message : "Failed to review learned relationship");
+    } finally {
+      setReviewingId(null);
     }
   };
 
@@ -201,6 +278,83 @@ export default function ConnectionsPage() {
           <div className="table-cards-wrap"><table className="data-table"><thead><tr><th>Name</th><th>Mode</th><th>Capabilities</th><th>Application</th><th>Health</th><th>Installation</th><th>Credentials</th><th>Actions</th></tr></thead>
             <tbody>{connections.map((connection) => <tr key={connection.id}><td data-label="Name">{connection.name}<small>{connection.type} · manifest v{connection.manifestVersion}</small></td><td data-label="Mode">{connection.mode}</td><td data-label="Capabilities">{connection.capabilities.join(", ") || "None"}</td><td data-label="Application">{connection.project?.name ?? "Organization-wide"}</td><td data-label="Health">{connection.health}</td><td data-label="Installation">{connection.installationStatus}</td><td data-label="Credentials">{connection.secretConfigured ? "Secure reference configured" : "None"}</td><td data-label="Actions">{["AGENTLESS", "API"].includes(connection.mode) ? <button className="secondary-button" type="button" disabled={testingId === connection.id || !connection.isActive} onClick={() => void testConnection(connection.id)}>{testingId === connection.id ? "Testing…" : "Test"}</button> : "No runtime test"}</td></tr>)}</tbody>
           </table></div>
+        )}
+      </section>
+      <section className="panel" aria-label="Operational topology">
+        <h2>Operational topology</h2>
+        <p className="dashboard-subtle">
+          Declared, discovered, and learned graph edges with rolled-up health. Pending learned relationships stay inactive until approved.
+          {graph?.filters?.learnedTopologyEnabled === false ? " Observation auto-discovery is off (OPSWATCH_LEARNED_TOPOLOGY_ENABLED)." : null}
+        </p>
+        <div className="form-actions" style={{ marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
+          {provenanceFilters.map((value) => (
+            <button
+              key={value}
+              type="button"
+              className={provenanceFilter === value ? "primary-button" : "secondary-button"}
+              onClick={() => setProvenanceFilter(value)}
+            >
+              {value === "ALL" ? "All provenance" : value.charAt(0) + value.slice(1).toLowerCase()}
+            </button>
+          ))}
+        </div>
+        {health ? (
+          <aside className="notice-panel" role="status" style={{ marginBottom: "1rem" }}>
+            <strong>Org health: {health.organization.health}</strong>
+            <p>{health.organization.reason} · mode {health.organization.topologyMode} · calculated {new Date(health.calculatedAt).toLocaleString()}</p>
+          </aside>
+        ) : null}
+        {pendingLearned.length > 0 ? (
+          <div style={{ marginBottom: "1rem" }}>
+            <h3>Pending learned approvals</h3>
+            <div className="table-cards-wrap">
+              <table className="data-table">
+                <thead><tr><th>Edge</th><th>Role</th><th>Confidence</th><th>Actions</th></tr></thead>
+                <tbody>
+                  {pendingLearned.map((relationship) => (
+                    <tr key={relationship.id}>
+                      <td data-label="Edge">
+                        {entityNameById.get(relationship.sourceEntityId) ?? relationship.sourceEntityId}
+                        {" → "}
+                        {entityNameById.get(relationship.targetEntityId) ?? relationship.targetEntityId}
+                        <small>{relationship.relationshipType}</small>
+                      </td>
+                      <td data-label="Role">{relationship.impactRole ?? "REQUIRED"}</td>
+                      <td data-label="Confidence">{relationship.confidence ?? "—"}</td>
+                      <td data-label="Actions">
+                        <button type="button" className="primary-button" disabled={reviewingId === relationship.id} onClick={() => void reviewLearned(relationship.id, "APPROVE")}>Approve</button>{" "}
+                        <button type="button" className="secondary-button" disabled={reviewingId === relationship.id} onClick={() => void reviewLearned(relationship.id, "REJECT")}>Reject</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <p className="dashboard-subtle">No pending learned relationships.</p>
+        )}
+        {(graph?.entities.length ?? 0) === 0 ? (
+          <p>No operational entities for this filter.</p>
+        ) : (
+          <div className="table-cards-wrap">
+            <table className="data-table">
+              <thead><tr><th>Entity</th><th>Provenance</th><th>Health</th><th>Reason</th></tr></thead>
+              <tbody>
+                {graph?.entities.map((entity) => {
+                  const rolled = healthByEntityId.get(entity.id);
+                  return (
+                    <tr key={entity.id}>
+                      <td data-label="Entity">{entity.name}<small>{entity.entityType}</small></td>
+                      <td data-label="Provenance">{entity.provenance}</td>
+                      <td data-label="Health">{rolled?.currentHealth ?? entity.health}</td>
+                      <td data-label="Reason">{rolled?.reason ?? entity.healthReason ?? "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
       <section className="panel">
