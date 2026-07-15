@@ -19,6 +19,8 @@ const asScopes = (value: unknown): string[] => {
   return value.filter((entry): entry is string => typeof entry === "string");
 };
 
+const topologyModes = new Set(["CENTRALISED", "DISTRIBUTED", "HYBRID"]);
+
 const toApiKeyStatus = (row: { revokedAt: Date | null; expiresAt: Date | null }): "ACTIVE" | "REVOKED" | "EXPIRED" => {
   if (row.revokedAt) return "REVOKED";
   if (row.expiresAt && row.expiresAt.getTime() < Date.now()) return "EXPIRED";
@@ -58,6 +60,7 @@ export const getOrg = async (req: AuthRequest, res: Response) => {
     name: row.name,
     slug: row.slug,
     plan: row.plan,
+    topologyMode: row.topologyMode,
     isActive: row.isActive,
     _count: {
       users: row._count.User,
@@ -79,11 +82,16 @@ export const patchOrg = async (req: AuthRequest, res: Response) => {
     res.status(400).json({ error: "name must be between 1 and 120 characters" });
     return;
   }
+  if (body.topologyMode !== undefined && !topologyModes.has(String(body.topologyMode))) {
+    res.status(400).json({ error: "topologyMode must be CENTRALISED, DISTRIBUTED, or HYBRID" });
+    return;
+  }
 
   const updated = await prisma.organization.update({
     where: { id: orgId },
     data: {
       ...(body.name !== undefined ? { name: String(body.name).trim() } : {}),
+      ...(body.topologyMode !== undefined ? { topologyMode: String(body.topologyMode) } : {}),
       updatedAt: new Date()
     },
     include: {
@@ -101,6 +109,7 @@ export const patchOrg = async (req: AuthRequest, res: Response) => {
     name: updated.name,
     slug: updated.slug,
     plan: updated.plan,
+    topologyMode: updated.topologyMode,
     isActive: updated.isActive,
     _count: {
       users: updated._count.User,

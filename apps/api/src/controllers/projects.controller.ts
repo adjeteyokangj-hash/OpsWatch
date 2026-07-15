@@ -119,6 +119,17 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 	const name = String(body.name || "Untitled Project").trim();
 	const slug = String(body.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""));
 	const now = new Date();
+	const operationalLocationId = body.operationalLocationId ? String(body.operationalLocationId) : null;
+	if (operationalLocationId) {
+		const location = await prisma.operationalLocation.findFirst({
+			where: { id: operationalLocationId, organizationId: orgId },
+			select: { id: true }
+		});
+		if (!location) {
+			res.status(400).json({ error: "operationalLocationId is not in your organization" });
+			return;
+		}
+	}
 
 	let row;
 	try {
@@ -142,6 +153,7 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 				monitoringEnabled: body.monitoringEnabled !== false,
 				monitoringStartedAt: body.monitoringEnabled === false ? null : now,
 				automationMode: typeof body.automationMode === "string" ? body.automationMode : "OBSERVE",
+				operationalLocationId,
 				apiKey: generateApiKey(),
 				signingSecret: generateSigningSecret(),
 				updatedAt: now,
@@ -256,6 +268,16 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 	}
 
 	const body = req.body ?? {};
+	if (body.operationalLocationId !== undefined && body.operationalLocationId !== null) {
+		const location = await prisma.operationalLocation.findFirst({
+			where: { id: String(body.operationalLocationId), organizationId: orgId },
+			select: { id: true }
+		});
+		if (!location) {
+			res.status(400).json({ error: "operationalLocationId is not in your organization" });
+			return;
+		}
+	}
 	const row = await prisma.project.update({
 		where: { id: req.params.projectId },
 		data: {
@@ -270,6 +292,9 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 			...(body.projectOwner !== undefined ? { projectOwner: body.projectOwner ? String(body.projectOwner) : null } : {}),
 			...(body.operationalContact !== undefined
 				? { operationalContact: body.operationalContact ? String(body.operationalContact) : null }
+				: {}),
+			...(body.operationalLocationId !== undefined
+				? { operationalLocationId: body.operationalLocationId ? String(body.operationalLocationId) : null }
 				: {}),
 			...(body.isActive !== undefined ? { isActive: Boolean(body.isActive) } : {}),
 			updatedAt: new Date()

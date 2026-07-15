@@ -25,6 +25,7 @@ const baseNavGroups = [
   {
     label: "Platform",
     links: [
+      ["Connections", "/connections"],
       ["Integrations", "/integrations"],
       ["Workflows", "/workflows"],
       ["Services", "/services"],
@@ -58,6 +59,7 @@ const navIcons: Record<string, string> = {
   Applications: "▣",
   Incidents: "◆",
   Alerts: "!",
+  Connections: "⌁",
   Integrations: "⇄",
   Workflows: "↻",
   Services: "◎",

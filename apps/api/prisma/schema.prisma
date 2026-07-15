@@ -10,28 +10,28 @@ datasource db {
 }
 
 model Alert {
-  id               String          @id
-  projectId        String
-  serviceId        String?
-  sourceType       String
-  sourceId         String?
-  severity         AlertSeverity
-  title            String
-  message          String
-  status           AlertStatus     @default(OPEN)
-  firstSeenAt      DateTime        @default(now())
-  lastSeenAt       DateTime        @default(now())
-  acknowledgedAt   DateTime?
-  resolvedAt       DateTime?
-  assignedToUserId String?
-  category         AlertCategory   @default(AVAILABILITY)
-  integrationId    String?
-  maintenanceSuppressed Boolean    @default(false)
-  maintenanceWindowId String?
-  User             User?           @relation(fields: [assignedToUserId], references: [id])
-  Project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  Service          Service?        @relation(fields: [serviceId], references: [id])
-  IncidentAlert    IncidentAlert[]
+  id                    String          @id
+  projectId             String
+  serviceId             String?
+  sourceType            String
+  sourceId              String?
+  severity              AlertSeverity
+  title                 String
+  message               String
+  status                AlertStatus     @default(OPEN)
+  firstSeenAt           DateTime        @default(now())
+  lastSeenAt            DateTime        @default(now())
+  acknowledgedAt        DateTime?
+  resolvedAt            DateTime?
+  assignedToUserId      String?
+  category              AlertCategory   @default(AVAILABILITY)
+  integrationId         String?
+  maintenanceSuppressed Boolean         @default(false)
+  maintenanceWindowId   String?
+  User                  User?           @relation(fields: [assignedToUserId], references: [id])
+  Project               Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  Service               Service?        @relation(fields: [serviceId], references: [id])
+  IncidentAlert         IncidentAlert[]
 }
 
 model AuditLog {
@@ -125,22 +125,22 @@ model Heartbeat {
 }
 
 model Incident {
-  id                   String          @id
-  projectId            String
-  correlationGroupId   String?
-  title                String
-  severity             AlertSeverity
-  status               IncidentStatus  @default(OPEN)
-  openedAt             DateTime        @default(now())
-  acknowledgedAt       DateTime?
-  resolvedAt           DateTime?
-  rootCause            String?
-  resolutionNotes      String?
-  ChangeEvent          ChangeEvent[]
+  id                    String                     @id
+  projectId             String
+  correlationGroupId    String?
+  title                 String
+  severity              AlertSeverity
+  status                IncidentStatus             @default(OPEN)
+  openedAt              DateTime                   @default(now())
+  acknowledgedAt        DateTime?
+  resolvedAt            DateTime?
+  rootCause             String?
+  resolutionNotes       String?
+  ChangeEvent           ChangeEvent[]
   IncidentTimelineEvent IncidentTimelineEvent[]
-  Project              Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  IncidentAlert        IncidentAlert[]
-  CorrelationGroup     OrganizationIncidentGroup? @relation(fields: [correlationGroupId], references: [id], onDelete: SetNull)
+  Project               Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  IncidentAlert         IncidentAlert[]
+  CorrelationGroup      OrganizationIncidentGroup? @relation(fields: [correlationGroupId], references: [id], onDelete: SetNull)
 
   @@index([projectId, openedAt])
   @@index([correlationGroupId])
@@ -203,99 +203,240 @@ model OrgApiKey {
 }
 
 model Organization {
-  id                 String              @id
-  name               String
-  slug               String              @unique
-  plan               BillingPlan         @default(FREE)
-  isActive           Boolean             @default(true)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime
-  OnboardingProgress OnboardingProgress?
-  OrgApiKey          OrgApiKey[]
-  Project            Project[]
-  StatusPage         StatusPage[]
-  User               User[]
-  IncidentGroups     OrganizationIncidentGroup[]
-  MaintenanceWindows MaintenanceWindow[]
-  Subscription       Subscription?
-  UsageRecord        UsageRecord[]
-  IncidentMemoryEntry IncidentMemoryEntry[]
-  OperationalObservation OperationalObservation[]
-  LearningBaseline   LearningBaseline[]
-  OperationalPattern OperationalPattern[]
-  AiConfidenceRecord AiConfidenceRecord[]
-  PredictionCandidate PredictionCandidate[]
-  PredictionAccuracyLog PredictionAccuracyLog[]
-  OperationsTimelineEvent OperationsTimelineEvent[]
-  DeploymentRecord   DeploymentRecord[]
-  AiDecisionAudit    AiDecisionAudit[]
+  id                       String                      @id
+  name                     String
+  slug                     String                      @unique
+  plan                     BillingPlan                 @default(FREE)
+  topologyMode             String                      @default("CENTRALISED")
+  isActive                 Boolean                     @default(true)
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime
+  OnboardingProgress       OnboardingProgress?
+  OrgApiKey                OrgApiKey[]
+  Project                  Project[]
+  StatusPage               StatusPage[]
+  User                     User[]
+  IncidentGroups           OrganizationIncidentGroup[]
+  MaintenanceWindows       MaintenanceWindow[]
+  Subscription             Subscription?
+  UsageRecord              UsageRecord[]
+  IncidentMemoryEntry      IncidentMemoryEntry[]
+  OperationalObservation   OperationalObservation[]
+  LearningBaseline         LearningBaseline[]
+  OperationalPattern       OperationalPattern[]
+  AiConfidenceRecord       AiConfidenceRecord[]
+  PredictionCandidate      PredictionCandidate[]
+  PredictionAccuracyLog    PredictionAccuracyLog[]
+  OperationsTimelineEvent  OperationsTimelineEvent[]
+  DeploymentRecord         DeploymentRecord[]
+  AiDecisionAudit          AiDecisionAudit[]
   ApplicationLearningModel ApplicationLearningModel[]
-  RetentionPolicy    RetentionPolicy[]
+  RetentionPolicy          RetentionPolicy[]
+  Connection               Connection[]
+  OperationalLocation      OperationalLocation[]
+  OperationalEntity        OperationalEntity[]
+  OperationalRelationship  OperationalRelationship[]
 }
 
 model OrganizationIncidentGroup {
-  id                 String   @id
-  organizationId     String
-  correlationKey     String
-  rootCauseSummary   String?
-  primaryIncidentId  String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime
-  Organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Incidents          Incident[]
+  id                String       @id
+  organizationId    String
+  correlationKey    String
+  rootCauseSummary  String?
+  primaryIncidentId String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime
+  Organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Incidents         Incident[]
 
   @@index([organizationId, correlationKey])
   @@index([organizationId, createdAt])
 }
 
 model Project {
-  id                  String                @id
-  name                String
-  slug                String                @unique
-  clientName          String
-  description         String?
-  environment         String
-  status              ProjectStatus         @default(UNKNOWN)
-  healthReason        String?
-  healthSource        String?
-  lastCompletedCheckAt DateTime?
-  lastSignalAt        DateTime?
-  monitoringEnabled   Boolean               @default(true)
-  monitoringStartedAt DateTime?
-  automationMode      String                @default("OBSERVE")
-  projectOwner        String?
-  operationalContact  String?
-  defaultRegion       String?
-  frontendUrl         String?
-  backendUrl          String?
-  repoUrl             String?
-  vercelProjectId     String?
-  renderServiceId     String?
-  apiKey              String                @unique
-  signingSecret       String
-  maintenanceTier     String?
-  isActive            Boolean               @default(true)
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime
-  organizationId      String?
-  Alert               Alert[]
-  ChangeEvent         ChangeEvent[]
-  Event               Event[]
-  Heartbeat           Heartbeat[]
-  Incident            Incident[]
-  IncidentTimelineEvent IncidentTimelineEvent[]
-  NotificationChannel NotificationChannel[]
-  Organization        Organization?         @relation(fields: [organizationId], references: [id])
-  ProjectIntegration  ProjectIntegration[]
-  ServiceDependency   ServiceDependency[]
-  Service             Service[]
-  SLODefinition       SLODefinition[]
-  SLOWindow           SLOWindow[]
-  StatusPage          StatusPage[]
-  MaintenanceWindows  MaintenanceWindow[]
-  ProjectBilling      ProjectBilling?
+  id                      String                    @id
+  name                    String
+  slug                    String                    @unique
+  clientName              String
+  description             String?
+  environment             String
+  status                  ProjectStatus             @default(UNKNOWN)
+  healthReason            String?
+  healthSource            String?
+  lastCompletedCheckAt    DateTime?
+  lastSignalAt            DateTime?
+  monitoringEnabled       Boolean                   @default(true)
+  monitoringStartedAt     DateTime?
+  automationMode          String                    @default("OBSERVE")
+  projectOwner            String?
+  operationalContact      String?
+  defaultRegion           String?
+  frontendUrl             String?
+  backendUrl              String?
+  repoUrl                 String?
+  vercelProjectId         String?
+  renderServiceId         String?
+  apiKey                  String                    @unique
+  signingSecret           String
+  maintenanceTier         String?
+  isActive                Boolean                   @default(true)
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime
+  organizationId          String?
+  Alert                   Alert[]
+  ChangeEvent             ChangeEvent[]
+  Event                   Event[]
+  Heartbeat               Heartbeat[]
+  Incident                Incident[]
+  IncidentTimelineEvent   IncidentTimelineEvent[]
+  NotificationChannel     NotificationChannel[]
+  Organization            Organization?             @relation(fields: [organizationId], references: [id])
+  ProjectIntegration      ProjectIntegration[]
+  ServiceDependency       ServiceDependency[]
+  Service                 Service[]
+  SLODefinition           SLODefinition[]
+  SLOWindow               SLOWindow[]
+  StatusPage              StatusPage[]
+  MaintenanceWindows      MaintenanceWindow[]
+  ProjectBilling          ProjectBilling?
+  Connection              Connection[]
+  OperationalEntity       OperationalEntity[]
+  OperationalLocation     OperationalLocation?      @relation(fields: [operationalLocationId], references: [id], onDelete: SetNull)
+  operationalLocationId   String?
+  OperationalRelationship OperationalRelationship[]
 
   @@index([organizationId])
+  @@index([operationalLocationId])
+}
+
+/// A generic, organization-scoped operational connection. Secret material is
+/// referenced through secretRef; configurationJson must never contain secrets.
+model Connection {
+  id                   String       @id
+  organizationId       String
+  projectId            String?
+  name                 String
+  type                 String
+  mode                 String
+  environment          String       @default("production")
+  authMethod           String       @default("NONE")
+  capabilitiesJson     Json?
+  configurationJson    Json?
+  secretRef            String?
+  health               String       @default("UNKNOWN")
+  healthReason         String?
+  lastSuccessAt        DateTime?
+  lastFailureAt        DateTime?
+  lastError            String?
+  requestRatePerMinute Int?
+  errorRatePercent     Float?
+  permissionsJson      Json?
+  installationStatus   String       @default("PENDING")
+  collectorVersion     String?
+  isActive             Boolean      @default(true)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime
+  Organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project              Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, projectId, name])
+  @@index([organizationId, isActive, createdAt])
+  @@index([projectId, isActive])
+  @@index([organizationId, mode, installationStatus])
+}
+
+/// Optional location hierarchy for centrally managed, distributed, or hybrid organizations.
+model OperationalLocation {
+  id                String                @id
+  organizationId    String
+  parentLocationId  String?
+  name              String
+  type              String                @default("SITE")
+  topologyMode      String?
+  regionCode        String?
+  addressJson       Json?
+  metadataJson      Json?
+  lifecycle         String                @default("ACTIVE")
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime
+  Organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Parent            OperationalLocation?  @relation("LocationHierarchy", fields: [parentLocationId], references: [id], onDelete: SetNull)
+  Children          OperationalLocation[] @relation("LocationHierarchy")
+  Project           Project[]
+  OperationalEntity OperationalEntity[]
+
+  @@unique([organizationId, parentLocationId, name])
+  @@index([organizationId, type])
+  @@index([organizationId, regionCode])
+}
+
+/// Flexible graph node. entityType intentionally remains a string so product
+/// capabilities are not constrained by a brittle platform enum.
+model OperationalEntity {
+  id                    String                    @id
+  organizationId        String
+  projectId             String?
+  operationalLocationId String?
+  legacyServiceId       String?                   @unique
+  entityType            String
+  name                  String
+  externalId            String?
+  criticality           String                    @default("MEDIUM")
+  health                String                    @default("UNKNOWN")
+  healthOverride        String?
+  healthReason          String?
+  healthConfidence      Float?
+  provenance            String                    @default("DECLARED")
+  discoverySource       String?
+  discoveredAt          DateTime?
+  lastSeenAt            DateTime?
+  tagsJson              Json?
+  metadataJson          Json?
+  lifecycle             String                    @default("ACTIVE")
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime
+  Organization          Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project               Project?                  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  OperationalLocation   OperationalLocation?      @relation(fields: [operationalLocationId], references: [id], onDelete: SetNull)
+  LegacyService         Service?                  @relation(fields: [legacyServiceId], references: [id], onDelete: SetNull)
+  OutgoingRelationships OperationalRelationship[] @relation("OperationalRelationshipSource")
+  IncomingRelationships OperationalRelationship[] @relation("OperationalRelationshipTarget")
+
+  @@unique([organizationId, entityType, externalId])
+  @@index([organizationId, projectId, entityType])
+  @@index([organizationId, operationalLocationId, health])
+  @@index([organizationId, provenance, lifecycle])
+}
+
+/// Flexible graph edge. LEARNED relationships must be created as pending and
+/// explicitly approved before they become active topology.
+model OperationalRelationship {
+  id               String            @id
+  organizationId   String
+  projectId        String?
+  sourceEntityId   String
+  targetEntityId   String
+  relationshipType String
+  provenance       String            @default("DECLARED")
+  approvalStatus   String            @default("APPROVED")
+  requiresApproval Boolean           @default(false)
+  criticality      String            @default("MEDIUM")
+  confidence       Float?
+  evidenceJson     Json?
+  discoveredAt     DateTime?
+  lastObservedAt   DateTime?
+  lifecycle        String            @default("ACTIVE")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime
+  Organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Source           OperationalEntity @relation("OperationalRelationshipSource", fields: [sourceEntityId], references: [id], onDelete: Cascade)
+  Target           OperationalEntity @relation("OperationalRelationshipTarget", fields: [targetEntityId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, sourceEntityId, targetEntityId, relationshipType])
+  @@index([organizationId, projectId, approvalStatus])
+  @@index([sourceEntityId, lifecycle])
+  @@index([targetEntityId, lifecycle])
 }
 
 model ProjectIntegration {
@@ -322,7 +463,7 @@ model PlatformStripeSettings {
   id                      String                      @id
   secretKeyCiphertext     String?
   secretKeyIv             String?
-  secretKeyAuthTag      String?
+  secretKeyAuthTag        String?
   webhookSecretCiphertext String?
   webhookSecretIv         String?
   webhookSecretAuthTag    String?
@@ -384,19 +525,19 @@ model RemediationLock {
 }
 
 model AutomationPlaybook {
-  id          String   @id
-  key         String   @unique
+  id          String                      @id
+  key         String                      @unique
   name        String
   description String
-  riskLevel   String   @default("LOW")
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  riskLevel   String                      @default("LOW")
+  isActive    Boolean                     @default(true)
+  createdAt   DateTime                    @default(now())
   updatedAt   DateTime
   Versions    AutomationPlaybookVersion[]
 }
 
 model AutomationPlaybookVersion {
-  id             String   @id
+  id             String                          @id
   playbookId     String
   version        Int
   definitionJson Json?
@@ -408,9 +549,9 @@ model AutomationPlaybookVersion {
   reviewReason   String?
   approvedAt     DateTime?
   deprecatedAt   DateTime?
-  publishedAt    DateTime @default(now())
+  publishedAt    DateTime                        @default(now())
   publishedBy    String?
-  Playbook       AutomationPlaybook @relation(fields: [playbookId], references: [id], onDelete: Cascade)
+  Playbook       AutomationPlaybook              @relation(fields: [playbookId], references: [id], onDelete: Cascade)
   Steps          AutomationPlaybookStep[]
   Runs           AutomationRun[]
 
@@ -419,27 +560,27 @@ model AutomationPlaybookVersion {
 }
 
 model AutomationPlaybookStep {
-  id                 String @id
-  versionId          String
-  stepOrder          Int
-  action             String
-  targetServiceKey   String?
-  approvalRequired   Boolean @default(false)
-  description        String
-  Version            AutomationPlaybookVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  id               String                    @id
+  versionId        String
+  stepOrder        Int
+  action           String
+  targetServiceKey String?
+  approvalRequired Boolean                   @default(false)
+  description      String
+  Version          AutomationPlaybookVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
   @@unique([versionId, stepOrder])
 }
 
 model AutomationRun {
-  id                 String   @id
+  id                 String                    @id
   organizationId     String
   projectId          String
   incidentId         String
   versionId          String
   approvedVersionId  String?
-  executionMode      String   @default("OBSERVE")
-  status             String   @default("PLANNED")
+  executionMode      String                    @default("OBSERVE")
+  status             String                    @default("PLANNED")
   planJson           Json
   analysisMode       String?
   confidence         Float?
@@ -458,7 +599,7 @@ model AutomationRun {
   cancelledAt        DateTime?
   currentStepOrder   Int?
   supersededByRunId  String?
-  createdAt          DateTime @default(now())
+  createdAt          DateTime                  @default(now())
   updatedAt          DateTime
   Version            AutomationPlaybookVersion @relation(fields: [versionId], references: [id])
   Steps              AutomationRunStep[]
@@ -471,28 +612,28 @@ model AutomationRun {
 }
 
 model AutomationRunStep {
-  id                 String @id
-  runId              String
-  stepOrder          Int
-  action             String
-  targetServiceId    String?
-  approvalRequired   Boolean @default(false)
-  status             String  @default("PENDING")
-  remediationLogId   String?
-  resultJson         Json?
-  Run                AutomationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  id               String        @id
+  runId            String
+  stepOrder        Int
+  action           String
+  targetServiceId  String?
+  approvalRequired Boolean       @default(false)
+  status           String        @default("PENDING")
+  remediationLogId String?
+  resultJson       Json?
+  Run              AutomationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@unique([runId, stepOrder])
 }
 
 model AutomationApproval {
-  id         String   @id
+  id         String        @id
   runId      String
   approvedBy String?
   reason     String
   decision   String
-  scope      String   @default("RUN")
-  createdAt  DateTime @default(now())
+  scope      String        @default("RUN")
+  createdAt  DateTime      @default(now())
   Run        AutomationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 }
 
@@ -510,39 +651,40 @@ model AutomationPolicy {
 }
 
 model AutomationOutcome {
-  id          String   @id
+  id          String        @id
   runId       String
   summary     String
   success     Boolean
   detailsJson Json?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime      @default(now())
   Run         AutomationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 }
 
 model Service {
-  id         String        @id
-  projectId  String
-  name       String
-  type       ServiceType
-  status     ProjectStatus @default(UNKNOWN)
-  criticality String       @default("MEDIUM")
-  baseUrl    String?
-  isCritical Boolean       @default(false)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime
-  Alert      Alert[]
-  Check      Check[]
-  ChangeEvent ChangeEvent[]
-  Event      Event[]
-  IncomingDependencies ServiceDependency[] @relation("DependencyToService")
-  OutgoingDependencies ServiceDependency[] @relation("DependencyFromService")
-  Project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  SLODefinition SLODefinition[]
+  id                        String                     @id
+  projectId                 String
+  name                      String
+  type                      ServiceType
+  status                    ProjectStatus              @default(UNKNOWN)
+  criticality               String                     @default("MEDIUM")
+  baseUrl                   String?
+  isCritical                Boolean                    @default(false)
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime
+  Alert                     Alert[]
+  Check                     Check[]
+  ChangeEvent               ChangeEvent[]
+  Event                     Event[]
+  IncomingDependencies      ServiceDependency[]        @relation("DependencyToService")
+  OutgoingDependencies      ServiceDependency[]        @relation("DependencyFromService")
+  Project                   Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  SLODefinition             SLODefinition[]
   MaintenanceWindowServices MaintenanceWindowService[]
+  OperationalEntity         OperationalEntity?
 }
 
 model ChangeEvent {
-  id             String   @id
+  id             String    @id
   organizationId String
   projectId      String?
   serviceId      String?
@@ -551,8 +693,8 @@ model ChangeEvent {
   actor          String?
   summary        String
   detailsJson    Json?
-  occurredAt     DateTime @default(now())
-  createdAt      DateTime @default(now())
+  occurredAt     DateTime  @default(now())
+  createdAt      DateTime  @default(now())
   Incident       Incident? @relation(fields: [incidentId], references: [id], onDelete: SetNull)
   Project        Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
   Service        Service?  @relation(fields: [serviceId], references: [id], onDelete: SetNull)
@@ -564,24 +706,24 @@ model ChangeEvent {
 }
 
 model ServiceDependency {
-  id             String   @id
-  projectId      String
-  fromServiceId  String
-  toServiceId    String
-  dependencyType String   @default("RUNTIME")
-  criticality    String   @default("HIGH")
-  isActive       Boolean  @default(true)
+  id               String    @id
+  projectId        String
+  fromServiceId    String
+  toServiceId      String
+  dependencyType   String    @default("RUNTIME")
+  criticality      String    @default("HIGH")
+  isActive         Boolean   @default(true)
   /// Telemetry-backed evidence count; 0 means declared without observed confirmation.
-  evidenceCount  Int      @default(0)
+  evidenceCount    Int       @default(0)
   /// 0..1 strength derived from observed co-occurrence / failures; not invented edges.
-  evidenceStrength Float  @default(0)
-  lastObservedAt DateTime?
-  source         String   @default("MANUAL")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime
-  FromService    Service  @relation("DependencyFromService", fields: [fromServiceId], references: [id], onDelete: Cascade)
-  Project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  ToService      Service  @relation("DependencyToService", fields: [toServiceId], references: [id], onDelete: Cascade)
+  evidenceStrength Float     @default(0)
+  lastObservedAt   DateTime?
+  source           String    @default("MANUAL")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime
+  FromService      Service   @relation("DependencyFromService", fields: [fromServiceId], references: [id], onDelete: Cascade)
+  Project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ToService        Service   @relation("DependencyToService", fields: [toServiceId], references: [id], onDelete: Cascade)
 
   @@unique([fromServiceId, toServiceId, dependencyType])
   @@index([projectId, isActive])
@@ -590,19 +732,19 @@ model ServiceDependency {
 }
 
 model IncidentTimelineEvent {
-  id         String        @id
-  incidentId String
-  projectId  String
-  eventType  String
-  summary    String
-  sourceType String?
-  sourceId   String?
-  severity   AlertSeverity?
+  id          String         @id
+  incidentId  String
+  projectId   String
+  eventType   String
+  summary     String
+  sourceType  String?
+  sourceId    String?
+  severity    AlertSeverity?
   payloadJson Json?
-  occurredAt DateTime      @default(now())
-  createdAt  DateTime      @default(now())
-  Incident   Incident      @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  Project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  occurredAt  DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+  Incident    Incident       @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  Project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([incidentId, occurredAt])
   @@index([projectId, occurredAt])
@@ -610,23 +752,23 @@ model IncidentTimelineEvent {
 }
 
 model SLODefinition {
-  id                 String    @id
+  id                 String      @id
   projectId          String
   serviceId          String?
-  targetType         String    @default("SERVICE")
+  targetType         String      @default("SERVICE")
   targetId           String?
   name               String
   sliType            String
   targetPct          Float
-  windowDays         Int       @default(30)
-  windowType         String    @default("ROLLING")
+  windowDays         Int         @default(30)
+  windowType         String      @default("ROLLING")
   latencyThresholdMs Int?
-  enabled            Boolean   @default(true)
+  enabled            Boolean     @default(true)
   archivedAt         DateTime?
-  createdAt          DateTime  @default(now())
+  createdAt          DateTime    @default(now())
   updatedAt          DateTime
-  Project            Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  Service            Service?  @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  Project            Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  Service            Service?    @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   SLOWindow          SLOWindow[]
 
   @@index([projectId, enabled])
@@ -670,21 +812,21 @@ model StatusPage {
 }
 
 model User {
-  id                    String        @id
-  name                  String
-  email                 String        @unique
-  passwordHash          String
-  role                  String        @default("MEMBER")
-  isActive              Boolean       @default(true)
+  id             String        @id
+  name           String
+  email          String        @unique
+  passwordHash   String
+  role           String        @default("MEMBER")
+  isActive       Boolean       @default(true)
   // isPlatformSuperAdmin added by migration 20260714060000; accessed via platform-super-admin-column.ts
   // so Prisma does not SELECT a missing column before migrate deploy.
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime
-  organizationId        String?
-  Alert                 Alert[]
-  AuditLog              AuditLog[]
-  Organization          Organization? @relation(fields: [organizationId], references: [id])
-  UserSession           UserSession[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime
+  organizationId String?
+  Alert          Alert[]
+  AuditLog       AuditLog[]
+  Organization   Organization? @relation(fields: [organizationId], references: [id])
+  UserSession    UserSession[]
 
   @@index([organizationId])
 }
@@ -964,25 +1106,25 @@ enum AutomationPlaybookVersionStatus {
 }
 
 model MaintenanceWindow {
-  id                 String                   @id
-  organizationId     String
-  projectId          String?
-  name               String
-  description        String?
-  startsAt           DateTime
-  endsAt             DateTime
-  status             MaintenanceWindowStatus    @default(SCHEDULED)
-  suppressAlerts     Boolean                  @default(true)
-  suppressIncidents  Boolean                  @default(false)
-  allowAutonomous    Boolean                  @default(false)
-  createdById        String
-  cancelledById      String?
-  cancelledAt        DateTime?
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime
-  Organization       Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Project            Project?                 @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  Services           MaintenanceWindowService[]
+  id                String                     @id
+  organizationId    String
+  projectId         String?
+  name              String
+  description       String?
+  startsAt          DateTime
+  endsAt            DateTime
+  status            MaintenanceWindowStatus    @default(SCHEDULED)
+  suppressAlerts    Boolean                    @default(true)
+  suppressIncidents Boolean                    @default(false)
+  allowAutonomous   Boolean                    @default(false)
+  createdById       String
+  cancelledById     String?
+  cancelledAt       DateTime?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime
+  Organization      Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project           Project?                   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Services          MaintenanceWindowService[]
 
   @@index([organizationId, startsAt])
   @@index([organizationId, status])
@@ -1025,18 +1167,18 @@ enum SubscriptionStatus {
 }
 
 model Plan {
-  id                   String           @id
-  code                 String           @unique
+  id                   String            @id
+  code                 String            @unique
   name                 String
-  billingInterval      BillingInterval  @default(MONTHLY)
+  billingInterval      BillingInterval   @default(MONTHLY)
   monthlyPrice         Float
   annualPrice          Float?
-  currency             String           @default("GBP")
-  active               Boolean          @default(true)
-  sortOrder            Int              @default(0)
+  currency             String            @default("GBP")
+  active               Boolean           @default(true)
+  sortOrder            Int               @default(0)
   stripePriceMonthlyId String?
   stripePriceAnnualId  String?
-  createdAt            DateTime         @default(now())
+  createdAt            DateTime          @default(now())
   updatedAt            DateTime
   PlanEntitlement      PlanEntitlement[]
   Subscription         Subscription[]
@@ -1080,43 +1222,43 @@ model Subscription {
 }
 
 model UsageRecord {
-  id             String   @id
+  id             String       @id
   organizationId String
   metricKey      String
   quantity       Int
   periodStart    DateTime
   periodEnd      DateTime
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
   Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, metricKey, periodStart])
 }
 
 model IncidentMemoryEntry {
-  id                String    @id
-  organizationId    String
-  incidentId        String    @unique
-  projectId         String?
-  title             String
-  category          String?
-  diagnosisSummary  String
+  id                   String       @id
+  organizationId       String
+  incidentId           String       @unique
+  projectId            String?
+  title                String
+  category             String?
+  diagnosisSummary     String
   /// Only populated when root cause was recorded/known — never invented.
-  rootCause         String?
-  resolutionSummary String?
-  signatureText     String
-  embeddingJson     Json?
-  timelineJson      Json?
-  affectedServiceIds Json?
-  affectedModuleKeys Json?
+  rootCause            String?
+  resolutionSummary    String?
+  signatureText        String
+  embeddingJson        Json?
+  timelineJson         Json?
+  affectedServiceIds   Json?
+  affectedModuleKeys   Json?
   affectedWorkflowKeys Json?
-  recoveryActionsJson Json?
-  automationInvolved Boolean  @default(false)
-  verificationSummary String?
-  resolutionTimeMs  Int?
-  resolvedAt        DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime
-  Organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recoveryActionsJson  Json?
+  automationInvolved   Boolean      @default(false)
+  verificationSummary  String?
+  resolutionTimeMs     Int?
+  resolvedAt           DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime
+  Organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, resolvedAt])
   @@index([organizationId, projectId])
@@ -1124,7 +1266,7 @@ model IncidentMemoryEntry {
 
 /// Continuous AI Brain observation of operational signals (facts only).
 model OperationalObservation {
-  id             String   @id
+  id             String       @id
   organizationId String
   projectId      String?
   sourceType     String
@@ -1133,8 +1275,8 @@ model OperationalObservation {
   summary        String
   severity       String?
   payloadJson    Json?
-  observedAt     DateTime @default(now())
-  createdAt      DateTime @default(now())
+  observedAt     DateTime     @default(now())
+  createdAt      DateTime     @default(now())
   Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, observedAt])
@@ -1145,16 +1287,16 @@ model OperationalObservation {
 
 /// Accumulated evidence baselines (nothing without samples).
 model LearningBaseline {
-  id             String   @id
+  id             String       @id
   organizationId String
   /// Empty string = org-scoped baseline (avoids NULL uniqueness holes in Postgres).
-  projectId      String   @default("")
+  projectId      String       @default("")
   scopeType      String
   scopeKey       String
-  sampleCount    Int      @default(0)
+  sampleCount    Int          @default(0)
   metricsJson    Json
   lastSampleAt   DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
   updatedAt      DateTime
   Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1164,19 +1306,19 @@ model LearningBaseline {
 
 /// Stored patterns; displayEligible stays false until confidence threshold is met.
 model OperationalPattern {
-  id              String   @id
+  id              String       @id
   organizationId  String
   projectId       String?
   patternType     String
   signatureKey    String
   title           String
   description     String
-  evidenceCount   Int      @default(0)
-  confidenceScore Float    @default(0)
+  evidenceCount   Int          @default(0)
+  confidenceScore Float        @default(0)
   evidenceJson    Json?
   lastMatchedAt   DateTime?
-  displayEligible Boolean  @default(false)
-  createdAt       DateTime @default(now())
+  displayEligible Boolean      @default(false)
+  createdAt       DateTime     @default(now())
   updatedAt       DateTime
   Organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1187,19 +1329,19 @@ model OperationalPattern {
 
 /// Evidence-based confidence scores — no recommendation without confidence.
 model AiConfidenceRecord {
-  id                 String   @id
+  id                 String       @id
   organizationId     String
   subjectType        String
   subjectId          String
   score              Float
   label              String
-  evidenceCount      Int      @default(0)
+  evidenceCount      Int          @default(0)
   historicalAccuracy Float?
-  matchingIncidents  Int      @default(0)
-  recoveryMatches    Int      @default(0)
-  dataCompleteness   Float    @default(0)
+  matchingIncidents  Int          @default(0)
+  recoveryMatches    Int          @default(0)
+  dataCompleteness   Float        @default(0)
   factorsJson        Json?
-  computedAt         DateTime @default(now())
+  computedAt         DateTime     @default(now())
   Organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, subjectType, subjectId])
@@ -1208,17 +1350,17 @@ model AiConfidenceRecord {
 
 /// Prediction framework storage — product emission gated OFF by default.
 model PredictionCandidate {
-  id              String   @id
+  id              String       @id
   organizationId  String
   projectId       String?
   predictionType  String
   title           String
   summary         String
-  confidenceScore Float    @default(0)
+  confidenceScore Float        @default(0)
   /// DISABLED | INSUFFICIENT_DATA | READY — READY only when predictions feature flag is on AND threshold met.
-  status          String   @default("DISABLED")
+  status          String       @default("DISABLED")
   evidenceJson    Json?
-  computedAt      DateTime @default(now())
+  computedAt      DateTime     @default(now())
   expiresAt       DateTime?
   Organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
@@ -1228,13 +1370,13 @@ model PredictionCandidate {
 
 /// Empty until predictions are enabled and outcomes can be scored.
 model PredictionAccuracyLog {
-  id               String   @id
+  id               String       @id
   organizationId   String
   predictionId     String?
   predictedOutcome String
   actualOutcome    String?
   wasCorrect       Boolean?
-  recordedAt       DateTime @default(now())
+  recordedAt       DateTime     @default(now())
   Organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, recordedAt])
@@ -1242,7 +1384,7 @@ model PredictionAccuracyLog {
 
 /// Org-level chronological factual operations timeline.
 model OperationsTimelineEvent {
-  id             String   @id
+  id             String       @id
   organizationId String
   projectId      String?
   eventType      String
@@ -1251,8 +1393,8 @@ model OperationsTimelineEvent {
   sourceId       String?
   severity       String?
   payloadJson    Json?
-  occurredAt     DateTime @default(now())
-  createdAt      DateTime @default(now())
+  occurredAt     DateTime     @default(now())
+  createdAt      DateTime     @default(now())
   Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, occurredAt])
@@ -1262,24 +1404,24 @@ model OperationsTimelineEvent {
 
 /// Deployment intelligence for correlation (facts from change events / webhooks).
 model DeploymentRecord {
-  id                  String   @id
-  organizationId      String
-  projectId           String?
-  serviceId           String?
-  deployedAt          DateTime
-  version             String?
-  commitSha           String?
-  branch              String?
-  changedServicesJson Json?
+  id                   String       @id
+  organizationId       String
+  projectId            String?
+  serviceId            String?
+  deployedAt           DateTime
+  version              String?
+  commitSha            String?
+  branch               String?
+  changedServicesJson  Json?
   resultingIncidentIds Json?
-  resultingAlertIds   Json?
-  recoveryEventIds    Json?
-  changeEventId       String?
-  source              String   @default("CHANGE_EVENT")
-  summary             String
-  detailsJson         Json?
-  createdAt           DateTime @default(now())
-  Organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  resultingAlertIds    Json?
+  recoveryEventIds     Json?
+  changeEventId        String?
+  source               String       @default("CHANGE_EVENT")
+  summary              String
+  detailsJson          Json?
+  createdAt            DateTime     @default(now())
+  Organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, deployedAt])
   @@index([projectId, deployedAt])
@@ -1288,7 +1430,7 @@ model DeploymentRecord {
 
 /// Audit trail for AI decisions and recovery actions.
 model AiDecisionAudit {
-  id              String   @id
+  id              String       @id
   organizationId  String
   actorUserId     String?
   decisionType    String
@@ -1298,7 +1440,7 @@ model AiDecisionAudit {
   confidenceScore Float?
   evidenceJson    Json?
   outcome         String?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime     @default(now())
   Organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt])
@@ -1307,15 +1449,15 @@ model AiDecisionAudit {
 
 /// Per-application learning model state (storage only; predictions still gated).
 model ApplicationLearningModel {
-  id             String   @id
+  id             String       @id
   organizationId String
   projectId      String
   modelKey       String
   stateJson      Json
-  sampleCount    Int      @default(0)
-  readiness      String   @default("LEARNING")
+  sampleCount    Int          @default(0)
+  readiness      String       @default("LEARNING")
   updatedAt      DateTime
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
   Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, modelKey])
@@ -1323,11 +1465,11 @@ model ApplicationLearningModel {
 }
 
 model RetentionPolicy {
-  id             String   @id
+  id             String       @id
   organizationId String
   dataClass      String
   retentionDays  Int
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
   updatedAt      DateTime
   Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
