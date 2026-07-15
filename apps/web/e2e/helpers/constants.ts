@@ -66,7 +66,7 @@ export const isExpectedFailedNetwork = (
 };
 
 export const isIgnorableConsole = (text: string): boolean =>
-  /favicon|Download the React DevTools|hydration|ResizeObserver|AbortError|signal is aborted/i.test(
+  /favicon|Download the React DevTools|hydration|ResizeObserver|AbortError|signal is aborted|net::ERR_FAILED|ERR_ABORTED/i.test(
     text
   ) ||
   // Browser surfaces proxy/DB blips + cookieless :4000 fallback during local smoke.

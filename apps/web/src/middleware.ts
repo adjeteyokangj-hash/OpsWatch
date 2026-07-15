@@ -21,10 +21,15 @@ const hasSessionCookie = (request: NextRequest): boolean =>
 
 type SessionCheck = "valid" | "invalid" | "unavailable";
 
+const SESSION_CHECK_TIMEOUT_MS = 4_000;
+
 const checkSession = async (request: NextRequest): Promise<SessionCheck> => {
   if (!hasSessionCookie(request)) {
     return "invalid";
   }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SESSION_CHECK_TIMEOUT_MS);
 
   try {
     const sessionUrl = new URL("/api/auth/session", request.url);
@@ -32,7 +37,8 @@ const checkSession = async (request: NextRequest): Promise<SessionCheck> => {
       headers: {
         cookie: request.headers.get("cookie") ?? ""
       },
-      cache: "no-store"
+      cache: "no-store",
+      signal: controller.signal
     });
 
     if (response.ok) {
@@ -45,7 +51,10 @@ const checkSession = async (request: NextRequest): Promise<SessionCheck> => {
 
     return "unavailable";
   } catch {
+    // Timeout or proxy failure — keep the cookie and allow the page through.
     return "unavailable";
+  } finally {
+    clearTimeout(timer);
   }
 };
 

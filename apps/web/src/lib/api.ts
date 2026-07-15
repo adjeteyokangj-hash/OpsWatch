@@ -1,7 +1,14 @@
 import { API_BASE_URL } from "./constants";
 import { clearAuthCookies, getCsrfToken } from "./auth";
 
-const LOCAL_API_FALLBACK = "http://localhost:4000/api";
+/** Prefer the page hostname so session cookies set on 127.0.0.1 are not dropped on localhost. */
+const localApiFallbackBase = (): string => {
+  if (typeof window === "undefined") {
+    return "http://127.0.0.1:4000/api";
+  }
+  const host = window.location.hostname === "localhost" ? "localhost" : "127.0.0.1";
+  return `http://${host}:4000/api`;
+};
 
 const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, "");
 
@@ -20,9 +27,10 @@ const shouldTryLocalFallback = (status: number, baseUrl: string): boolean => {
   }
 
   const normalizedBase = trimTrailingSlash(baseUrl);
+  const fallback = trimTrailingSlash(localApiFallbackBase());
   const isRelativeBase = normalizedBase.startsWith("/");
   const isSameOriginBase = normalizedBase.startsWith(window.location.origin);
-  const isAlreadyFallback = normalizedBase === LOCAL_API_FALLBACK;
+  const isAlreadyFallback = normalizedBase === fallback;
 
   return (isRelativeBase || isSameOriginBase) && !isAlreadyFallback;
 };
@@ -56,9 +64,23 @@ const toNetworkError = (error: unknown, path: string): Error => {
   return error instanceof Error ? error : new Error(detail || `Request failed for ${path}`);
 };
 
+const DEFAULT_API_TIMEOUT_MS = 30_000;
+
+const withTimeout = (init: RequestInit, timeoutMs: number): { init: RequestInit; cancel: () => void } => {
+  if (init.signal) {
+    return { init, cancel: () => undefined };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return {
+    init: { ...init, signal: controller.signal },
+    cancel: () => clearTimeout(timer)
+  };
+};
+
 export const apiFetch = async <T>(path: string, init?: ApiFetchOptions): Promise<T> => {
   const { suppressAuthRedirect, ...requestInit } = init ?? {};
-  const resolvedInit: RequestInit = {
+  const baseInit: RequestInit = {
     ...requestInit,
     headers: buildHeaders(requestInit),
     credentials: "include",
@@ -66,18 +88,24 @@ export const apiFetch = async <T>(path: string, init?: ApiFetchOptions): Promise
   };
 
   let response: Response;
+  const primary = withTimeout(baseInit, DEFAULT_API_TIMEOUT_MS);
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, resolvedInit);
+    response = await fetch(`${API_BASE_URL}${path}`, primary.init);
   } catch (error) {
+    primary.cancel();
     throw toNetworkError(error, path);
   }
+  primary.cancel();
 
   if (!response.ok && shouldTryLocalFallback(response.status, API_BASE_URL)) {
+    const fallback = withTimeout(baseInit, DEFAULT_API_TIMEOUT_MS);
     try {
-      response = await fetch(`${LOCAL_API_FALLBACK}${path}`, resolvedInit);
+      response = await fetch(`${localApiFallbackBase()}${path}`, fallback.init);
     } catch (error) {
+      fallback.cancel();
       throw toNetworkError(error, path);
     }
+    fallback.cancel();
   }
 
   if (response.status === 401 && !suppressAuthRedirect && typeof window !== "undefined") {

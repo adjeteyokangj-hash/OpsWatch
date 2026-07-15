@@ -106,6 +106,15 @@ export default function DashboardPage() {
   const [sessionOrgMissing, setSessionOrgMissing] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    /** Keep the mobile skeleton from outliving hung/slow API batches (fallback retries included). */
+    const LOAD_BUDGET_MS = 18_000;
+    const unlockTimer = window.setTimeout(() => {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    }, LOAD_BUDGET_MS);
+
     const load = async () => {
       setLoading(true);
       setError(null);
@@ -115,86 +124,157 @@ export default function DashboardPage() {
         // left mobile (and desktop) stuck on “Loading live metrics…” forever.
         const sessionPromise = fetchSessionUser().catch(() => null);
 
-        const [projectsResult, alertsResult, incidentsResult, checksResult, insightsResult, layerHealthResult, intelligenceResult] =
-          await Promise.allSettled([
-            apiFetch<ProjectRow[]>('/projects', { suppressAuthRedirect: true }),
-            apiFetch<AlertRow[]>('/alerts', { suppressAuthRedirect: true }),
-            apiFetch<IncidentRow[]>('/incidents', { suppressAuthRedirect: true }),
-            apiFetch<{ items: CheckRow[]; summary: { total: number; pass: number; fail: number; warn: number; pending: number } }>('/checks', { suppressAuthRedirect: true }),
-            apiFetch<{ projects: InsightsProject[] }>('/insights/product', { suppressAuthRedirect: true }),
-            apiFetch<LayerHealthRow[]>('/analytics/layer-health', { suppressAuthRedirect: true }),
-            apiFetch<IntelligenceTeaser>('/intelligence?harvest=false', { suppressAuthRedirect: true })
-          ]);
+        const metricsPromise = Promise.allSettled([
+          apiFetch<ProjectRow[]>("/projects", { suppressAuthRedirect: true }),
+          apiFetch<AlertRow[]>("/alerts", { suppressAuthRedirect: true }),
+          apiFetch<IncidentRow[]>("/incidents", { suppressAuthRedirect: true }),
+          apiFetch<{
+            items: CheckRow[];
+            summary: { total: number; pass: number; fail: number; warn: number; pending: number };
+          }>("/checks", { suppressAuthRedirect: true }),
+          apiFetch<{ projects: InsightsProject[] }>("/insights/product", { suppressAuthRedirect: true }),
+          apiFetch<LayerHealthRow[]>("/analytics/layer-health", { suppressAuthRedirect: true }),
+          apiFetch<IntelligenceTeaser>("/intelligence?harvest=false", { suppressAuthRedirect: true })
+        ]);
+
+        const budget = new Promise<"budget">((resolve) => {
+          window.setTimeout(() => resolve("budget"), LOAD_BUDGET_MS);
+        });
+
+        const raced = await Promise.race([
+          metricsPromise.then((results) => ({ kind: "results" as const, results })),
+          budget.then(() => ({ kind: "budget" as const }))
+        ]);
+
+        if (cancelled) return;
+
+        if (raced.kind === "budget") {
+          setError(
+            "Dashboard metrics are taking longer than expected. Showing partial live data as it arrives — refresh if values stay empty."
+          );
+          // Keep waiting for slow calls so later data can still populate when it arrives.
+          void metricsPromise.then(async (results) => {
+            if (cancelled) return;
+            applyMetricsResults(results);
+            const sessionUser = await sessionPromise;
+            if (cancelled) return;
+            if (sessionUser && !sessionUser.organizationId) {
+              setSessionOrgMissing(true);
+            }
+          });
+          return;
+        }
+
+        applyMetricsResults(raced.results);
 
         const sessionUser = await sessionPromise;
+        if (cancelled) return;
         // Only flag missing org when session resolved to a user without org — not on timeout/null.
         if (sessionUser && !sessionUser.organizationId) {
           setSessionOrgMissing(true);
         }
-
-        const failures: string[] = [];
-
-        if (projectsResult.status === 'fulfilled') {
-          setProjects(projectsResult.value);
-        } else {
-          failures.push(formatLoadFailure('projects', projectsResult.reason));
-        }
-
-        if (alertsResult.status === 'fulfilled') {
-          setAlerts(alertsResult.value);
-        } else {
-          failures.push(formatLoadFailure('alerts', alertsResult.reason));
-        }
-
-        if (incidentsResult.status === 'fulfilled') {
-          setIncidents(incidentsResult.value);
-        } else {
-          failures.push(formatLoadFailure('incidents', incidentsResult.reason));
-        }
-
-        if (checksResult.status === 'fulfilled') {
-          setChecks(checksResult.value.items);
-          setCheckSummary(checksResult.value.summary);
-        } else {
-          failures.push(formatLoadFailure('checks', checksResult.reason));
-        }
-
-        if (insightsResult.status === 'fulfilled') {
-          const openRecommendations = (insightsResult.value.projects || [])
-            .flatMap((project) =>
-              (project.recommendations || []).map((recommendation) => ({
-                ...recommendation,
-                projectName: project.name
-              }))
-            )
-            .filter((recommendation) => recommendation.status === 'OPEN')
-            .filter((recommendation) => !/localhost|127\.0\.0\.1|http:\/\//i.test(`${recommendation.title} ${recommendation.description}`));
-          setRecommendations(openRecommendations.slice(0, 4));
-        } else {
-          failures.push(formatLoadFailure('insights', insightsResult.reason));
-        }
-
-        if (layerHealthResult.status === 'fulfilled') {
-          setLayerHealth(layerHealthResult.value);
-        } else {
-          failures.push(formatLoadFailure('layer health', layerHealthResult.reason));
-        }
-
-        if (intelligenceResult.status === 'fulfilled') {
-          setIntelligence(intelligenceResult.value);
-        }
-
-        if (failures.length > 0) {
-          setError(`Some dashboard data failed to load: ${failures.join('; ')}. Showing available live data only.`);
-        }
       } catch (err: any) {
-        setError(err?.message || "Failed to load dashboard data");
+        if (!cancelled) {
+          setError(err?.message || "Failed to load dashboard data");
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    const applyMetricsResults = (
+      results: Awaited<ReturnType<typeof Promise.allSettled<[
+        Promise<ProjectRow[]>,
+        Promise<AlertRow[]>,
+        Promise<IncidentRow[]>,
+        Promise<{
+          items: CheckRow[];
+          summary: { total: number; pass: number; fail: number; warn: number; pending: number };
+        }>,
+        Promise<{ projects: InsightsProject[] }>,
+        Promise<LayerHealthRow[]>,
+        Promise<IntelligenceTeaser>
+      ]>>>
+    ) => {
+      const [
+        projectsResult,
+        alertsResult,
+        incidentsResult,
+        checksResult,
+        insightsResult,
+        layerHealthResult,
+        intelligenceResult
+      ] = results;
+
+      const failures: string[] = [];
+
+      if (projectsResult.status === "fulfilled") {
+        setProjects(projectsResult.value);
+      } else {
+        failures.push(formatLoadFailure("projects", projectsResult.reason));
+      }
+
+      if (alertsResult.status === "fulfilled") {
+        setAlerts(alertsResult.value);
+      } else {
+        failures.push(formatLoadFailure("alerts", alertsResult.reason));
+      }
+
+      if (incidentsResult.status === "fulfilled") {
+        setIncidents(incidentsResult.value);
+      } else {
+        failures.push(formatLoadFailure("incidents", incidentsResult.reason));
+      }
+
+      if (checksResult.status === "fulfilled") {
+        setChecks(checksResult.value.items);
+        setCheckSummary(checksResult.value.summary);
+      } else {
+        failures.push(formatLoadFailure("checks", checksResult.reason));
+      }
+
+      if (insightsResult.status === "fulfilled") {
+        const openRecommendations = (insightsResult.value.projects || [])
+          .flatMap((project) =>
+            (project.recommendations || []).map((recommendation) => ({
+              ...recommendation,
+              projectName: project.name
+            }))
+          )
+          .filter((recommendation) => recommendation.status === "OPEN")
+          .filter(
+            (recommendation) =>
+              !/localhost|127\.0\.0\.1|http:\/\//i.test(`${recommendation.title} ${recommendation.description}`)
+          );
+        setRecommendations(openRecommendations.slice(0, 4));
+      } else {
+        failures.push(formatLoadFailure("insights", insightsResult.reason));
+      }
+
+      if (layerHealthResult.status === "fulfilled") {
+        setLayerHealth(layerHealthResult.value);
+      } else {
+        failures.push(formatLoadFailure("layer health", layerHealthResult.reason));
+      }
+
+      if (intelligenceResult.status === "fulfilled") {
+        setIntelligence(intelligenceResult.value);
+      }
+
+      if (failures.length > 0) {
+        setError(
+          `Some dashboard data failed to load: ${failures.join("; ")}. Showing available live data only.`
+        );
       }
     };
 
     void load();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(unlockTimer);
+    };
   }, []);
 
   const healthy = projects.filter((p) => p.status === "HEALTHY").length;
