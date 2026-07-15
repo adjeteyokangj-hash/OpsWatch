@@ -39,6 +39,7 @@ import { internalRouter } from "./routes/internal.routes";
 import { webhooksRouter } from "./routes/webhooks.routes";
 import { adminBillingRouter } from "./routes/admin-billing.routes";
 import { connectionsRouter } from "./routes/connections.routes";
+import { connectionIngestRouter } from "./routes/connection-ingest.routes";
 
 const webhookJsonParser = express.json({
   limit: "1mb",
@@ -98,6 +99,7 @@ app.use(API_PREFIX, trueNumerisRouter);
 app.use(API_PREFIX, eventsRouter);
 app.use(API_PREFIX, heartbeatsRouter);
 app.use(`${API_PREFIX}/webhooks`, webhookJsonParser, webhooksRouter);
+app.use(API_PREFIX, connectionIngestRouter);
 app.use(API_PREFIX, internalRouter);
 
 app.use(API_PREFIX, requireAuth, projectsRouter);

@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
-export type IngestRoute = "event" | "health-snapshot" | "heartbeat";
+export type IngestRoute = "event" | "health-snapshot" | "heartbeat" | "connection-event";
 
 const DEFAULT_NONCE_TTL_SECONDS = 86_400;
 

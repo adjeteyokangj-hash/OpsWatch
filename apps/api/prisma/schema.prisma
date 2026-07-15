@@ -137,6 +137,7 @@ model Incident {
   rootCause             String?
   resolutionNotes       String?
   ChangeEvent           ChangeEvent[]
+  ChangeLedgerEntry     ChangeLedgerEntry[]
   IncidentTimelineEvent IncidentTimelineEvent[]
   Project               Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   IncidentAlert         IncidentAlert[]
@@ -233,6 +234,7 @@ model Organization {
   ApplicationLearningModel ApplicationLearningModel[]
   RetentionPolicy          RetentionPolicy[]
   Connection               Connection[]
+  ChangeLedgerEntry        ChangeLedgerEntry[]
   OperationalLocation      OperationalLocation[]
   OperationalEntity        OperationalEntity[]
   OperationalRelationship  OperationalRelationship[]
@@ -300,6 +302,7 @@ model Project {
   MaintenanceWindows      MaintenanceWindow[]
   ProjectBilling          ProjectBilling?
   Connection              Connection[]
+  ChangeLedgerEntry       ChangeLedgerEntry[]
   OperationalEntity       OperationalEntity[]
   OperationalLocation     OperationalLocation?      @relation(fields: [operationalLocationId], references: [id], onDelete: SetNull)
   operationalLocationId   String?
@@ -312,18 +315,18 @@ model Project {
 /// A generic, organization-scoped operational connection. Secret material is
 /// referenced through secretRef; configurationJson must never contain secrets.
 model Connection {
-  id                   String       @id
+  id                   String              @id
   organizationId       String
   projectId            String?
   name                 String
   type                 String
   mode                 String
-  environment          String       @default("production")
-  authMethod           String       @default("NONE")
+  environment          String              @default("production")
+  authMethod           String              @default("NONE")
   capabilitiesJson     Json?
   configurationJson    Json?
   secretRef            String?
-  health               String       @default("UNKNOWN")
+  health               String              @default("UNKNOWN")
   healthReason         String?
   lastSuccessAt        DateTime?
   lastFailureAt        DateTime?
@@ -331,13 +334,16 @@ model Connection {
   requestRatePerMinute Int?
   errorRatePercent     Float?
   permissionsJson      Json?
-  installationStatus   String       @default("PENDING")
+  installationStatus   String              @default("PENDING")
   collectorVersion     String?
-  isActive             Boolean      @default(true)
-  createdAt            DateTime     @default(now())
+  manifestVersion      String              @default("1.0")
+  deactivatedAt        DateTime?
+  isActive             Boolean             @default(true)
+  createdAt            DateTime            @default(now())
   updatedAt            DateTime
-  Organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Project              Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project              Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  ChangeLedgerEntry    ChangeLedgerEntry[]
 
   @@unique([organizationId, projectId, name])
   @@index([organizationId, isActive, createdAt])
@@ -681,6 +687,7 @@ model Service {
   SLODefinition             SLODefinition[]
   MaintenanceWindowServices MaintenanceWindowService[]
   OperationalEntity         OperationalEntity?
+  ChangeLedgerEntry         ChangeLedgerEntry[]
 }
 
 model ChangeEvent {
@@ -703,6 +710,37 @@ model ChangeEvent {
   @@index([projectId, occurredAt])
   @@index([serviceId, occurredAt])
   @@index([incidentId, occurredAt])
+}
+
+/// Organization-scoped, factual ledger of operational changes. Evidence is
+/// supplied by the caller or connector; this table never synthesizes events.
+model ChangeLedgerEntry {
+  id             String       @id
+  organizationId String
+  projectId      String?
+  serviceId      String?
+  incidentId     String?
+  connectionId   String?
+  kind           String
+  summary        String
+  actorType      String?
+  actor          String?
+  source         String
+  externalId     String?
+  evidenceJson   Json?
+  occurredAt     DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project        Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Service        Service?     @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  Incident       Incident?    @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  Connection     Connection?  @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, occurredAt])
+  @@index([organizationId, kind, occurredAt])
+  @@index([projectId, occurredAt])
+  @@index([connectionId, occurredAt])
+  @@index([organizationId, source, externalId])
 }
 
 model ServiceDependency {

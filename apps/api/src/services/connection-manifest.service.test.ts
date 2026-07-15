@@ -3,6 +3,7 @@ import {
   getConnectionManifest,
   hasInlineSecret,
   negotiateCapabilities,
+  validateConnectionConfiguration,
   validateConnectionInput
 } from "./connection-manifest.service";
 
@@ -41,5 +42,15 @@ describe("connection manifest", () => {
       authMethod: "HMAC",
       capabilities: []
     })).toBe("missing required capabilities: heartbeat");
+  });
+
+  it("declares only implemented agentless capabilities and validates probe configuration", () => {
+    const manifest = getConnectionManifest("AGENTLESS");
+    expect(manifest.availableCapabilities).toEqual(["health_check", "latency"]);
+    expect(manifest.foundationHooks.every((hook) => hook.supported === false)).toBe(true);
+    expect(validateConnectionConfiguration("AGENTLESS", {
+      endpoint: "https://status.example.test/health",
+      method: "POST"
+    })).toEqual({ valid: false, error: "configuration.method must be GET or HEAD" });
   });
 });

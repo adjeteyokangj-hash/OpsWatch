@@ -7,8 +7,13 @@ import {
   getConnectionManifest,
   isConnectionMode,
   negotiateCapabilities,
+  validateConnectionConfiguration,
   validateConnectionInput
 } from "../services/connection-manifest.service";
+import {
+  discoverApiConnection,
+  testAgentlessConnection
+} from "../services/agentless-connection.service";
 
 const requireOrg = (req: AuthRequest, res: Response): string | null => {
   const orgId = req.user?.organizationId;
@@ -42,6 +47,8 @@ const toConnectionDto = (row: any) => ({
   permissions: row.permissionsJson ?? null,
   installationStatus: row.installationStatus,
   collectorVersion: row.collectorVersion,
+  manifestVersion: row.manifestVersion,
+  deactivatedAt: row.deactivatedAt?.toISOString() ?? null,
   isActive: row.isActive,
   project: row.Project ? { id: row.Project.id, name: row.Project.name } : null,
   createdAt: row.createdAt.toISOString(),
@@ -106,6 +113,13 @@ export const createConnection = async (req: AuthRequest, res: Response) => {
     res.status(400).json({ error: "configuration must be an object" });
     return;
   }
+  if (configuration && isConnectionMode(body.mode)) {
+    const configurationValidation = validateConnectionConfiguration(body.mode, configuration);
+    if (!configurationValidation.valid) {
+      res.status(400).json({ error: configurationValidation.error });
+      return;
+    }
+  }
   const capabilities = Array.isArray(body.capabilities) ? body.capabilities.filter((value: unknown): value is string => typeof value === "string") : [];
   const row = await prisma.connection.create({
     data: {
@@ -121,9 +135,20 @@ export const createConnection = async (req: AuthRequest, res: Response) => {
       ...(configuration ? { configurationJson: configuration as Prisma.InputJsonValue } : {}),
       secretRef: body.secretRef ? String(body.secretRef) : null,
       installationStatus: "CONFIGURED",
+      manifestVersion: getConnectionManifest(body.mode).version,
       updatedAt: new Date()
     },
     include: { Project: { select: { id: true, name: true } } }
+  });
+  await prisma.auditLog.create({
+    data: {
+      id: randomUUID(),
+      userId: req.user?.id,
+      action: "CONNECTION_CREATED",
+      entityType: "CONNECTION",
+      entityId: row.id,
+      metadataJson: { organizationId: orgId, mode: row.mode, manifestVersion: row.manifestVersion }
+    }
   });
   res.status(201).json(toConnectionDto(row));
 };
@@ -155,6 +180,13 @@ export const patchConnection = async (req: AuthRequest, res: Response) => {
     res.status(400).json({ error: "configuration must be an object" });
     return;
   }
+  if (configuration && isConnectionMode(mode)) {
+    const configurationValidation = validateConnectionConfiguration(mode, configuration);
+    if (!configurationValidation.valid) {
+      res.status(400).json({ error: configurationValidation.error });
+      return;
+    }
+  }
   const row = await prisma.connection.update({
     where: { id: existing.id },
     data: {
@@ -163,15 +195,81 @@ export const patchConnection = async (req: AuthRequest, res: Response) => {
       ...(body.mode !== undefined ? { mode } : {}),
       ...(body.environment !== undefined ? { environment: String(body.environment) } : {}),
       ...(body.authMethod !== undefined ? { authMethod } : {}),
-      ...(body.capabilities !== undefined ? { capabilitiesJson: body.capabilities } : {}),
+      ...(body.capabilities !== undefined ? {
+        capabilitiesJson: Array.isArray(body.capabilities)
+          ? body.capabilities.filter((value: unknown): value is string => typeof value === "string")
+          : []
+      } : {}),
       ...(configuration ? { configurationJson: configuration as Prisma.InputJsonValue } : {}),
       ...(body.secretRef !== undefined ? { secretRef: body.secretRef ? String(body.secretRef) : null } : {}),
       ...(body.isActive !== undefined ? { isActive: Boolean(body.isActive) } : {}),
+      ...(body.isActive === false ? { deactivatedAt: new Date(), installationStatus: "DEACTIVATED" } : {}),
+      ...(body.isActive === true ? { deactivatedAt: null } : {}),
+      ...(body.mode !== undefined && isConnectionMode(mode) ? { manifestVersion: getConnectionManifest(mode).version } : {}),
       updatedAt: new Date()
     },
     include: { Project: { select: { id: true, name: true } } }
   });
+  await prisma.auditLog.create({
+    data: {
+      id: randomUUID(),
+      userId: req.user?.id,
+      action: body.isActive === false ? "CONNECTION_DEACTIVATED" : "CONNECTION_UPDATED",
+      entityType: "CONNECTION",
+      entityId: row.id,
+      metadataJson: { organizationId: orgId, mode: row.mode, isActive: row.isActive }
+    }
+  });
   res.json(toConnectionDto(row));
+};
+
+export const testConnection = async (req: AuthRequest, res: Response) => {
+  const orgId = requireOrg(req, res);
+  if (!orgId) return;
+  const connection = await prisma.connection.findFirst({
+    where: { id: req.params.connectionId, organizationId: orgId, isActive: true },
+    select: {
+      id: true,
+      organizationId: true,
+      projectId: true,
+      name: true,
+      mode: true,
+      configurationJson: true,
+      secretRef: true
+    }
+  });
+  if (!connection) {
+    res.status(404).json({ error: "Active connection not found" });
+    return;
+  }
+  const result = await testAgentlessConnection(connection);
+  res.status(result.succeeded ? 200 : 422).json(result);
+};
+
+export const discoverConnection = async (req: AuthRequest, res: Response) => {
+  const orgId = requireOrg(req, res);
+  if (!orgId) return;
+  const connection = await prisma.connection.findFirst({
+    where: { id: req.params.connectionId, organizationId: orgId, isActive: true },
+    select: {
+      id: true,
+      organizationId: true,
+      projectId: true,
+      name: true,
+      mode: true,
+      configurationJson: true,
+      secretRef: true
+    }
+  });
+  if (!connection) {
+    res.status(404).json({ error: "Active connection not found" });
+    return;
+  }
+  try {
+    res.json(await discoverApiConnection(connection));
+  } catch (error) {
+    res.status(422).json({ error: error instanceof Error ? error.message : "Discovery failed" });
+  }
 };
 
 export const recordConnectionValidation = async (req: AuthRequest, res: Response) => {
