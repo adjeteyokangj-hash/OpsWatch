@@ -19,6 +19,12 @@ import { resolveDependencyDisplayLinks, resolveHierarchyDisplayLinks } from "./t
 import { edgeTrafficWeight, replayNodeStatus } from "./topology-metrics";
 import type { VisualLayer } from "./topology-visual-layers";
 import { classifyVisualLayer, layerEdgeColor, visualLayerCountLabel, visualLayerTitle } from "./topology-visual-layers";
+import {
+  buildNodeRelationshipDiagnostics,
+  isolationBadgeLabel,
+  matchesConnectionFilter,
+  type ConnectionFilter
+} from "./topology-relationship";
 
 const moreLayerLabel = (layer: VisualLayer): string => {
   if (layer === "MODULE") return "modules";
@@ -45,6 +51,7 @@ type Props = {
   replayMinutesAgo?: number;
   searchQuery?: string;
   fitToken?: number;
+  connectionFilter?: ConnectionFilter;
 };
 
 const NODE_WIDTH = LAYOUT.nodeWidth;
@@ -114,7 +121,8 @@ export const TopologyCanvas = ({
   traceFocus = true,
   replayMinutesAgo = 0,
   searchQuery = "",
-  fitToken = 0
+  fitToken = 0,
+  connectionFilter = "ALL"
 }: Props) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
@@ -156,10 +164,11 @@ export const TopologyCanvas = ({
     return rows;
   }, [topology.nodes, hiddenDescendants, subgraphOnly, focusNodeIds]);
 
-  const layoutNodes = useMemo(
-    () => baseNodes.filter((node) => classifyVisualLayer(node) !== "APP"),
-    [baseNodes]
-  );
+  const layoutNodes = useMemo(() => {
+    const nonApp = baseNodes.filter((node) => classifyVisualLayer(node) !== "APP");
+    const apps = topology.nodes.filter((node) => classifyVisualLayer(node) === "APP");
+    return [...apps, ...nonApp];
+  }, [baseNodes, topology.nodes]);
 
   const layoutKey = `${layoutNodes.map((row) => row.id).sort().join("|")}|${[...collapsedNodeIds].sort().join(",")}|${[...expandedLayers].sort().join(",")}`;
 
@@ -189,7 +198,7 @@ export const TopologyCanvas = ({
 
   const layoutVisibleIds = graphLayout.visibleNodeIds;
 
-  const zoomPercent = Math.max(25, Math.min(250, Math.round((viewport.scale / referenceScale) * 100)));
+  const zoomPercent = Math.max(25, Math.min(300, Math.round((viewport.scale / referenceScale) * 100)));
 
   const displayStatusFor = useCallback(
     (nodeId: string, status: TopologyHealthStatus): TopologyHealthStatus => {
@@ -199,6 +208,13 @@ export const TopologyCanvas = ({
     },
     [topology.nodes, replayMinutesAgo]
   );
+
+  const relationshipByNode = useMemo(() => {
+    const map = new Map(
+      buildNodeRelationshipDiagnostics(topology).map((row) => [row.moduleId, row] as const)
+    );
+    return map;
+  }, [topology]);
 
   const visibleNodes = useMemo(
     () =>
@@ -213,9 +229,25 @@ export const TopologyCanvas = ({
           }
         }
         if (!layoutVisibleIds.has(node.id)) return false;
+        const relationship = relationshipByNode.get(node.id);
+        if (
+          relationship &&
+          !matchesConnectionFilter(relationship.connectionState, connectionFilter)
+        ) {
+          return false;
+        }
         return true;
       }),
-    [baseNodes, typeFilter, healthFilter, searchQuery, displayStatusFor, layoutVisibleIds]
+    [
+      baseNodes,
+      typeFilter,
+      healthFilter,
+      searchQuery,
+      displayStatusFor,
+      layoutVisibleIds,
+      relationshipByNode,
+      connectionFilter
+    ]
   );
 
   const hierarchyLinks = useMemo(
@@ -237,22 +269,33 @@ export const TopologyCanvas = ({
   const fitToScreen = useCallback(() => {
     const container = containerRef.current;
     if (!container || layoutNodes.length === 0) return;
-    const bounds = [...graphLayout.positions.values()];
-    const minX = Math.min(...bounds.map((row) => row.x)) - NODE_WIDTH;
-    const maxX = Math.max(...bounds.map((row) => row.x)) + NODE_WIDTH;
-    const minY = Math.min(...bounds.map((row) => row.y)) - NODE_HEIGHT;
-    const maxY = Math.max(...bounds.map((row) => row.y)) + NODE_HEIGHT;
-    const width = maxX - minX;
-    const height = maxY - minY;
-    const scale = Math.min(container.clientWidth / width, container.clientHeight / height, 1.2);
-    const nextScale = Math.max(scale, 0.45);
+    const bounds = [...graphLayout.positions.entries()]
+      .filter(([id]) => graphLayout.visibleNodeIds.has(id) || id.startsWith("more:"))
+      .map(([, position]) => position);
+    if (bounds.length === 0) return;
+    const minX = Math.min(...bounds.map((row) => row.x)) - NODE_WIDTH / 2;
+    const maxX = Math.max(...bounds.map((row) => row.x)) + NODE_WIDTH / 2;
+    const minY = Math.min(...bounds.map((row) => row.y)) - NODE_HEIGHT / 2;
+    const maxY = Math.max(...bounds.map((row) => row.y)) + NODE_HEIGHT / 2;
+    const width = Math.max(1, maxX - minX);
+    const height = Math.max(1, maxY - minY);
+    const availableWidth = Math.max(
+      120,
+      container.clientWidth - LAYOUT.chromeSide * 2 - LAYOUT.fitPadding * 2
+    );
+    const availableHeight = Math.max(
+      120,
+      container.clientHeight - LAYOUT.chromeTop - LAYOUT.chromeBottom - LAYOUT.fitPadding * 2
+    );
+    const scale = Math.min(availableWidth / width, availableHeight / height, 1.2);
+    const nextScale = Math.max(scale, 0.35);
     setReferenceScale(nextScale);
     setViewport({
       scale: nextScale,
-      x: container.clientWidth / 2 - ((minX + maxX) / 2) * nextScale,
-      y: container.clientHeight / 2 - ((minY + maxY) / 2) * nextScale
+      x: (availableWidth - width * nextScale) / 2 - minX * nextScale + LAYOUT.chromeSide + LAYOUT.fitPadding,
+      y: (availableHeight - height * nextScale) / 2 - minY * nextScale + LAYOUT.chromeTop + LAYOUT.fitPadding
     });
-  }, [layoutNodes.length, graphLayout.positions]);
+  }, [layoutNodes.length, graphLayout.positions, graphLayout.visibleNodeIds]);
 
   useEffect(() => {
     fitToScreen();
@@ -263,7 +306,9 @@ export const TopologyCanvas = ({
     if (!container) return;
 
     setViewport((current) => {
-      const nextScale = Math.max(0.45, Math.min(2.5, current.scale * factor));
+      const minScale = Math.max(0.25, referenceScale * 0.25);
+      const maxScale = Math.max(minScale, referenceScale * 3);
+      const nextScale = Math.max(minScale, Math.min(maxScale, current.scale * factor));
       const centerX = container.clientWidth / 2;
       const centerY = container.clientHeight / 2;
       const worldX = (centerX - current.x) / current.scale;
@@ -375,26 +420,7 @@ export const TopologyCanvas = ({
       title="Ctrl + scroll to zoom the map"
       data-testid="topology-canvas"
     >
-      <div className="topology-map-toolbar" onPointerDown={(event) => event.stopPropagation()}>
-        <div className="topology-map-toolbar-group">
-          <button type="button" className="topology-icon-button" aria-label="Select" title="Select">◎</button>
-          <button type="button" className="topology-icon-button" aria-label="Pan" title="Pan">✥</button>
-        </div>
-        <div className="topology-map-toolbar-group">
-          <label className="topology-map-toolbar-field">
-            <span>Group by</span>
-            <select defaultValue="layer" aria-label="Group by">
-              <option value="layer">Layer</option>
-            </select>
-          </label>
-          <label className="topology-map-toolbar-field">
-            <span>Layout</span>
-            <select defaultValue="hierarchical" aria-label="Layout">
-              <option value="hierarchical">Hierarchical</option>
-            </select>
-          </label>
-        </div>
-      </div>
+      <div className="topology-canvas-overlay" data-testid="topology-canvas-overlay" aria-hidden="true" />
 
       <svg
         className="topology-canvas"
@@ -402,6 +428,7 @@ export const TopologyCanvas = ({
         aria-label="Project topology graph"
         width={graphLayout.width}
         height={graphLayout.height}
+        data-testid="topology-graph-svg"
       >
         <defs>
           <marker id="topology-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
@@ -416,7 +443,8 @@ export const TopologyCanvas = ({
           </filter>
         </defs>
 
-        <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
+        <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`} data-testid="topology-graph-transform">
+          <g className="topology-layer-bands" data-testid="topology-layer-bands">
           {graphLayout.layerBands.map((band) => (
             <rect
               key={`band-${band.layer}`}
@@ -428,7 +456,9 @@ export const TopologyCanvas = ({
               rx={14}
             />
           ))}
+          </g>
 
+          <g className="topology-layer-labels">
           {graphLayout.layerBands.map((band) => (
             <foreignObject
               key={`label-${band.layer}`}
@@ -444,7 +474,9 @@ export const TopologyCanvas = ({
               </div>
             </foreignObject>
           ))}
+          </g>
 
+          <g className="topology-edges" data-testid="topology-edges">
           {hierarchyLinks.map((link) => {
             const childPos = graphLayout.positions.get(link.childId);
             const parentPos = graphLayout.positions.get(link.parentId);
@@ -507,7 +539,7 @@ export const TopologyCanvas = ({
                   className={`topology-edge-line topology-edge-line--dependency ${healthClassName(replayStatus)}${link.edge.critical ? " critical" : ""}`}
                   markerEnd="url(#topology-arrow)"
                   strokeWidth={edgeStrokeWidth(weight)}
-                  opacity={0.55}
+                  opacity={0.85}
                   filter="url(#topology-edge-glow)"
                 />
                 <TrafficPackets
@@ -545,7 +577,9 @@ export const TopologyCanvas = ({
               </g>
             );
           })}
+          </g>
 
+          <g className="topology-nodes" data-testid="topology-nodes">
           {visibleNodes.map((node) => {
             const position = graphLayout.positions.get(node.id);
             if (!position) return null;
@@ -555,17 +589,22 @@ export const TopologyCanvas = ({
             const dimmed = shouldDim && focusNodeIds.size > 0 && !focusNodeIds.has(node.id);
             const childCount = countHierarchyChildren(node.id, topology.edges, topology.nodes);
             const collapsed = collapsedNodeIds.has(node.id);
+            const relationship = relationshipByNode.get(node.id);
+            const isolationLabel = relationship
+              ? isolationBadgeLabel(relationship.connectionState)
+              : null;
 
             return (
               <g
                 key={node.id}
-                className={`topology-node ${healthClassName(displayStatus)}${selected ? " selected" : ""}${overlays?.affectedNodeIds?.includes(node.id) ? " affected" : ""}${overlays?.incidentNodeIds?.includes(node.id) ? " incident-linked" : ""}${rootCause ? " root-cause" : ""}${dimmed ? " dimmed" : ""}${selected && traceFocus ? " trace-focus" : ""}`}
+                className={`topology-node ${healthClassName(displayStatus)}${selected ? " selected" : ""}${overlays?.affectedNodeIds?.includes(node.id) ? " affected" : ""}${overlays?.incidentNodeIds?.includes(node.id) ? " incident-linked" : ""}${rootCause ? " root-cause" : ""}${dimmed ? " dimmed" : ""}${selected && traceFocus ? " trace-focus" : ""}${isolationLabel ? " topology-node--isolated" : ""}`}
                 transform={`translate(${position.x - NODE_WIDTH / 2} ${position.y - NODE_HEIGHT / 2})`}
                 onClick={(event) => {
                   event.stopPropagation();
                   onSelectNode(node.id);
                 }}
                 data-testid={`topology-node-${node.id}`}
+                data-connection-state={relationship?.connectionState ?? "connected"}
                 data-root-cause-rank={rootCause?.rank}
                 aria-label={`${node.name}, ${healthLabel(displayStatus)}`}
                 role="button"
@@ -589,11 +628,13 @@ export const TopologyCanvas = ({
                     compact
                     childCount={childCount}
                     collapsed={collapsed}
+                    isolationLabel={isolationLabel}
                     onToggleCollapse={() => toggleCollapse(node.id)}
                   />
                 </foreignObject>
                 <title>
                   {node.name} · {healthLabel(displayStatus)}
+                  {relationship?.isolatedStateReason ? ` · ${relationship.isolatedStateReason}` : ""}
                 </title>
               </g>
             );
@@ -623,6 +664,7 @@ export const TopologyCanvas = ({
               </g>
             );
           })}
+          </g>
 
           {showChangeEvents
             ? overlays?.changeEvents?.map((row) => {

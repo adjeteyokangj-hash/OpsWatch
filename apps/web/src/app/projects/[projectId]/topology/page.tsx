@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Shell } from "../../../../components/layout/shell";
@@ -20,6 +20,15 @@ import { TopologyRefreshBanner } from "../../../../components/topology/topology-
 import { EmptyState } from "../../../../components/ui/empty-state";
 import { classifyTopologyError, type ClassifiedTopologyError } from "../../../../components/topology/topology-error-classify";
 import type { ProjectTopologyResponse, TopologyHealthStatus, TopologyNodeType } from "../../../../components/topology/topology-types";
+import {
+  auditTopologyRelationships,
+  buildNodeRelationshipDiagnostics,
+  type ConnectionFilter
+} from "../../../../components/topology/topology-relationship";
+import { TopologyRelationshipSummary } from "../../../../components/topology/topology-relationship-summary";
+import { resolveDependencyDisplayLinks, resolveHierarchyDisplayLinks } from "../../../../components/topology/topology-edge-resolve";
+import { computeLayeredLayout } from "../../../../components/topology/topology-layout";
+import { classifyVisualLayer } from "../../../../components/topology/topology-visual-layers";
 
 const REFRESH_MS = 15_000;
 
@@ -48,6 +57,39 @@ export default function ProjectTopologyPage() {
   const [fitToken, setFitToken] = useState(0);
   const [viewMode, setViewMode] = useState<TopologyViewMode>("map");
   const [replayMinutesAgo, setReplayMinutesAgo] = useState(0);
+  const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter>("ALL");
+
+  const relationshipDiagnostics = useMemo(
+    () => (topology ? buildNodeRelationshipDiagnostics(topology) : []),
+    [topology]
+  );
+
+  useEffect(() => {
+    if (!topology || process.env.NODE_ENV === "production") return;
+    const layoutNodes = [
+      ...topology.nodes.filter((node) => classifyVisualLayer(node) === "APP"),
+      ...topology.nodes.filter((node) => classifyVisualLayer(node) !== "APP")
+    ];
+    const layout = computeLayeredLayout(layoutNodes);
+    const hierarchy = resolveHierarchyDisplayLinks(topology.edges, topology.nodes, layout);
+    const dependency = resolveDependencyDisplayLinks(topology.edges, layout);
+    const rendered = new Set<string>([
+      ...hierarchy.map((link) => link.key),
+      ...dependency.map((link) => link.key)
+    ]);
+    const audit = auditTopologyRelationships({ topology, renderedEdgeKeys: rendered });
+    // Development-only relationship completeness audit for Noble Express and peers.
+    console.info("[topology-relationship-audit]", {
+      projectId: topology.project.id,
+      zeroDegreeModules: audit.zeroDegreeModules,
+      missingSourceNodeIds: audit.missingSourceNodeIds,
+      missingTargetNodeIds: audit.missingTargetNodeIds,
+      duplicateRelationshipKeys: audit.duplicateRelationshipKeys,
+      selfReferencingRelationshipIds: audit.selfReferencingRelationshipIds,
+      edgesAbsentFromRenderedGraph: audit.edgesAbsentFromRenderedGraph,
+      diagnostics: relationshipDiagnostics.filter((row) => row.nodeType === "MODULE")
+    });
+  }, [topology, relationshipDiagnostics]);
 
   const load = useCallback(
     async (manual = false) => {
@@ -206,13 +248,16 @@ export default function ProjectTopologyPage() {
             <TopologyFilterBar
               typeFilter={typeFilter}
               healthFilter={healthFilter}
+              connectionFilter={connectionFilter}
               searchQuery={searchQuery}
               viewMode={viewMode}
               onTypeFilterChange={setTypeFilter}
               onHealthFilterChange={setHealthFilter}
+              onConnectionFilterChange={setConnectionFilter}
               onSearchQueryChange={setSearchQuery}
               onViewModeChange={setViewMode}
             />
+            <TopologyRelationshipSummary topology={topology} diagnostics={relationshipDiagnostics} />
             <TopologyTimeReplay minutesAgo={replayMinutesAgo} onChange={setReplayMinutesAgo} />
             <div className="topology-workspace">
               {viewMode === "map" ? (
@@ -222,6 +267,7 @@ export default function ProjectTopologyPage() {
                   onSelectNode={setSelectedNodeId}
                   typeFilter={typeFilter}
                   healthFilter={healthFilter}
+                  connectionFilter={connectionFilter}
                   searchQuery={searchQuery}
                   fitToken={fitToken}
                   replayMinutesAgo={replayMinutesAgo}

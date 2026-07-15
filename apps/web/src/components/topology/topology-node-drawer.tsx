@@ -6,6 +6,7 @@ import type { ProjectTopologyResponse, TopologyNode } from "./topology-types";
 import { healthClassName, healthLabel, unknownHealthReason } from "./topology-types";
 import { TopologySparkline } from "./topology-sparkline";
 import { TopologyApplicationPanel } from "./topology-application-panel";
+import { buildNodeRelationshipDiagnostics } from "./topology-relationship";
 
 type Props = {
   topology: ProjectTopologyResponse;
@@ -36,6 +37,7 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
   }
 
   const context = topology.nodeContext[node.id];
+  const relationship = buildNodeRelationshipDiagnostics(topology).find((row) => row.moduleId === node.id);
   const nodeById = new Map(topology.nodes.map((row) => [row.id, row]));
   const childWorkflows = (context?.downstreamIds ?? []).filter((id) => nodeById.get(id)?.type === "WORKFLOW").length;
   const childComponents = (context?.downstreamIds ?? []).filter((id) => nodeById.get(id)?.type === "COMPONENT").length;
@@ -45,6 +47,16 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
     { label: "Health", value: healthLabel(node.status) },
     { label: "Availability", value: availability == null ? "—" : `${availability.toFixed(1)}%` },
     { label: "Last check", value: formatRelativeTime(context?.lastCheckAt) },
+    { label: "Relationships", value: String(relationship?.totalRelationshipCount ?? 0) },
+    {
+      label: "Connection state",
+      value:
+        relationship?.connectionState === "discovery_incomplete"
+          ? "Discovery pending"
+          : relationship?.connectionState === "intentionally_isolated"
+            ? "No mapped dependencies"
+            : "Connected"
+    },
     { label: "Active incidents", value: String(node.risk.unresolvedIncidents) },
     { label: "Child workflows", value: String(childWorkflows) },
     { label: "Child components", value: String(childComponents) },
@@ -133,6 +145,12 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
                   openAlerts: node.risk.openAlerts
                 })}
               </p>
+            </section>
+          ) : null}
+          {relationship?.isolatedStateReason ? (
+            <section className="topology-detail-section topology-isolation-reason" role="status" data-testid="topology-isolation-reason">
+              <h3>Relationship status</h3>
+              <p>{relationship.isolatedStateReason}</p>
             </section>
           ) : null}
           <section className="topology-detail-section">

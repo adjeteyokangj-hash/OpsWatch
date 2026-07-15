@@ -153,4 +153,55 @@ describe("TopologyCanvas", () => {
     expect(after).toBeTruthy();
     expect(after).not.toBe(before);
   });
+
+  it("does not render floating Group by / Layout controls inside the canvas", () => {
+    render(
+      <TopologyCanvas
+        topology={topology}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+        typeFilter="ALL"
+        healthFilter="ALL"
+      />
+    );
+
+    expect(screen.getByTestId("topology-canvas")).toBeInTheDocument();
+    expect(document.querySelector(".topology-map-toolbar")).toBeNull();
+    expect(screen.queryByLabelText("Group by")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Layout")).not.toBeInTheDocument();
+    expect(screen.getByTestId("topology-graph-transform")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Zoom in" }).closest(".topology-canvas-footer")).toBeTruthy();
+  });
+
+  it("keeps zoom controls outside the graph transform layer", () => {
+    render(
+      <TopologyCanvas
+        topology={topology}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+        typeFilter="ALL"
+        healthFilter="ALL"
+      />
+    );
+
+    const transform = screen.getByTestId("topology-graph-transform");
+    expect(transform.contains(screen.getByRole("button", { name: "Zoom in" }))).toBe(false);
+    expect(transform.contains(screen.getByRole("button", { name: "Fit" }))).toBe(false);
+  });
+
+  it("places edges above layer bands in SVG paint order", () => {
+    render(
+      <TopologyCanvas
+        topology={topology}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+        typeFilter="ALL"
+        healthFilter="ALL"
+      />
+    );
+
+    const bands = screen.getByTestId("topology-layer-bands");
+    const edges = screen.getByTestId("topology-edges");
+    expect(bands.compareDocumentPosition(edges) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

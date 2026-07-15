@@ -22,7 +22,12 @@ export const LAYOUT = {
   paddingY: 80,
   layerGap: 36,
   minCanvasWidth: 1180,
-  minCanvasHeight: 820
+  minCanvasHeight: 820,
+  /** Fixed chrome inside the canvas wrap (legend + zoom) — not scaled by graph zoom. */
+  chromeTop: 12,
+  chromeBottom: 72,
+  chromeSide: 16,
+  fitPadding: 36
 } as const;
 
 export type LayerBand = {
@@ -54,6 +59,27 @@ const rowWidth = (count: number): number =>
 
 export const layerExpansionKey = (layer: VisualLayer): string => `layer:${layer}`;
 
+/**
+ * Place invisible APP anchors so hierarchy/dependency edges to the application root
+ * remain drawable even though APP cards are not painted on the layered map.
+ */
+export const placeAppAnchors = (
+  positions: Map<string, NodePosition>,
+  appNodes: TopologyNode[],
+  width: number,
+  firstBandY: number
+): void => {
+  if (appNodes.length === 0) return;
+  const y = Math.max(LAYOUT.paddingY * 0.45, firstBandY - 28);
+  appNodes.forEach((app, index) => {
+    const offset = (index - (appNodes.length - 1) / 2) * 48;
+    positions.set(app.id, {
+      x: width / 2 + offset,
+      y
+    });
+  });
+};
+
 export const computeLayeredLayout = (
   nodes: TopologyNode[],
   expandedLayers: Set<string> = new Set()
@@ -66,10 +92,14 @@ export const computeLayeredLayout = (
   for (const layer of VISUAL_LAYER_ORDER) grouped.set(layer, []);
   for (const node of nodes) grouped.get(classifyVisualLayer(node))?.push(node);
 
+  const appNodes = [...(grouped.get("APP") ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+
   const sortedLayers = VISUAL_LAYER_ORDER.map((layer) => ({
     layer,
     nodes: [...(grouped.get(layer) ?? [])].sort((a, b) => a.name.localeCompare(b.name))
-  })).filter((entry) => entry.nodes.length > 0);
+  }))
+    .filter((entry) => entry.layer !== "APP")
+    .filter((entry) => entry.nodes.length > 0);
 
   let maxCanvasWidth: number = LAYOUT.minCanvasWidth;
   const layerBands: LayerBand[] = [];
@@ -130,6 +160,9 @@ export const computeLayeredLayout = (
 
     currentY += bandHeight + LAYOUT.layerGap;
   }
+
+  const firstBandY = layerBands[0]?.y ?? LAYOUT.paddingY;
+  placeAppAnchors(positions, appNodes, maxCanvasWidth, firstBandY);
 
   return {
     positions,

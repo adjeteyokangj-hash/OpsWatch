@@ -11,6 +11,7 @@ type Props = {
   compact?: boolean;
   childCount?: number;
   collapsed?: boolean;
+  isolationLabel?: string | null;
   onToggleCollapse?: () => void;
 };
 
@@ -36,6 +37,7 @@ export function TopologyNodeCard({
   compact = true,
   childCount = 0,
   collapsed = false,
+  isolationLabel = null,
   onToggleCollapse
 }: Props) {
   const metrics = deriveNodeLiveMetrics(node);
@@ -69,6 +71,11 @@ export function TopologyNodeCard({
             {availability == null ? "—" : `${availability.toFixed(2)}%`}
           </span>
         </div>
+        {isolationLabel ? (
+          <span className="topology-node-isolation-badge" data-testid={`topology-isolation-${node.id}`}>
+            {isolationLabel}
+          </span>
+        ) : null}
         {availability == null ? (
           <span className="topology-node-card-awaiting">{healthLabel(displayStatus)}</span>
         ) : null}
