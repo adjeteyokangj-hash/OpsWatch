@@ -17,7 +17,8 @@ const edge: SelectedTopologyEdge = {
   status: "CRITICAL",
   critical: false,
   colourMeaning: "Red solid — failing dependency.",
-  writtenHealth: "Critical"
+  writtenHealth: "Critical",
+  colourReason: "Selected because a failed check or critical/high alert is linked to an endpoint of this relationship."
 };
 
 const topology: ProjectTopologyResponse = {

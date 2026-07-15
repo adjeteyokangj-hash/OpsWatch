@@ -362,10 +362,20 @@ export const TopologyCanvas = ({
     });
   };
 
+  const dragMoved = useRef(false);
+
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
-    if (target.closest(".topology-node, .topology-aux-node, .topology-canvas-footer, button, a")) return;
+    // Nodes and edges own their own click selection — do not steal pointer capture for pan.
+    if (
+      target.closest(
+        ".topology-node, .topology-aux-node, .topology-edge, .topology-canvas-footer, button, a, input, select, textarea"
+      )
+    ) {
+      return;
+    }
 
+    dragMoved.current = false;
     dragOrigin.current = { x: event.clientX, y: event.clientY, vx: viewport.x, vy: viewport.y };
     setDragging(true);
     onInteractingChange?.(true);
@@ -377,6 +387,9 @@ export const TopologyCanvas = ({
     if (!origin) return;
     const dx = event.clientX - origin.x;
     const dy = event.clientY - origin.y;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      dragMoved.current = true;
+    }
     setViewport((current) => ({
       ...current,
       x: origin.vx + dx,
@@ -388,9 +401,24 @@ export const TopologyCanvas = ({
     if (event?.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    const wasDrag = dragMoved.current;
     dragOrigin.current = null;
+    dragMoved.current = false;
     setDragging(false);
     onInteractingChange?.(false);
+
+    // Empty-canvas click clears edge/node selection (after pan has ended without movement).
+    if (event?.type === "pointerup" && !wasDrag) {
+      const target = event.target as HTMLElement;
+      if (
+        !target.closest(
+          ".topology-node, .topology-aux-node, .topology-edge, .topology-canvas-footer, button, a"
+        )
+      ) {
+        onSelectEdge?.(null);
+        onSelectNode(null);
+      }
+    }
   };
 
   const onWheel = (event: React.WheelEvent<HTMLDivElement>) => {
@@ -526,6 +554,10 @@ export const TopologyCanvas = ({
                 style={{ color: HIERARCHY_EDGE_COLOR }}
                 data-testid={`topology-edge-${link.key}`}
                 data-edge-kind="hierarchy"
+                data-edge-id={apiEdge?.id ?? link.key}
+                role="button"
+                tabIndex={0}
+                aria-label={`Hierarchy ${nodeById.get(link.parentId)?.name ?? link.parentId} contains ${nodeById.get(link.childId)?.name ?? link.childId}`}
                 onClick={(event) => {
                   event.stopPropagation();
                   if (!onSelectEdge) return;
@@ -544,6 +576,11 @@ export const TopologyCanvas = ({
                     } satisfies TopologyEdge);
                   onSelectEdge(describeSelectedEdge(edge, nodeById, "hierarchy"));
                   onSelectNode(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  event.currentTarget.dispatchEvent(new MouseEvent("click", { bubbles: true }));
                 }}
               >
                 <path d={pathD} className="topology-edge-hit" />
@@ -574,7 +611,11 @@ export const TopologyCanvas = ({
             const target = graphLayout.positions.get(link.targetId);
             if (!source || !target) return null;
 
-            const replayStatus = displayStatusFor(link.edge.targetId, link.edge.status);
+            // Paint from evidence-based edge.status (API), not source/target node colour alone.
+            const edgeHealth =
+              replayMinutesAgo === 0
+                ? link.edge.status
+                : displayStatusFor(link.edge.targetId, link.edge.status);
             const pathD = edgePath(
               nodeAnchor(source, "bottom", NODE_HEIGHT_COLLAPSED),
               nodeAnchor(target, "top", NODE_HEIGHT_COLLAPSED),
@@ -586,6 +627,13 @@ export const TopologyCanvas = ({
               focusNodeIds.size > 0 &&
               (!focusNodeIds.has(link.sourceId) || !focusNodeIds.has(link.targetId));
             const selected = selectedEdgeId === link.edge.id || selectedEdgeId === link.key;
+            const selectedDesc = describeSelectedEdge(link.edge, nodeById, "dependency");
+
+            const selectDependency = (event: React.SyntheticEvent) => {
+              event.stopPropagation();
+              onSelectEdge?.(selectedDesc);
+              onSelectNode(null);
+            };
 
             return (
               <g
@@ -593,17 +641,23 @@ export const TopologyCanvas = ({
                 className={`topology-edge topology-edge-dependency${edgeDimmed ? " dimmed" : ""}${selected ? " selected" : ""}`}
                 data-testid={`topology-edge-${link.edge.id}`}
                 data-edge-kind="dependency"
-                data-edge-health={replayStatus}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelectEdge?.(describeSelectedEdge(link.edge, nodeById, "dependency"));
-                  onSelectNode(null);
+                data-edge-health={edgeHealth}
+                data-edge-id={link.edge.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`Relationship ${selectedDesc.sourceName} to ${selectedDesc.targetName}, ${selectedDesc.writtenHealth}`}
+                onClick={selectDependency}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    selectDependency(event);
+                  }
                 }}
               >
                 <path d={pathD} className="topology-edge-hit" />
                 <path
                   d={pathD}
-                  className={`topology-edge-line topology-edge-line--dependency ${dependencyEdgeColorClass(replayStatus)}${link.edge.critical ? " critical" : ""}`}
+                  className={`topology-edge-line topology-edge-line--dependency ${dependencyEdgeColorClass(edgeHealth)}${link.edge.critical ? " critical" : ""}`}
                   markerEnd="url(#topology-arrow)"
                   strokeWidth={edgeStrokeWidth(weight)}
                   opacity={0.92}
@@ -611,12 +665,12 @@ export const TopologyCanvas = ({
                 <TrafficPackets
                   pathD={pathD}
                   edgeKey={link.key}
-                  tone={trafficTone(replayStatus)}
+                  tone={trafficTone(edgeHealth)}
                   critical={link.edge.critical}
                   dimmed={edgeDimmed}
                   live={replayMinutesAgo === 0}
                 />
-                <title>{edgeTooltipLines(describeSelectedEdge(link.edge, nodeById, "dependency"))}</title>
+                <title>{edgeTooltipLines(selectedDesc)}</title>
               </g>
             );
           })}

@@ -9,8 +9,8 @@ import type {
   TopologySummary
 } from "../types/dto";
 import {
-  resolveDependencyEdgeHealth,
   resolveMonitoringState,
+  resolveRelationshipEdgeHealth,
   resolveServiceHealth,
   worstHealth,
   type ServiceHealthSignals
@@ -86,25 +86,31 @@ export type TopologyBuildInput = {
 
 const isCriticalAlert = (severity: string): boolean => severity === "CRITICAL" || severity === "HIGH";
 
+const EVIDENCE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
 const buildServiceSignals = (
   service: TopologyServiceRecord,
   alerts: TopologyAlertRecord[],
   incidents: TopologyIncidentRecord[],
   slo: TopologySloRecord | undefined
 ): ServiceHealthSignals => {
+  // Prefer the newest fresh result across checks (active preferred when present).
   const activeChecks = service.Check.filter((row) => row.isActive);
-  const latestResults = activeChecks
-    .map((row) => row.CheckResult[0] ?? null)
-    .filter((row): row is NonNullable<typeof row> => row !== null);
-  const hasCompletedCheck = latestResults.length > 0;
-  const latestCheckFailed = latestResults.some((row) => row.status === "FAIL");
+  const checksForEvidence = activeChecks.length > 0 ? activeChecks : service.Check;
+  const freshResults = checksForEvidence
+    .flatMap((row) => row.CheckResult)
+    .filter((row) => Date.now() - row.checkedAt.getTime() <= EVIDENCE_MAX_AGE_MS)
+    .sort((a, b) => b.checkedAt.getTime() - a.checkedAt.getTime());
+  const newest = freshResults[0] ?? null;
+  const hasCompletedCheck = newest != null;
+  const latestCheckFailed = newest?.status === "FAIL" || newest?.status === "WARN";
 
   const serviceAlerts = alerts.filter((row) => row.serviceId === service.id);
   const serviceIncidents = incidents.filter((row) => row.serviceIds.includes(service.id));
 
   return {
     storedStatus: service.status,
-    activeCheckCount: activeChecks.length,
+    activeCheckCount: activeChecks.length > 0 ? activeChecks.length : hasCompletedCheck ? 1 : 0,
     hasCompletedCheck,
     latestCheckFailed,
     openAlerts: serviceAlerts.length,
@@ -286,7 +292,8 @@ export const buildProjectTopologyResponse = (input: TopologyBuildInput): Project
 
     const latestCheck = latestCheckForService(service);
     const slo = sloForService(input.slos, service.id);
-    const latestHeartbeat = input.heartbeats?.[0] ?? null;
+    const isApp = mapServiceTypeToTopology(service.type) === "APP";
+    const latestHeartbeat = isApp ? input.heartbeats?.[0] ?? null : null;
     nodeContext[service.id] = {
       monitoringState: resolveMonitoringState(signals),
       lastCheckAt: latestCheck?.checkedAt.toISOString() ?? latestHeartbeat?.receivedAt.toISOString() ?? null,
@@ -338,6 +345,11 @@ export const buildProjectTopologyResponse = (input: TopologyBuildInput): Project
 
   rollupChildMetrics(nodes, input.dependencies);
 
+  // Keep service health map aligned with post-rollup node status (edges must not use pre-rollup values).
+  for (const node of nodes) {
+    healthByService.set(node.id, node.status);
+  }
+
   for (const node of nodes) {
     if (node.metrics.availabilityPercent == null) continue;
     const context = nodeContext[node.id];
@@ -346,21 +358,83 @@ export const buildProjectTopologyResponse = (input: TopologyBuildInput): Project
     }
   }
 
+  const statusById = new Map(nodes.map((row) => [row.id, row.status] as const));
+  const serviceById = new Map(input.services.map((row) => [row.id, row] as const));
+
+  const endpointCheckCounts = (serviceId: string) => {
+    const service = serviceById.get(serviceId);
+    if (!service) return { failed: 0, warn: 0, hasEvidence: false };
+    const active = service.Check.filter((row) => row.isActive);
+    const checksForEvidence = active.length > 0 ? active : service.Check;
+    const fresh = checksForEvidence
+      .flatMap((row) => row.CheckResult)
+      .filter((row) => Date.now() - row.checkedAt.getTime() <= EVIDENCE_MAX_AGE_MS)
+      .sort((a, b) => b.checkedAt.getTime() - a.checkedAt.getTime());
+    const newest = fresh[0] ?? null;
+    return {
+      failed: newest?.status === "FAIL" ? 1 : 0,
+      warn: newest?.status === "WARN" ? 1 : 0,
+      hasEvidence: newest != null
+    };
+  };
+
   const edges: TopologyEdge[] = input.dependencies
     .filter((row) => row.isActive)
     .map((row) => {
       const isHierarchy = row.dependencyType.toUpperCase() === "HIERARCHY";
       const critical = row.criticality.toUpperCase() === "CRITICAL" || row.criticality.toUpperCase() === "HIGH";
-      const targetHealth = healthByService.get(row.toServiceId) ?? "UNKNOWN";
+      const sourceHealth = statusById.get(row.fromServiceId) ?? "UNKNOWN";
+      const targetHealth = statusById.get(row.toServiceId) ?? "UNKNOWN";
+      const sourceChecks = endpointCheckCounts(row.fromServiceId);
+      const targetChecks = endpointCheckCounts(row.toServiceId);
+      const relatedAlerts = input.alerts.filter(
+        (alert) => alert.serviceId === row.fromServiceId || alert.serviceId === row.toServiceId
+      );
+      const relatedCriticalAlerts = relatedAlerts.filter((alert) => isCriticalAlert(alert.severity)).length;
+      const sourceSignals = signalsByService.get(row.fromServiceId);
+      const targetSignals = signalsByService.get(row.toServiceId);
+      const hasTargetEvidence =
+        targetChecks.hasEvidence ||
+        (targetSignals != null && resolveMonitoringState(targetSignals) === "MONITORED") ||
+        (targetHealth !== "UNKNOWN" && (nodeContext[row.toServiceId]?.monitoringState === "MONITORED"));
+      const hasAnyEndpointEvidence =
+        hasTargetEvidence ||
+        sourceChecks.hasEvidence ||
+        (sourceSignals != null && resolveMonitoringState(sourceSignals) === "MONITORED") ||
+        sourceHealth !== "UNKNOWN";
+
+      if (isHierarchy) {
+        // Hierarchy is containment — status still reflects rolled-up parent evidence for drawers/tooltips.
+        // Canvas paints hierarchy as documented grey dashed regardless of this value.
+        return {
+          id: row.id,
+          sourceId: row.fromServiceId,
+          targetId: row.toServiceId,
+          type: "HIERARCHY" as const,
+          critical,
+          status: targetHealth
+        } satisfies TopologyEdge;
+      }
+
+      const resolved = resolveRelationshipEdgeHealth({
+        sourceHealth,
+        targetHealth,
+        relatedOpenAlerts: relatedAlerts.length,
+        relatedCriticalAlerts,
+        // Dependency colour is driven by the callee/target evidence first.
+        relatedFailedChecks: targetChecks.failed,
+        relatedWarnChecks: targetChecks.warn,
+        hasTargetEvidence,
+        hasAnyEndpointEvidence
+      });
+
       return {
         id: row.id,
         sourceId: row.fromServiceId,
         targetId: row.toServiceId,
-        type: isHierarchy ? "HIERARCHY" : "DEPENDENCY",
+        type: "DEPENDENCY" as const,
         critical,
-        status: isHierarchy
-          ? targetHealth
-          : resolveDependencyEdgeHealth(targetHealth, critical)
+        status: resolved.status
       } satisfies TopologyEdge;
     });
 

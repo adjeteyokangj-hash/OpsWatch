@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveMonitoringState, resolveServiceHealth } from "./service-health.service";
+import {
+  resolveMonitoringState,
+  resolveRelationshipEdgeHealth,
+  resolveServiceHealth
+} from "./service-health.service";
 
 describe("service-health.service", () => {
   it("returns UNKNOWN when no check has completed", () => {
@@ -60,5 +64,67 @@ describe("service-health.service", () => {
         sloStatus: "HEALTHY"
       })
     ).toBe("HEALTHY");
+  });
+});
+
+describe("resolveRelationshipEdgeHealth", () => {
+  it("returns CRITICAL when linked alerts or failed checks exist", () => {
+    expect(
+      resolveRelationshipEdgeHealth({
+        sourceHealth: "HEALTHY",
+        targetHealth: "UNKNOWN",
+        relatedOpenAlerts: 1,
+        relatedCriticalAlerts: 1,
+        relatedFailedChecks: 0,
+        relatedWarnChecks: 0,
+        hasTargetEvidence: false,
+        hasAnyEndpointEvidence: true
+      }).status
+    ).toBe("CRITICAL");
+  });
+
+  it("returns HEALTHY only when target has monitoring evidence", () => {
+    expect(
+      resolveRelationshipEdgeHealth({
+        sourceHealth: "HEALTHY",
+        targetHealth: "HEALTHY",
+        relatedOpenAlerts: 0,
+        relatedCriticalAlerts: 0,
+        relatedFailedChecks: 0,
+        relatedWarnChecks: 0,
+        hasTargetEvidence: true,
+        hasAnyEndpointEvidence: true
+      }).status
+    ).toBe("HEALTHY");
+  });
+
+  it("returns UNKNOWN when source is healthy but target has no evidence", () => {
+    expect(
+      resolveRelationshipEdgeHealth({
+        sourceHealth: "HEALTHY",
+        targetHealth: "UNKNOWN",
+        relatedOpenAlerts: 0,
+        relatedCriticalAlerts: 0,
+        relatedFailedChecks: 0,
+        relatedWarnChecks: 0,
+        hasTargetEvidence: false,
+        hasAnyEndpointEvidence: true
+      }).status
+    ).toBe("UNKNOWN");
+  });
+
+  it("returns DEGRADED for warn checks or degraded endpoints", () => {
+    expect(
+      resolveRelationshipEdgeHealth({
+        sourceHealth: "HEALTHY",
+        targetHealth: "HEALTHY",
+        relatedOpenAlerts: 0,
+        relatedCriticalAlerts: 0,
+        relatedFailedChecks: 0,
+        relatedWarnChecks: 1,
+        hasTargetEvidence: true,
+        hasAnyEndpointEvidence: true
+      }).status
+    ).toBe("DEGRADED");
   });
 });

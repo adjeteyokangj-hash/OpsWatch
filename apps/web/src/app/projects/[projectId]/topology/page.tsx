@@ -74,6 +74,17 @@ export default function ProjectTopologyPage() {
   );
 
   useEffect(() => {
+    if (!selectedEdge) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedEdge(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedEdge]);
+
+  useEffect(() => {
     if (!topology || process.env.NODE_ENV === "production") return;
     const layoutNodes = [
       ...topology.nodes.filter((node) => classifyVisualLayer(node) === "APP"),
@@ -87,7 +98,38 @@ export default function ProjectTopologyPage() {
       ...dependency.map((link) => link.key)
     ]);
     const audit = auditTopologyRelationships({ topology, renderedEdgeKeys: rendered });
-    // Development-only relationship completeness audit for Noble Express and peers.
+    const edgeDiagnostics = topology.edges.map((edge) => {
+      const source = topology.nodes.find((node) => node.id === edge.sourceId);
+      const target = topology.nodes.find((node) => node.id === edge.targetId);
+      const relatedAlertCount =
+        (topology.nodeContext[edge.sourceId]?.openAlerts.length ?? 0) +
+        (topology.nodeContext[edge.targetId]?.openAlerts.length ?? 0);
+      const finalColour =
+        edge.type === "HIERARCHY"
+          ? "grey-dashed"
+          : edge.status === "HEALTHY"
+            ? "green"
+            : edge.status === "DEGRADED"
+              ? "amber"
+              : edge.status === "CRITICAL"
+                ? "red"
+                : "grey";
+      return {
+        relationshipId: edge.id,
+        source: source?.name ?? edge.sourceId,
+        target: target?.name ?? edge.targetId,
+        rawHealth: edge.status,
+        normalisedHealth: edge.status,
+        relatedAlertCount,
+        lastObserved: topology.nodeContext[edge.targetId]?.lastCheckAt ?? null,
+        finalColour,
+        reason:
+          edge.type === "HIERARCHY"
+            ? "Hierarchy/containment — documented grey dashed"
+            : `Dependency evidence status=${edge.status}`
+      };
+    });
+    // Development-only relationship completeness + colour diagnostic.
     console.info("[topology-relationship-audit]", {
       projectId: topology.project.id,
       zeroDegreeModules: audit.zeroDegreeModules,
@@ -96,7 +138,8 @@ export default function ProjectTopologyPage() {
       duplicateRelationshipKeys: audit.duplicateRelationshipKeys,
       selfReferencingRelationshipIds: audit.selfReferencingRelationshipIds,
       edgesAbsentFromRenderedGraph: audit.edgesAbsentFromRenderedGraph,
-      diagnostics: relationshipDiagnostics.filter((row) => row.nodeType === "MODULE")
+      diagnostics: relationshipDiagnostics.filter((row) => row.nodeType === "MODULE"),
+      edgeDiagnostics
     });
   }, [topology, relationshipDiagnostics]);
 

@@ -106,7 +106,8 @@ export const loadProjectTopology = async (
         type: true,
         status: true,
         Check: {
-          where: { isActive: true },
+          // Include inactive checks so recent results remain usable as topology evidence
+          // when operators pause polling (or local evidence seeds freeze checks).
           select: { id: true, isActive: true }
         }
       },

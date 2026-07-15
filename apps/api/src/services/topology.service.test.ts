@@ -229,4 +229,123 @@ describe("topology.service", () => {
     expect(module?.metrics.availabilityTrend.length).toBeGreaterThan(0);
     expect(topology.nodeContext["quotes-module"]?.monitoringState).toBe("MONITORED");
   });
+
+  it("builds dependency edge health from post-rollup evidence, not pre-rollup UNKNOWN parents", () => {
+    const topology = buildProjectTopologyResponse({
+      project,
+      services: [
+        {
+          id: "app",
+          name: "Noble Express",
+          type: "APP" as const,
+          status: "HEALTHY",
+          Check: []
+        },
+        {
+          id: "quotes-module",
+          name: "Quotes",
+          type: "MODULE" as const,
+          status: "HEALTHY",
+          Check: []
+        },
+        {
+          id: "quote-api",
+          name: "Quote API",
+          type: "COMPONENT" as const,
+          status: "HEALTHY",
+          Check: [
+            {
+              isActive: true,
+              CheckResult: [{ status: "PASS", checkedAt: new Date(), responseTimeMs: 40 }]
+            }
+          ]
+        },
+        {
+          id: "redis",
+          name: "Redis",
+          type: "COMPONENT" as const,
+          status: "HEALTHY",
+          Check: [
+            {
+              isActive: true,
+              CheckResult: [{ status: "PASS", checkedAt: new Date(), responseTimeMs: 5 }]
+            }
+          ]
+        }
+      ],
+      dependencies: [
+        {
+          id: "h1",
+          fromServiceId: "quotes-module",
+          toServiceId: "app",
+          dependencyType: "HIERARCHY",
+          criticality: "HIGH",
+          isActive: true
+        },
+        {
+          id: "h2",
+          fromServiceId: "quote-api",
+          toServiceId: "quotes-module",
+          dependencyType: "HIERARCHY",
+          criticality: "HIGH",
+          isActive: true
+        },
+        {
+          id: "d1",
+          fromServiceId: "quote-api",
+          toServiceId: "redis",
+          dependencyType: "RUNTIME",
+          criticality: "CRITICAL",
+          isActive: true
+        }
+      ],
+      alerts: [],
+      incidents: [],
+      slos: []
+    });
+
+    const hierarchyToApp = topology.edges.find((row) => row.id === "h1");
+    const dependency = topology.edges.find((row) => row.id === "d1");
+    expect(topology.nodes.find((row) => row.id === "app")?.status).toBe("HEALTHY");
+    expect(hierarchyToApp?.status).toBe("HEALTHY");
+    expect(dependency?.status).toBe("HEALTHY");
+  });
+
+  it("paints dependency CRITICAL when a linked endpoint alert exists even if the target lacks checks", () => {
+    const topology = buildProjectTopologyResponse({
+      project,
+      services,
+      dependencies,
+      alerts: [
+        {
+          id: "alert-1",
+          title: "Redis unreachable",
+          severity: "CRITICAL",
+          status: "OPEN",
+          serviceId: "redis"
+        }
+      ],
+      incidents: [],
+      slos: []
+    });
+
+    expect(topology.nodes.find((row) => row.id === "redis")?.status).toBe("UNKNOWN");
+    const dependency = topology.edges.find((row) => row.id === "d1");
+    expect(dependency?.status).toBe("CRITICAL");
+  });
+
+  it("keeps unmonitored dependencies UNKNOWN without inventing green from source-only health", () => {
+    const topology = buildProjectTopologyResponse({
+      project,
+      services,
+      dependencies,
+      alerts: [],
+      incidents: [],
+      slos: []
+    });
+
+    const dependency = topology.edges.find((row) => row.id === "d1");
+    expect(dependency?.status).toBe("UNKNOWN");
+    expect(topology.nodes.find((row) => row.id === "quotes-module")?.status).toBe("HEALTHY");
+  });
 });

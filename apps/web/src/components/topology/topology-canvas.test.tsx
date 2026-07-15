@@ -100,8 +100,10 @@ describe("TopologyCanvas", () => {
       />
     );
 
+    expect(screen.getByTestId("topology-node-redis")).toBeInTheDocument();
     expect(screen.getByLabelText("Redis, Unknown")).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Noble Express/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("topology-node-app")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Noble Express, Healthy")).not.toBeInTheDocument();
   });
 
   it("selects a node when clicked", () => {
@@ -255,6 +257,71 @@ describe("TopologyCanvas", () => {
         writtenHealth: "Unknown"
       })
     );
+  });
+
+  it("does not start pan capture on edge pointerdown (so clicks can select)", () => {
+    const onSelectEdge = vi.fn();
+    render(
+      <TopologyCanvas
+        topology={topology}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+        onSelectEdge={onSelectEdge}
+        typeFilter="ALL"
+        healthFilter="ALL"
+      />
+    );
+
+    const canvas = screen.getByTestId("topology-canvas");
+    const edge = screen.getByTestId("topology-edge-edge-1");
+    fireEvent.pointerDown(edge, { pointerId: 1, clientX: 10, clientY: 10, bubbles: true });
+    fireEvent.click(edge);
+    expect(onSelectEdge).toHaveBeenCalled();
+    expect(canvas.className).not.toMatch(/is-dragging/);
+  });
+
+  it("renders dependency health classes from edge.status", () => {
+    const mixed: ProjectTopologyResponse = {
+      ...topology,
+      edges: [
+        { id: "edge-healthy", sourceId: "app", targetId: "redis", type: "DEPENDENCY", critical: false, status: "HEALTHY" },
+        { id: "edge-degraded", sourceId: "app", targetId: "redis", type: "DEPENDENCY", critical: false, status: "DEGRADED" },
+        { id: "edge-critical", sourceId: "app", targetId: "redis", type: "DEPENDENCY", critical: true, status: "CRITICAL" }
+      ]
+    };
+
+    const { rerender } = render(
+      <TopologyCanvas
+        topology={{ ...mixed, edges: [mixed.edges[0]] }}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+        typeFilter="ALL"
+        healthFilter="ALL"
+      />
+    );
+    expect(screen.getByTestId("topology-edge-edge-healthy")).toHaveAttribute("data-edge-health", "HEALTHY");
+
+    rerender(
+      <TopologyCanvas
+        topology={{ ...mixed, edges: [mixed.edges[1]] }}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+        typeFilter="ALL"
+        healthFilter="ALL"
+      />
+    );
+    expect(screen.getByTestId("topology-edge-edge-degraded")).toHaveAttribute("data-edge-health", "DEGRADED");
+
+    rerender(
+      <TopologyCanvas
+        topology={{ ...mixed, edges: [mixed.edges[2]] }}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+        typeFilter="ALL"
+        healthFilter="ALL"
+      />
+    );
+    expect(screen.getByTestId("topology-edge-edge-critical")).toHaveAttribute("data-edge-health", "CRITICAL");
   });
 
   it("renders hierarchy edges with documented grey, not layer purple", () => {

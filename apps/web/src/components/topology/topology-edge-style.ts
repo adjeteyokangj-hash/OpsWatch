@@ -98,6 +98,26 @@ export type SelectedTopologyEdge = {
   critical: boolean;
   colourMeaning: string;
   writtenHealth: string;
+  colourReason: string;
+};
+
+export const colourReasonForEdge = (
+  kind: LineStyleKind,
+  status: TopologyHealthStatus
+): string => {
+  if (kind === "hierarchy") {
+    return "Hierarchy/containment edges always render grey dashed — colour is not traffic health.";
+  }
+  if (status === "HEALTHY") {
+    return "Selected because dependency target (or both endpoints) have healthy monitoring evidence and no linked failures.";
+  }
+  if (status === "DEGRADED") {
+    return "Selected because an endpoint is degraded, a warn check exists, or a non-critical alert is linked.";
+  }
+  if (status === "CRITICAL") {
+    return "Selected because a failed check or critical/high alert is linked to an endpoint of this relationship.";
+  }
+  return "Selected because there is no conclusive recent evidence for this dependency.";
 };
 
 export const describeSelectedEdge = (
@@ -117,7 +137,8 @@ export const describeSelectedEdge = (
     status: edge.status,
     critical: edge.critical,
     colourMeaning: colourMeaningForEdge(kind, edge.status),
-    writtenHealth: healthLabel(edge.status)
+    writtenHealth: healthLabel(edge.status),
+    colourReason: colourReasonForEdge(kind, edge.status)
   };
 };
 

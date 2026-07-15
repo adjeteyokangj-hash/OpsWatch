@@ -91,6 +91,12 @@ export function TopologyRelationshipDrawer({
 
       <dl className="topology-detail-grid">
         <div>
+          <dt>Relationship ID</dt>
+          <dd data-testid="topology-edge-id">
+            <code>{edge.id}</code>
+          </dd>
+        </div>
+        <div>
           <dt>Source</dt>
           <dd>{edge.sourceName}</dd>
         </div>
@@ -115,6 +121,10 @@ export function TopologyRelationshipDrawer({
         <div>
           <dt>Line colour meaning</dt>
           <dd data-testid="topology-edge-colour-meaning">{edge.colourMeaning}</dd>
+        </div>
+        <div>
+          <dt>Colour selection reason</dt>
+          <dd data-testid="topology-edge-colour-reason">{edge.colourReason}</dd>
         </div>
         <div>
           <dt>Response time</dt>
