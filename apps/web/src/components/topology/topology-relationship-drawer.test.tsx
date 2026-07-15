@@ -207,3 +207,47 @@ describe("evaluateRelationshipAutomation", () => {
     expect(result.buttonState).toBe("approval_required");
   });
 });
+
+describe("hierarchy relationship drawer", () => {
+  afterEach(() => cleanup());
+
+  it("explains hierarchy edges as structure-only without Unknown health", () => {
+    const hierarchyEdge: SelectedTopologyEdge = {
+      id: "h1",
+      kind: "hierarchy",
+      sourceId: "portal",
+      targetId: "app",
+      sourceName: "Customer Portal",
+      targetName: "Noble Express",
+      status: "UNKNOWN",
+      critical: false,
+      colourMeaning: "Grey dashed — hierarchy or containment relationship (not traffic health).",
+      writtenHealth: "Not applicable (containment)",
+      colourReason: "Hierarchy/containment edges always render grey dashed — colour is not traffic health.",
+      structureNote:
+        "OpsWatch diagnoses traffic health on dependency lines; this line shows structure only.",
+      endpointEvidence: [
+        "Source (Customer Portal): Relationship discovery pending — OpsWatch has not mapped dependencies for this module yet."
+      ]
+    };
+    const evaluation = evaluateRelationshipAutomation({ edge: hierarchyEdge });
+    render(
+      <TopologyRelationshipDrawer
+        edge={hierarchyEdge}
+        topology={topology}
+        projectId="proj-1"
+        evaluation={evaluation}
+        onClose={vi.fn()}
+        onFixWithAutomation={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("topology-edge-written-health")).toHaveTextContent(
+      /Not applicable \(containment\)/
+    );
+    expect(screen.getByTestId("topology-edge-structure-note")).toHaveTextContent(/dependency lines/i);
+    expect(screen.getByTestId("topology-hierarchy-traffic-note")).toHaveTextContent(/Not applicable/i);
+    expect(screen.getByTestId("topology-edge-endpoint-evidence")).toHaveTextContent(/discovery pending/i);
+    expect(evaluation.buttonState).toBe("no_automated_fix");
+  });
+});

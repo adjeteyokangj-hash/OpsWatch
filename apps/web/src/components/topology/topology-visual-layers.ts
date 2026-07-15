@@ -63,3 +63,44 @@ export const layerEdgeColor = (layer: VisualLayer): string => {
 };
 
 export const moreNodeId = (layer: VisualLayer, row: number): string => `more:${layer}:${row}`;
+
+export const isMoreNodeId = (id: string): boolean => id.startsWith("more:");
+
+export const parseMoreNodeId = (
+  id: string
+): { layer: VisualLayer; row: number } | null => {
+  if (!isMoreNodeId(id)) return null;
+  const [, layerRaw, rowRaw] = id.split(":");
+  if (!layerRaw || rowRaw == null || rowRaw === "") return null;
+  const layer = layerRaw as VisualLayer;
+  if (!VISUAL_LAYER_ORDER.includes(layer)) return null;
+  const row = Number(rowRaw);
+  if (!Number.isFinite(row)) return null;
+  return { layer, row };
+};
+
+/** Plural noun used on TopologyMoreCard and collapsed-edge labels (e.g. "workflows"). */
+export const moreLayerPlural = (layer: VisualLayer): string => {
+  if (layer === "MODULE") return "modules";
+  if (layer === "WORKFLOW") return "workflows";
+  if (layer === "SERVICE") return "services";
+  if (layer === "INFRASTRUCTURE") return "resources";
+  if (layer === "EXTERNAL") return "services";
+  if (layer === "APP") return "applications";
+  return "nodes";
+};
+
+/** Human label for a collapse placeholder — never the raw `more:LAYER:n` id. */
+export const formatMoreNodeLabel = (hiddenCount: number, layer: VisualLayer): string =>
+  `+${hiddenCount} more ${moreLayerPlural(layer)}`;
+
+export const moreNodeDisplayName = (
+  nodeId: string,
+  moreNodes?: Array<{ id: string; layer: VisualLayer; hiddenCount: number }>
+): string | null => {
+  const known = moreNodes?.find((row) => row.id === nodeId);
+  if (known) return formatMoreNodeLabel(known.hiddenCount, known.layer);
+  const parsed = parseMoreNodeId(nodeId);
+  if (!parsed) return null;
+  return `Collapsed ${moreLayerPlural(parsed.layer)}`;
+};

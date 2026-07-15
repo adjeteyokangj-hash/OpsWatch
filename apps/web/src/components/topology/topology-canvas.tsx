@@ -18,8 +18,12 @@ import {
 } from "./topology-focus";
 import { resolveDependencyDisplayLinks, resolveHierarchyDisplayLinks } from "./topology-edge-resolve";
 import { edgeTrafficWeight, replayNodeStatus } from "./topology-metrics";
-import type { VisualLayer } from "./topology-visual-layers";
-import { classifyVisualLayer, visualLayerCountLabel, visualLayerTitle } from "./topology-visual-layers";
+import {
+  classifyVisualLayer,
+  moreLayerPlural,
+  visualLayerCountLabel,
+  visualLayerTitle
+} from "./topology-visual-layers";
 import {
   buildNodeRelationshipDiagnostics,
   isolationBadgeLabel,
@@ -31,17 +35,9 @@ import {
   dependencyEdgeColorClass,
   describeSelectedEdge,
   edgeTooltipLines,
+  resolveEndpointDisplayName,
   type SelectedTopologyEdge
 } from "./topology-edge-style";
-
-const moreLayerLabel = (layer: VisualLayer): string => {
-  if (layer === "MODULE") return "modules";
-  if (layer === "WORKFLOW") return "workflows";
-  if (layer === "SERVICE") return "services";
-  if (layer === "INFRASTRUCTURE") return "resources";
-  if (layer === "EXTERNAL") return "services";
-  return "nodes";
-};
 
 type Props = {
   topology: ProjectTopologyResponse;
@@ -230,10 +226,32 @@ export const TopologyCanvas = ({
 
   const relationshipByNode = useMemo(() => {
     const map = new Map(
-      buildNodeRelationshipDiagnostics(topology).map((row) => [row.moduleId, row] as const)
+      buildNodeRelationshipDiagnostics(topology).map((row) => [row.moduleId, row])
     );
     return map;
   }, [topology]);
+
+  const edgeDescribeOptions = useMemo(() => {
+    const endpointNotesById = new Map<string, string>();
+    for (const [nodeId, relationship] of relationshipByNode) {
+      if (relationship.connectionState === "discovery_incomplete") {
+        endpointNotesById.set(
+          nodeId,
+          relationship.isolatedStateReason ??
+            "Discovery pending — OpsWatch has not mapped dependencies for this node yet."
+        );
+      } else if (relationship.connectionState === "intentionally_isolated") {
+        endpointNotesById.set(
+          nodeId,
+          relationship.isolatedStateReason ?? "No mapped dependencies."
+        );
+      }
+    }
+    return {
+      moreNodes: graphLayout.moreNodes,
+      endpointNotesById
+    };
+  }, [relationshipByNode, graphLayout.moreNodes]);
 
   const visibleNodes = useMemo(
     () =>
@@ -546,6 +564,32 @@ export const TopologyCanvas = ({
             const selected =
               selectedEdgeId != null &&
               (selectedEdgeId === apiEdge?.id || selectedEdgeId === link.key);
+            const hierarchyEdge: TopologyEdge =
+              apiEdge ??
+              ({
+                id: link.key,
+                sourceId: link.childId,
+                targetId: link.parentId,
+                type: "HIERARCHY" as const,
+                critical: false,
+                status: "UNKNOWN" as const
+              } satisfies TopologyEdge);
+            const selectedDesc = describeSelectedEdge(
+              hierarchyEdge,
+              nodeById,
+              "hierarchy",
+              edgeDescribeOptions
+            );
+            const parentLabel = resolveEndpointDisplayName(
+              link.parentId,
+              nodeById,
+              edgeDescribeOptions.moreNodes
+            );
+            const childLabel = resolveEndpointDisplayName(
+              link.childId,
+              nodeById,
+              edgeDescribeOptions.moreNodes
+            );
 
             return (
               <g
@@ -557,24 +601,11 @@ export const TopologyCanvas = ({
                 data-edge-id={apiEdge?.id ?? link.key}
                 role="button"
                 tabIndex={0}
-                aria-label={`Hierarchy ${nodeById.get(link.parentId)?.name ?? link.parentId} contains ${nodeById.get(link.childId)?.name ?? link.childId}`}
+                aria-label={`Hierarchy ${parentLabel} contains ${childLabel}`}
                 onClick={(event) => {
                   event.stopPropagation();
                   if (!onSelectEdge) return;
-                  const sourceNode = nodeById.get(link.parentId);
-                  const targetNode = nodeById.get(link.childId);
-                  if (!sourceNode || !targetNode) return;
-                  const edge =
-                    apiEdge ??
-                    ({
-                      id: link.key,
-                      sourceId: link.childId,
-                      targetId: link.parentId,
-                      type: "HIERARCHY" as const,
-                      critical: false,
-                      status: "UNKNOWN" as const
-                    } satisfies TopologyEdge);
-                  onSelectEdge(describeSelectedEdge(edge, nodeById, "hierarchy"));
+                  onSelectEdge(selectedDesc);
                   onSelectNode(null);
                 }}
                 onKeyDown={(event) => {
@@ -590,18 +621,7 @@ export const TopologyCanvas = ({
                   stroke={HIERARCHY_EDGE_COLOR}
                   strokeWidth={2.2}
                 />
-                <title>{edgeTooltipLines(describeSelectedEdge(
-                  apiEdge ?? {
-                    id: link.key,
-                    sourceId: link.childId,
-                    targetId: link.parentId,
-                    type: "HIERARCHY",
-                    critical: false,
-                    status: "UNKNOWN"
-                  },
-                  nodeById,
-                  "hierarchy"
-                ))}</title>
+                <title>{edgeTooltipLines(selectedDesc)}</title>
               </g>
             );
           })}
@@ -627,7 +647,7 @@ export const TopologyCanvas = ({
               focusNodeIds.size > 0 &&
               (!focusNodeIds.has(link.sourceId) || !focusNodeIds.has(link.targetId));
             const selected = selectedEdgeId === link.edge.id || selectedEdgeId === link.key;
-            const selectedDesc = describeSelectedEdge(link.edge, nodeById, "dependency");
+            const selectedDesc = describeSelectedEdge(link.edge, nodeById, "dependency", edgeDescribeOptions);
 
             const selectDependency = (event: React.SyntheticEvent) => {
               event.stopPropagation();
@@ -781,13 +801,13 @@ export const TopologyCanvas = ({
                   toggleLayerExpand(more.layer);
                 }}
                 data-testid={`topology-more-${more.layer}`}
-                aria-label={`Expand ${more.hiddenCount} more ${moreLayerLabel(more.layer)}`}
+                aria-label={`Expand ${more.hiddenCount} more ${moreLayerPlural(more.layer)}`}
                 role="button"
                 tabIndex={0}
               >
                 <rect width={NODE_WIDTH} height={NODE_HEIGHT_COLLAPSED} rx={14} className="topology-node-surface topology-more-node-surface" />
                 <foreignObject x={0} y={0} width={NODE_WIDTH} height={NODE_HEIGHT_COLLAPSED}>
-                  <TopologyMoreCard count={more.hiddenCount} label={moreLayerLabel(more.layer)} />
+                  <TopologyMoreCard count={more.hiddenCount} label={moreLayerPlural(more.layer)} />
                 </foreignObject>
               </g>
             );

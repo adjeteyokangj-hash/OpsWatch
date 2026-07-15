@@ -123,8 +123,26 @@ export function TopologyRelationshipDrawer({
         </div>
         <div>
           <dt>Health</dt>
-          <dd>{edge.writtenHealth}</dd>
+          <dd data-testid="topology-edge-written-health">{edge.writtenHealth}</dd>
         </div>
+        {edge.kind === "hierarchy" && edge.structureNote ? (
+          <div>
+            <dt>Diagnosis scope</dt>
+            <dd data-testid="topology-edge-structure-note">{edge.structureNote}</dd>
+          </div>
+        ) : null}
+        {edge.kind === "hierarchy" && (edge.endpointEvidence?.length ?? 0) > 0 ? (
+          <div>
+            <dt>Endpoint evidence</dt>
+            <dd data-testid="topology-edge-endpoint-evidence">
+              <ul className="topology-endpoint-evidence-list">
+                {edge.endpointEvidence!.map((row) => (
+                  <li key={row}>{row}</li>
+                ))}
+              </ul>
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt>Line colour meaning</dt>
           <dd data-testid="topology-edge-colour-meaning">{edge.colourMeaning}</dd>
@@ -133,32 +151,44 @@ export function TopologyRelationshipDrawer({
           <dt>Colour selection reason</dt>
           <dd data-testid="topology-edge-colour-reason">{edge.colourReason}</dd>
         </div>
-        <div>
-          <dt>Response time</dt>
-          <dd>{responseTimeMs == null ? "Not available" : `${responseTimeMs} ms`}</dd>
-        </div>
-        <div>
-          <dt>Error rate</dt>
-          <dd>{errorRate == null ? "Not available" : `${errorRate}%`}</dd>
-        </div>
-        <div>
-          <dt>Throughput</dt>
-          <dd>Not available</dd>
-        </div>
-        <div>
-          <dt>Last successful communication</dt>
-          <dd>{lastSuccess ? new Date(lastSuccess).toLocaleString() : "Not available"}</dd>
-        </div>
-        <div>
-          <dt>Last failure</dt>
-          <dd>
-            {lastFailureLabel
-              ? typeof lastFailureLabel === "string" && lastFailureLabel.includes("T")
-                ? new Date(lastFailureLabel).toLocaleString()
-                : lastFailureLabel
-              : "None observed"}
-          </dd>
-        </div>
+        {edge.kind === "dependency" ? (
+          <>
+            <div>
+              <dt>Response time</dt>
+              <dd>{responseTimeMs == null ? "Not available" : `${responseTimeMs} ms`}</dd>
+            </div>
+            <div>
+              <dt>Error rate</dt>
+              <dd>{errorRate == null ? "Not available" : `${errorRate}%`}</dd>
+            </div>
+            <div>
+              <dt>Throughput</dt>
+              <dd>Not available</dd>
+            </div>
+            <div>
+              <dt>Last successful communication</dt>
+              <dd>{lastSuccess ? new Date(lastSuccess).toLocaleString() : "Not available"}</dd>
+            </div>
+            <div>
+              <dt>Last failure</dt>
+              <dd>
+                {lastFailureLabel
+                  ? typeof lastFailureLabel === "string" && lastFailureLabel.includes("T")
+                    ? new Date(lastFailureLabel).toLocaleString()
+                    : lastFailureLabel
+                  : "None observed"}
+              </dd>
+            </div>
+          </>
+        ) : (
+          <div>
+            <dt>Traffic metrics</dt>
+            <dd data-testid="topology-hierarchy-traffic-note">
+              Not applicable on hierarchy lines — open a solid dependency relationship for traffic
+              health, latency, and failures.
+            </dd>
+          </div>
+        )}
         <div>
           <dt>Discovery source</dt>
           <dd>Declared</dd>

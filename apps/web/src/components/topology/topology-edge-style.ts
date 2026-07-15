@@ -1,5 +1,9 @@
 import type { TopologyEdge, TopologyHealthStatus, TopologyNode } from "./topology-types";
 import { healthLabel } from "./topology-types";
+import {
+  moreNodeDisplayName,
+  type VisualLayer
+} from "./topology-visual-layers";
 
 export type LineStyleKind = "dependency" | "hierarchy";
 
@@ -67,6 +71,12 @@ export const TOPOLOGY_KEY_ENTRIES: TopologyKeyEntry[] = [
 /** Hierarchy edges always use documented grey — never parent-layer purple. */
 export const HIERARCHY_EDGE_COLOR = "#94a3b8";
 
+/** Written health for hierarchy lines — never "Unknown" (that reads as failed diagnosis). */
+export const HIERARCHY_WRITTEN_HEALTH = "Not applicable (containment)";
+
+export const HIERARCHY_STRUCTURE_NOTE =
+  "OpsWatch diagnoses traffic health on dependency lines; this line shows structure only.";
+
 export const dependencyEdgeColorClass = (status: TopologyHealthStatus): string => {
   if (status === "HEALTHY") return "topology-health-healthy";
   if (status === "DEGRADED") return "topology-health-degraded";
@@ -99,6 +109,19 @@ export type SelectedTopologyEdge = {
   colourMeaning: string;
   writtenHealth: string;
   colourReason: string;
+  /** Hierarchy-only: clarifies that traffic diagnosis lives on dependency edges. */
+  structureNote?: string;
+  /** Endpoint evidence lines (node health / discovery) — not edge traffic health. */
+  endpointEvidence?: string[];
+};
+
+export type DescribeSelectedEdgeOptions = {
+  moreNodes?: Array<{ id: string; layer: VisualLayer; hiddenCount: number }>;
+  /**
+   * Optional per-node connection notes (e.g. discovery pending).
+   * Keys are node ids; values are short human-readable clauses.
+   */
+  endpointNotesById?: Map<string, string>;
 };
 
 export const colourReasonForEdge = (
@@ -120,34 +143,94 @@ export const colourReasonForEdge = (
   return "Selected because there is no conclusive recent evidence for this dependency.";
 };
 
+export const resolveEndpointDisplayName = (
+  nodeId: string,
+  nodesById: Map<string, TopologyNode>,
+  moreNodes?: DescribeSelectedEdgeOptions["moreNodes"]
+): string => {
+  const node = nodesById.get(nodeId);
+  if (node) return node.name;
+  const moreLabel = moreNodeDisplayName(nodeId, moreNodes);
+  if (moreLabel) return moreLabel;
+  return nodeId;
+};
+
+const endpointEvidenceLine = (
+  role: "Source" | "Target",
+  nodeId: string,
+  nodesById: Map<string, TopologyNode>,
+  options?: DescribeSelectedEdgeOptions
+): string | null => {
+  const moreLabel = moreNodeDisplayName(nodeId, options?.moreNodes);
+  if (moreLabel) {
+    return `${role}: ${moreLabel} (collapsed group — expand to inspect individual nodes)`;
+  }
+  const node = nodesById.get(nodeId);
+  if (!node) return null;
+  const note = options?.endpointNotesById?.get(nodeId);
+  if (note) {
+    return `${role} (${node.name}): ${note}`;
+  }
+  if (node.status === "UNKNOWN") {
+    return `${role} (${node.name}): node health unknown — check monitoring / discovery on the node card`;
+  }
+  const alerts = node.risk.openAlerts;
+  const alertBit = alerts > 0 ? ` · ${alerts} open alert${alerts === 1 ? "" : "s"}` : "";
+  return `${role} (${node.name}): ${healthLabel(node.status)}${alertBit}`;
+};
+
 export const describeSelectedEdge = (
   edge: TopologyEdge,
   nodesById: Map<string, TopologyNode>,
-  kind: LineStyleKind = edge.type === "HIERARCHY" ? "hierarchy" : "dependency"
+  kind: LineStyleKind = edge.type === "HIERARCHY" ? "hierarchy" : "dependency",
+  options?: DescribeSelectedEdgeOptions
 ): SelectedTopologyEdge => {
-  const source = nodesById.get(edge.sourceId);
-  const target = nodesById.get(edge.targetId);
-  return {
+  const sourceName = resolveEndpointDisplayName(edge.sourceId, nodesById, options?.moreNodes);
+  const targetName = resolveEndpointDisplayName(edge.targetId, nodesById, options?.moreNodes);
+  const base: SelectedTopologyEdge = {
     id: edge.id,
     kind,
     sourceId: edge.sourceId,
     targetId: edge.targetId,
-    sourceName: source?.name ?? edge.sourceId,
-    targetName: target?.name ?? edge.targetId,
+    sourceName,
+    targetName,
     status: edge.status,
     critical: edge.critical,
     colourMeaning: colourMeaningForEdge(kind, edge.status),
-    writtenHealth: healthLabel(edge.status),
+    writtenHealth: kind === "hierarchy" ? HIERARCHY_WRITTEN_HEALTH : healthLabel(edge.status),
     colourReason: colourReasonForEdge(kind, edge.status)
+  };
+
+  if (kind !== "hierarchy") return base;
+
+  const endpointEvidence = [
+    endpointEvidenceLine("Source", edge.sourceId, nodesById, options),
+    endpointEvidenceLine("Target", edge.targetId, nodesById, options)
+  ].filter((row): row is string => Boolean(row));
+
+  return {
+    ...base,
+    structureNote: HIERARCHY_STRUCTURE_NOTE,
+    endpointEvidence: endpointEvidence.length > 0 ? endpointEvidence : undefined
   };
 };
 
-export const edgeTooltipLines = (edge: SelectedTopologyEdge): string =>
-  [
+export const edgeTooltipLines = (edge: SelectedTopologyEdge): string => {
+  const lines = [
     `${edge.sourceName} → ${edge.targetName}`,
     `Type: ${edge.kind === "hierarchy" ? "Hierarchy" : "Dependency"}`,
     `Health: ${edge.writtenHealth}`,
-    edge.colourMeaning,
-    "Discovery: declared",
-    "Confidence: confirmed"
-  ].join("\n");
+    edge.colourMeaning
+  ];
+
+  if (edge.kind === "hierarchy") {
+    if (edge.structureNote) lines.push(edge.structureNote);
+    for (const row of edge.endpointEvidence ?? []) {
+      lines.push(row);
+    }
+  } else {
+    lines.push("Discovery: declared", "Confidence: confirmed");
+  }
+
+  return lines.join("\n");
+};
