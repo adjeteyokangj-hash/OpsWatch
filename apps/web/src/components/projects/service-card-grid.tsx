@@ -95,9 +95,9 @@ export function ServiceCardGrid({
               <Link
                 className="service-card-link"
                 href={`/checks?projectId=${projectId}&serviceId=${row.id}`}
-                aria-label={`View details for ${row.name}`}
+                aria-label={`View checks for ${row.name}`}
               >
-                View details →
+                View checks →
               </Link>
             </div>
           </article>

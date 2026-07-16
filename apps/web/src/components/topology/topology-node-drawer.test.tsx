@@ -57,7 +57,7 @@ describe("TopologyNodeDrawer", () => {
     expect(screen.getByText(/Why health is unknown/i)).toBeInTheDocument();
     expect(screen.getByText(/no completed check or heartbeat/i)).toBeInTheDocument();
     expect(screen.getByText("Open alerts")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /view details/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /view checks/i })).toHaveAttribute(
       "href",
       "/checks?projectId=proj-1&serviceId=redis"
     );

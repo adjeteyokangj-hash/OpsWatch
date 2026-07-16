@@ -314,6 +314,22 @@ function ChecksPageContent() {
     return { summary: message };
   };
 
+  const filteredServiceName = serviceIdFilter
+    ? serviceById.get(serviceIdFilter)?.name ?? "this service"
+    : null;
+  const emptyForUnmonitoredService =
+    Boolean(serviceIdFilter) &&
+    !latestStatusFilter &&
+    !isActiveFilter &&
+    !searchParams.get("dateFrom") &&
+    !searchParams.get("dateTo");
+
+  const openCreateForFilteredService = () => {
+    if (!serviceIdFilter) return;
+    setForm({ ...EMPTY_FORM, serviceId: serviceIdFilter });
+    setShowForm(true);
+  };
+
   return (
     <Shell>
       <Header title="Checks" />
@@ -541,7 +557,29 @@ function ChecksPageContent() {
         {loading ? (
           <p>Loading checks...</p>
         ) : displayChecks.length === 0 ? (
-          <p>No checks match current filters. Try broadening status, service, or date filters.</p>
+          emptyForUnmonitoredService ? (
+            <div className="workspace-empty-inline">
+              <p>
+                No monitoring checks for <strong>{filteredServiceName}</strong> yet.
+              </p>
+              <p className="dashboard-subtle">
+                Checks watch availability, SSL, keywords, and latency for this module. Add one to
+                start monitoring.
+              </p>
+              {!showForm ? (
+                <button
+                  type="button"
+                  className="primary-button"
+                  data-action="local-ui"
+                  onClick={openCreateForFilteredService}
+                >
+                  Add check
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <p>No checks match current filters. Try broadening status, service, or date filters.</p>
+          )
         ) : (
           <table className="data-table">
             <thead>

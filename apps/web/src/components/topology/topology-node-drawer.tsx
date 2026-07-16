@@ -74,7 +74,7 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
   ];
 
   const quickActions = [
-    { label: "View details", href: `/checks?projectId=${projectId}&serviceId=${node.id}`, primary: true },
+    { label: "View checks", href: `/checks?projectId=${projectId}&serviceId=${node.id}`, primary: true },
     { label: "Run check", href: `/checks?projectId=${projectId}&serviceId=${node.id}`, primary: false },
     node.type === "WORKFLOW" || node.type === "MODULE"
       ? { label: "View workflows", href: `/projects/${projectId}/workflows`, primary: false }

@@ -37,19 +37,19 @@ const rows = [
 describe("ServiceCardGrid", () => {
   afterEach(() => cleanup());
 
-  it("renders Edit and View details as separate actions with correct targets", () => {
+  it("renders Edit and View checks as separate actions with correct targets", () => {
     render(<ServiceCardGrid rows={rows} projectId="app-noble-express" />);
 
     const card = screen.getByRole("article");
     const edit = within(card).getByRole("button", { name: /edit public website/i });
-    const details = within(card).getByRole("link", { name: /view details for public website/i });
+    const checks = within(card).getByRole("link", { name: /view checks for public website/i });
 
     expect(edit).toBeInTheDocument();
-    expect(details).toHaveAttribute(
+    expect(checks).toHaveAttribute(
       "href",
       "/checks?projectId=app-noble-express&serviceId=svc-public-website"
     );
-    expect(edit.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(edit.compareDocumentPosition(checks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(card).getByText("·")).toBeInTheDocument();
   });
 
