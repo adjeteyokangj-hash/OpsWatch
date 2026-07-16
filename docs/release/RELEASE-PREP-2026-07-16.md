@@ -2,24 +2,36 @@
 
 **Scope:** Local documentation / gate evidence only. **No `git push`. No deploy. No production changes.**
 
-**Final verdict:** **NOT READY**
+**Final verdict:** **READY FOR PUSH APPROVAL**
+
+---
+
+## Addendum — blocker clear (same day)
+
+| Item | Result |
+|------|--------|
+| Tip SHA | `89aa299` (`fix(web): stop automation plan auto-retry loop on 404`) |
+| Range | `origin/main..HEAD` — **52** commits; Modules fix `ca92098` **included** |
+| Product dirty files | **Committed** (session-expired UX, Prisma local pool, header testids, gitignore, test isolation, plan retry fix) |
+| Left uncommitted (intentional) | `.e2e-post-ui-validation/`, `.phase*-validation/`, `.phase5-validate.ps1`, `.release-prep/`, `apps/web/scripts/` — **out of release** |
+| Secrets | Not staged; `.env` never committed |
+| E2E `--full` | **PASS 10/10** after stack rebuild — `.release-prep/e2e-full-after-fix.summary.txt` |
+| Live-heal / remediator / autonomous | Still **OFF for production** until separate approval (honesty unchanged) |
+
+**automation-flow root cause (fixed):** incident page auto-retried `POST …/plan` on 404, leaving UI stuck on “Planning…”. Stopped retry after error; E2E waits for Planning to settle.
 
 ---
 
 ## 1. Working tree
 
-**Status:** Dirty (branch `main` ahead of `origin/main` by 46 commits).
+**Status after blocker clear:** No tracked modifications. Branch `main` ahead of `origin/main` by **52** commits. Untracked validation/tooling dirs only (excluded below).
 
 | Path | Classification | Blocks release? |
 |------|----------------|-----------------|
-| `apps/web/src/lib/api.ts`, `auth.ts`, `middleware.ts`, `login/page.tsx` | Uncommitted session-expired UX (`?reason=session_expired`) | **Must decide** — product change not in proposed commit range |
-| `apps/web/src/components/layout/header.tsx`, `dashboard/page.tsx` | Uncommitted testids / typing cleanup | Prefer include or discard; not ship-critical alone |
-| `apps/api/src/lib/prisma.ts` (+ test) | Uncommitted pool `connection_limit` 5→20 / `pool_timeout` 15→30 | **Must decide** — affects local/smoke; review before prod |
-| `apps/api/src/services/controlled-automation.service.test.ts` | Uncommitted test isolation fix (env pollution) | **Must commit before push** — otherwise `pnpm test` fails when local `.env` enables gate flags |
-| `.gitignore` | Ignore `apps/web/e2e/.auth/`, `test-artifacts/` | Nice-to-have; does not block |
+| *(committed)* session-expired UX, Prisma local pool, test isolation, plan retry, header testids | Release commits on tip | Cleared |
 | `.e2e-post-ui-validation/`, `.phase10-validation/`, `.phase5-validation/`, `.phase5-validate.ps1` | Local validation junk | **Exclude** — do not commit |
 | `.release-prep/` | Local gate logs / scratch | **Exclude** — do not commit |
-| `apps/web/scripts/` (e.g. screenshot capture) | Untracked tooling | **Exclude** unless intentionally shipping |
+| `apps/web/scripts/` (e.g. screenshot capture) | Untracked tooling | **Exclude** — not shipping |
 
 **Secrets:** Do not commit `.env`, credentials, or Vercel pulls.
 
@@ -29,8 +41,8 @@
 
 **Range:** `origin/main..HEAD`  
 **Base:** `fe5c9b4884fe22d1b2346e8e2f578cfff4965926` (`origin/main`)  
-**Tip at prep:** docs commit `docs(release): add 2026-07-16 controlled release prep report` — verify with `git rev-parse HEAD` / `git log -1 --oneline`  
-**Count:** 47 commits (chronological; tip is this prep report)
+**Tip at prep (updated):** `89aa299` — `fix(web): stop automation plan auto-retry loop on 404`  
+**Count:** 52 commits (includes original prep docs `a928987` + five blocker-clear commits)
 
 | SHA | Subject |
 |-----|---------|
@@ -80,9 +92,14 @@
 | `e030036` | feat(web): align project pages to Topology workspace chrome |
 | `3b408e8` | fix(e2e): unblock post-UI-sweep local smoke and journeys |
 | `ca92098` | fix(web): separate Modules card Edit and View details actions |
-| *(docs tip)* | docs(release): add 2026-07-16 controlled release prep report |
+| `a928987` | docs(release): add 2026-07-16 controlled release prep report |
+| `f85834a` | fix(api): isolate controlled-automation tests from local .env gate flags |
+| `ee90c75` | fix(api): raise local Prisma pool defaults for concurrent smoke load |
+| `a7a4a3e` | feat(web): show session-expired notice on login redirect |
+| `288283e` | chore(web): add header testids and ignore e2e auth artefacts |
+| `89aa299` | fix(web): stop automation plan auto-retry loop on 404 |
 
-**Proposed push tip:** current HEAD docs commit — **plus** pending test-isolation commit (and any decided dirty product files) before approval. Verify: `git rev-parse HEAD`.
+**Proposed push tip:** `89aa299` (verify: `git rev-parse HEAD`).
 
 ---
 
@@ -219,9 +236,10 @@ Names only — no secret values. Sources: `apps/api|.web|.worker/.env.example`, 
 | Production build | **PASS** (retry) | Web `next build` + API `tsc`; full `pnpm build` hit Prisma DLL `EPERM` once (Windows lock) |
 | Migrate status | **PASS** | 45 migrations, up to date |
 | E2E `--full` (prior) | **PASS 10/10** | `.e2e-post-ui-validation/SUMMARY.md` |
-| E2E `--full` (this session, after stack restart) | **FAIL 9/10** | `automation-flow` plan panel timeout; `.release-prep/e2e-full-rerun.summary.txt` |
+| E2E `--full` (pre-clear, dirty tip) | **FAIL 9/10** | `automation-flow` Planning… loop; `.release-prep/e2e-full-rerun.summary.txt` |
+| E2E `--full` (after blocker clear + rebuild) | **PASS 10/10** | `.release-prep/e2e-full-after-fix.summary.txt` |
 
-**Release-blocker fix applied locally (uncommitted):** isolate `OPSWATCH_AUTOMATION_TEST_MODE` / `OPSWATCH_AUTO_REPAIR_ENABLED` in `controlled-automation.service.test.ts`.
+**Release-blocker commits (local only):** see tip `89aa299` and commits `f85834a`…`89aa299`.
 
 ---
 
@@ -310,7 +328,7 @@ pnpm db:migrate
 
 | Layer | Status | Notes |
 |-------|--------|-------|
-| **Browser / product readiness** | Mostly ready; **not release-clean** | Prior E2E 10/10; this session 9/10 (`automation-flow` flake). UI accordion + Modules fix on tip. Dirty uncommitted UX/pool changes. |
+| **Browser / product readiness** | **Ready for push approval** | E2E **10/10** on tip `89aa299` after rebuild; accordion + Modules + session-expired + plan-panel fix included. |
 | **Monitoring readiness** | Ready for deploy with gates off | Heartbeats, checks, topology, alerts/incidents in browser E2E path. |
 | **Autonomous remediation readiness** | **Not proven for prod enablement** | Code + migrations present; keep `OPSWATCH_AUTO_REPAIR_ENABLED` / worker autonomous flags **false** until separate approval. |
 | **True live-heal readiness** | **Not ready** | Browser E2E ≠ proven remediator restart/repair of external apps. Live remediation remains a **separate gap** outside authenticated browser smoke. |
@@ -319,29 +337,30 @@ pnpm db:migrate
 
 ## Known risks
 
-1. Dirty working tree / uncommitted test fix → push of current tip alone leaves flaky local tests and ambiguous product state.  
-2. E2E automation-flow flake (9/10 this session) after stack restart.  
-3. Ten production migrations — must run with correct `DIRECT_URL`; failure mid-range needs DB expertise.  
-4. Remediator / autonomous features shipping **disabled** — accidental env enablement could mutate customer systems.  
-5. Windows Prisma `EPERM` during `prisma generate` if another Node process locks the query engine DLL.  
-6. Unified vs split Vercel config drift (`OPSWATCH_API_ORIGIN` left set).
+1. Ten production migrations — must run with correct `DIRECT_URL`; failure mid-range needs DB expertise.  
+2. Remediator / autonomous features shipping **disabled** — accidental env enablement could mutate customer systems. Local smoke `.env` may have repair/test flags on; production must stay off.  
+3. Windows Prisma `EPERM` during `prisma generate` if another Node process locks the query engine DLL.  
+4. Unified vs split Vercel config drift (`OPSWATCH_API_ORIGIN` left set).  
+5. Plan endpoint may still 404 when project mode disallows planning / playbook missing — UI now shows error instead of looping; operators may need playbook seed / mode config.
 
 ---
 
 ## Final verdict
 
-### **NOT READY**
+### **READY FOR PUSH APPROVAL**
 
-**Blockers before READY FOR PUSH APPROVAL:**
+**Cleared blockers:**
 
-1. Commit the controlled-automation test isolation fix (and re-run `pnpm --filter @opswatch/api test`).  
-2. Resolve dirty product files: commit intentionally, or stash/discard so the pushed tip is unambiguous.  
-3. Do **not** commit validation junk (`.e2e-post-ui-validation/`, `.phase*-validation/`, `.release-prep/` logs).  
-4. Re-obtain **10/10** E2E on a stack matching the build to ship, **or** explicitly accept prior `.e2e-post-ui-validation` 10/10 + known `automation-flow` flake as an approved exception.  
-5. Confirm production env checklist (§4) and migration dry-run plan (§3) with operator.
+1. Controlled-automation test isolation committed (`f85834a`).  
+2. Dirty product files committed intentionally (`ee90c75`, `a7a4a3e`, `288283e`) or excluded as validation/tooling junk.  
+3. Validation junk **not** committed.  
+4. E2E `--full` **10/10** on rebuilt stack at tip `89aa299`.  
+5. Modules fix `ca92098` already in range.
+
+**Still required before / at deploy (operator):** production env checklist (§4), migration run (§3), and **keep remediator / auto-repair / autonomous production flags OFF** until separate live-heal approval.
 
 **No push / deploy performed in this prep.**
 
 ---
 
-*Generated locally 2026-07-16. Supporting scratch logs under `.release-prep/` (not for commit).*
+*Updated locally 2026-07-16 after blocker clear. Supporting scratch logs under `.release-prep/` (not for commit).*
