@@ -1,11 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Shell } from "../../../../components/layout/shell";
-import { Header } from "../../../../components/layout/header";
-import { ProjectWorkspaceNav } from "../../../../components/projects/project-workspace-nav";
+import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
 import { BillingUsageCard } from "../../../../components/projects/billing-usage-card";
 import { BillingAllowanceField } from "../../../../components/projects/billing-allowance-field";
 import { apiFetch } from "../../../../lib/api";
@@ -112,7 +109,6 @@ export default function ProjectBillingPage() {
     void load();
   }, [load]);
 
-  const projectName = project?.name ?? billing?.project?.name ?? "…";
   const projectMeta = project
     ? `${project.environment} · ${project.clientName}`
     : billing?.project
@@ -184,25 +180,33 @@ export default function ProjectBillingPage() {
   };
 
   return (
-    <Shell>
-      <Header title={`${projectName} Billing`} />
-      <section className="panel">
-        <nav className="breadcrumb" aria-label="Breadcrumb">
-          <Link href="/projects">Projects</Link>
-          <span aria-hidden="true"> / </span>
-          <Link href={`/projects/${projectId}`}>{projectName}</Link>
-          <span aria-hidden="true"> / </span>
-          <span>Billing</span>
-        </nav>
-        {projectMeta ? <p className="dashboard-subtle billing-project-meta">{projectMeta}</p> : null}
-        <ProjectWorkspaceNav projectId={projectId} />
-        <p className="dashboard-subtle">
-          Billing applies only to this project. Other projects keep independent plans and pricing.
-        </p>
-      </section>
-      {error ? <section className="panel error-panel">{error}</section> : null}
+    <ProjectWorkspaceShell
+      projectId={projectId}
+      title="Billing"
+      subtitle="Plan, usage, and entitlement limits for this application only."
+      breadcrumbLabel="Billing"
+      project={project}
+      loading={!project && !error}
+      error={error}
+      actions={
+        billing ? (
+          <button
+            type="submit"
+            form="project-billing-form"
+            className="primary-button"
+            disabled={saving}
+          >
+            {saving ? "Saving…" : "Save billing"}
+          </button>
+        ) : null
+      }
+    >
+      {projectMeta ? <p className="dashboard-subtle billing-project-meta">{projectMeta}</p> : null}
       {!billing ? (
-        <section className="panel">Loading billing…</section>
+        <section className="panel workspace-loading">
+          <div className="loading-pulse" />
+          <p>Loading billing…</p>
+        </section>
       ) : (
         <>
           <section className="panel billing-plan-summary">
@@ -210,23 +214,39 @@ export default function ProjectBillingPage() {
               <div>
                 <h2>{formatPlanLabel(billing.plan)} plan</h2>
                 {pricingLabel === "CUSTOM" || billing.isCustomPricing ? (
-                  <p className="billing-custom-badge">Custom pricing — limits or price differ from standard tier defaults.</p>
+                  <p className="billing-custom-badge">
+                    Custom pricing — limits or price differ from standard tier defaults.
+                  </p>
                 ) : (
                   <p className="dashboard-subtle">Standard {formatPlanLabel(billing.plan)} defaults applied.</p>
                 )}
               </div>
-              <strong className="billing-plan-summary__price">{formatPrice(billing.monthlyPrice, billing.currency)} / month</strong>
+              <strong className="billing-plan-summary__price">
+                {formatPrice(billing.monthlyPrice, billing.currency)} / month
+              </strong>
             </div>
           </section>
           <section className="billing-usage-grid">
             <BillingUsageCard title="Checks" used={billing.usage?.checks ?? 0} limit={billing.checkLimit} />
-            <BillingUsageCard title="Automation runs" used={billing.usage?.automationRuns ?? 0} limit={billing.automationRunLimit} />
+            <BillingUsageCard
+              title="Automation runs"
+              used={billing.usage?.automationRuns ?? 0}
+              limit={billing.automationRunLimit}
+            />
             <BillingUsageCard title="Users" used={billing.usage?.users ?? 0} limit={billing.userLimit} />
-            <BillingUsageCard title="Retention" used={billing.dataRetentionDays} staticLabel={`${billing.dataRetentionDays} days`} />
+            <BillingUsageCard
+              title="Retention"
+              used={billing.dataRetentionDays}
+              staticLabel={`${billing.dataRetentionDays} days`}
+            />
           </section>
           <section className="panel">
             <h2>Billing editor</h2>
-            <form className="billing-form-grid" onSubmit={(event) => void onSave(event)}>
+            <form
+              id="project-billing-form"
+              className="billing-form-grid"
+              onSubmit={(event) => void onSave(event)}
+            >
               <label>
                 Plan
                 <select value={billing.plan} onChange={(event) => onPlanChange(event.target.value as BillingPlanId)}>
@@ -249,7 +269,10 @@ export default function ProjectBillingPage() {
               </label>
               <label>
                 Currency
-                <select value={billing.currency} onChange={(event) => onBillingFieldChange({ currency: event.target.value })}>
+                <select
+                  value={billing.currency}
+                  onChange={(event) => onBillingFieldChange({ currency: event.target.value })}
+                >
                   <option value="GBP">GBP</option>
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
@@ -257,7 +280,10 @@ export default function ProjectBillingPage() {
               </label>
               <label>
                 Billing status
-                <select value={billing.billingStatus} onChange={(event) => updateBilling({ billingStatus: event.target.value })}>
+                <select
+                  value={billing.billingStatus}
+                  onChange={(event) => updateBilling({ billingStatus: event.target.value })}
+                >
                   {["ACTIVE", "TRIAL", "PAST_DUE", "CANCELLED", "SUSPENDED"].map((status) => (
                     <option key={status} value={status}>
                       {status}
@@ -313,15 +339,10 @@ export default function ProjectBillingPage() {
                   onChange={(event) => updateBilling({ internalNotes: event.target.value })}
                 />
               </label>
-              <div className="billing-form-grid__full">
-                <button type="submit" className="primary-button" disabled={saving}>
-                  {saving ? "Saving…" : "Save billing"}
-                </button>
-              </div>
             </form>
           </section>
         </>
       )}
-    </Shell>
+    </ProjectWorkspaceShell>
   );
 }

@@ -152,7 +152,7 @@ export default function ReliabilityManagementPage() {
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
-      title={project ? `${project.name} — Dependencies & SLOs` : "Dependencies & SLOs"}
+      title="Dependencies & SLOs"
       subtitle="Dependency relationships and service-level objectives for this application."
       project={project}
       loading={projectLoading}

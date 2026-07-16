@@ -39,7 +39,7 @@ export default function ProjectAlertsPage() {
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
-      title={project ? `${project.name} — Alerts` : "Alerts"}
+      title="Alerts"
       subtitle="Severity, first/last seen, and linked incidents. Grouping uses exact title + source + service signatures."
       project={project}
       loading={loading}
@@ -58,7 +58,12 @@ export default function ProjectAlertsPage() {
         ]}
       />
 
-      {listLoading ? <section className="panel">Loading alerts…</section> : null}
+      {listLoading ? (
+        <section className="panel workspace-loading">
+          <div className="loading-pulse" />
+          <p>Loading alerts…</p>
+        </section>
+      ) : null}
       {!listLoading && alerts.length === 0 ? (
         <EmptyState title="No alerts for this application" description="Alerts appear from checks, heartbeats, and ingest events." />
       ) : null}

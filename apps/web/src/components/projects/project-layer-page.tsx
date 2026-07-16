@@ -70,17 +70,23 @@ export function ProjectLayerPage({ layerKey }: { layerKey: LayerKey }) {
 
   const summary = summarize(filteredServices);
 
+  const pageTitle = layerKey === "components" ? "Components" : config.title;
+
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
-      title={project ? `${project.name} — ${config.title}` : config.title}
+      title={pageTitle}
       subtitle={config.subtitle}
       project={project}
       loading={loading}
       error={error}
+      actions={<AddServiceForm projectId={projectId} layerKey={layerKey} onCreated={() => void reload()} />}
     >
       {loading ? (
-        <section className="panel">Loading {config.title.toLowerCase()}…</section>
+        <section className="panel workspace-loading">
+          <div className="loading-pulse" />
+          <p>Loading {pageTitle.toLowerCase()}…</p>
+        </section>
       ) : (
         <>
           <WorkspaceSummaryStrip
@@ -95,12 +101,10 @@ export function ProjectLayerPage({ layerKey }: { layerKey: LayerKey }) {
           <section className="panel workspace-section-card">
             <div className="section-head">
               <div>
-                <h2>{config.title}</h2>
-                <p className="dashboard-subtle">
-                  {filteredServices.length} monitored {config.title.toLowerCase()} in this application.
+                <p className="dashboard-subtle" style={{ margin: 0 }}>
+                  {filteredServices.length} monitored {pageTitle.toLowerCase()} in this application.
                 </p>
               </div>
-              <AddServiceForm projectId={projectId} layerKey={layerKey} onCreated={() => void reload()} />
             </div>
 
             {layerKey === "components" ? (

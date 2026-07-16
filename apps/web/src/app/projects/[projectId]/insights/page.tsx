@@ -74,7 +74,7 @@ export default function ProjectInsightsPage() {
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
-      title={project ? `${project.name} — Intelligence` : "Intelligence"}
+      title="Intelligence"
       subtitle="Evidence-backed insights only. Predictions stay disabled until confidence thresholds are met."
       project={project}
       loading={loading}

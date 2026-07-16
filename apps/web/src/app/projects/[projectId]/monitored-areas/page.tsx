@@ -29,7 +29,7 @@ export default function MonitoredAreasPage() {
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
-      title={project ? `${project.name} — Monitored Areas` : "Monitored Areas"}
+      title="Monitored Areas"
       subtitle="Layered health across app, modules, workflows, and components."
       project={project}
       loading={loading}

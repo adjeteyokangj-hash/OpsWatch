@@ -58,7 +58,7 @@ export default function ProjectAutomationPage() {
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
-      title={project ? `${project.name} — Automation` : "Project Automation"}
+      title="Automation"
       subtitle="Playbooks, verification, and run history for this application — real outcomes only."
       project={project}
       loading={loading}

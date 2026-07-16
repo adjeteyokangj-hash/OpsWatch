@@ -44,7 +44,7 @@ import {
   type RemediationPolicyGate
 } from "../../../../components/topology/topology-automation-link";
 import { patchProjectAutonomousMode } from "../../../../components/automation/autonomous-mode-control";
-import { describeSelectedEdge } from "../../../../components/topology/topology-edge-style";
+import { describeSelectedEdge, type SelectedTopologyEdge } from "../../../../components/topology/topology-edge-style";
 import { resolveDependencyDisplayLinks, resolveHierarchyDisplayLinks } from "../../../../components/topology/topology-edge-resolve";
 import { computeLayeredLayout } from "../../../../components/topology/topology-layout";
 import { classifyVisualLayer } from "../../../../components/topology/topology-visual-layers";
@@ -472,7 +472,8 @@ export default function ProjectTopologyPage() {
 
         <header className="topology-page-header">
           <div>
-            <h1>Topology</h1>
+            <p className="project-workspace-brand">OpsWatch</p>
+            <h1 data-testid="page-heading">Topology</h1>
             <p>Live view of your infrastructure, applications, workflows and services.</p>
             {topology ? (
               <p className="dashboard-subtle">

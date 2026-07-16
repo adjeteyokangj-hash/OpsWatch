@@ -83,7 +83,7 @@ export default function ProjectMetricsPage() {
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
-      title={project ? `${project.name} — Metrics` : "Metrics"}
+      title="Metrics"
       subtitle="Latency and check posture from completed monitoring results — no fabricated SLIs."
       project={project}
       loading={loading}

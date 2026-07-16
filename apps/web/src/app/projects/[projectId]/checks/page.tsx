@@ -52,32 +52,29 @@ export default function ProjectChecksPage() {
   return (
     <ProjectWorkspaceShell
       projectId={params.projectId}
-      title={project ? `${project.name} — Checks` : "Project Checks"}
+      title="Checks"
       subtitle="Monitoring checks and latest run results for this application."
       project={project}
       loading={projectLoading}
       error={projectError ?? error}
-    >
-      {loading ? <section className="panel">Loading checks…</section> : (
+      actions={
         <>
-          <section className="panel workspace-run-check-card">
-            <div className="section-head">
-              <div>
-                <h2>Run new check</h2>
-                <p className="dashboard-subtle">Trigger a manual health check for a monitored service.</p>
-              </div>
-            </div>
-            <div className="workspace-run-check-actions">
-              <Link href={`/checks?projectId=${params.projectId}`} className="primary-button">
-                Open checks console
-              </Link>
-              <Link href={`/projects/${params.projectId}/topology`} className="secondary-button">
-                View service map
-              </Link>
-            </div>
-          </section>
-          <CheckResultsTable rows={checks} />
+          <Link href={`/checks?projectId=${params.projectId}`} className="primary-button">
+            Open checks console
+          </Link>
+          <Link href={`/projects/${params.projectId}/topology`} className="secondary-button">
+            View topology
+          </Link>
         </>
+      }
+    >
+      {loading ? (
+        <section className="panel workspace-loading">
+          <div className="loading-pulse" />
+          <p>Loading checks…</p>
+        </section>
+      ) : (
+        <CheckResultsTable rows={checks} />
       )}
     </ProjectWorkspaceShell>
   );

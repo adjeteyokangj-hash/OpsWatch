@@ -49,7 +49,7 @@ export default function ProjectDetailPage() {
 		return (
 			<ProjectWorkspaceShell
 				projectId={params.projectId}
-				title="Project"
+				title="Overview"
 				error={error}
 				loading={false}
 			>
@@ -75,11 +75,12 @@ export default function ProjectDetailPage() {
 	return (
 		<ProjectWorkspaceShell
 			projectId={params.projectId}
-			title={project?.name ?? "Project"}
-			subtitle="Project overview, live risk, and quick navigation."
+			title="Overview"
+			subtitle="Live risk, health signals, and quick navigation for this application."
 			project={project}
 			loading={loading}
 			error={error}
+			showProjectStrip
 		>
 			{project ? (
 				<>

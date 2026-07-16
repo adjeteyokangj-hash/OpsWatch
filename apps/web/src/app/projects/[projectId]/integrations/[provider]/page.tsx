@@ -226,7 +226,8 @@ export default function ProviderIntegrationDetailPage() {
   return (
     <ProjectWorkspaceShell
       projectId={params.projectId}
-      title={project ? `${project.name} — ${providerDisplayName(providerType)}` : `Integration: ${providerDisplayName(providerType)}`}
+      title={providerDisplayName(providerType)}
+      breadcrumbLabel={providerDisplayName(providerType)}
       subtitle="Configure provider connectivity, validate health, and monitor connection status."
       project={project}
       loading={projectLoading}

@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { Shell } from "../../../components/layout/shell";
-import { Header } from "../../../components/layout/header";
 import { ProjectConnectionsPanel } from "../../../components/integrations/project-connections-panel";
+import { ProjectWorkspaceShell } from "../../../components/projects/project-workspace-shell";
 import { apiFetch } from "../../../lib/api";
 import {
   formatRelativeTime,
@@ -55,9 +54,12 @@ export default function ProjectIntegrationsPage() {
     setValidatingKey(key);
     setError(null);
     try {
-      const updated = await apiFetch<ProjectIntegration>(`/settings/integrations/${targetProjectId}/${type}/validate`, {
-        method: "POST"
-      });
+      const updated = await apiFetch<ProjectIntegration>(
+        `/settings/integrations/${targetProjectId}/${type}/validate`,
+        {
+          method: "POST"
+        }
+      );
       setIntegrations((current) => {
         const index = current.findIndex((row) => row.projectId === targetProjectId && row.type === type);
         if (index === -1) return [...current, updated];
@@ -73,19 +75,19 @@ export default function ProjectIntegrationsPage() {
   };
 
   return (
-    <Shell>
-      <Header title={project ? `${project.name} integrations` : "Application integrations"} />
-      <p className="dashboard-subtle">
-        <Link href="/integrations">← All integrations</Link>
-        {project ? (
-          <>
-            {" "}
-            • <Link href={`/projects/${project.id}`}>Open application workspace</Link>
-          </>
-        ) : null}
-      </p>
-      {error ? <section className="panel error-panel">{error}</section> : null}
-
+    <ProjectWorkspaceShell
+      projectId={projectId}
+      title="Integrations"
+      subtitle="Provider connections and validation status for this application."
+      project={project}
+      loading={loading}
+      error={error}
+      actions={
+        <Link className="secondary-button" href="/integrations">
+          All integrations
+        </Link>
+      }
+    >
       {summary ? (
         <section className="panel integrations-overview-summary">
           <dl className="integrations-overview-summary__stats">
@@ -108,13 +110,16 @@ export default function ProjectIntegrationsPage() {
               <dd>{formatRelativeTime(summary.lastValidatedAt)}</dd>
             </div>
           </dl>
-          {summary.attentionMessage ? <p className="project-integration-row__attention">{summary.attentionMessage}</p> : null}
+          {summary.attentionMessage ? (
+            <p className="project-integration-row__attention">{summary.attentionMessage}</p>
+          ) : null}
         </section>
       ) : null}
 
       {loading || !project ? (
-        <section className="panel">
-          <p>Loading connections...</p>
+        <section className="panel workspace-loading">
+          <div className="loading-pulse" />
+          <p>Loading connections…</p>
         </section>
       ) : (
         <section className="panel">
@@ -126,6 +131,6 @@ export default function ProjectIntegrationsPage() {
           />
         </section>
       )}
-    </Shell>
+    </ProjectWorkspaceShell>
   );
 }

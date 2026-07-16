@@ -68,7 +68,7 @@ export default function ProjectDeploymentsPage() {
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
-      title={project ? `${project.name} — Deployments` : "Deployments"}
+      title="Deployments"
       subtitle="Change events and deployment correlation from recorded operational data."
       project={project}
       loading={loading}

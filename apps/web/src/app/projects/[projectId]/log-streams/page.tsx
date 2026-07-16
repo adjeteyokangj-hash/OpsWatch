@@ -14,7 +14,7 @@ export default function ProjectLogsPage() {
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
-      title={project ? `${project.name} — Logs` : "Logs"}
+      title="Logs"
       subtitle="Log stream workspace."
       project={project}
       loading={loading}

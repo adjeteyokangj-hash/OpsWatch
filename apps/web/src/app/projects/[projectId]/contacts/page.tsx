@@ -51,23 +51,40 @@ export default function ProjectContactsPage() {
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
-      title={project ? `${project.name} — Contacts` : "Project Contacts"}
+      title="Contacts"
       subtitle="Operational owners and on-call contacts for this application."
       project={project}
       loading={loading}
       error={error}
+      actions={
+        <button
+          type="submit"
+          form="project-contacts-form"
+          className="primary-button"
+          disabled={saving || loading}
+          data-action="api"
+          data-endpoint="/projects/:id"
+        >
+          {saving ? "Saving…" : "Save contacts"}
+        </button>
+      }
     >
       {successMsg ? <section className="panel success-panel">{successMsg}</section> : null}
       <section className="two-col settings-grid">
         <section className="panel">
           <h2>Operational contacts</h2>
           <p className="dashboard-subtle">
-            People responsible for <strong>{project?.name || "this project"}</strong>. These are not OpsWatch login accounts.
+            People responsible for <strong>{project?.name || "this project"}</strong>. These are not OpsWatch login
+            accounts.
           </p>
           {loading ? (
             <p>Loading contacts…</p>
           ) : (
-            <form className="stack-form" onSubmit={(event) => void saveContacts(event)}>
+            <form
+              id="project-contacts-form"
+              className="stack-form"
+              onSubmit={(event) => void saveContacts(event)}
+            >
               <label>
                 Project owner
                 <input
@@ -80,13 +97,12 @@ export default function ProjectContactsPage() {
                 Operational contact
                 <input
                   value={form.operationalContact}
-                  onChange={(event) => setForm((current) => ({ ...current, operationalContact: event.target.value }))}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, operationalContact: event.target.value }))
+                  }
                   placeholder="e.g. ops@client.com or on-call rotation"
                 />
               </label>
-              <button type="submit" disabled={saving} data-action="api" data-endpoint="/projects/:id">
-                {saving ? "Saving…" : "Save contacts"}
-              </button>
             </form>
           )}
         </section>

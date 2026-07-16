@@ -39,7 +39,7 @@ export default function ProjectIncidentsPage() {
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
-      title={project ? `${project.name} — Incidents` : "Incidents"}
+      title="Incidents"
       subtitle="Severity, ownership, affected scope, and deploy correlation from recorded data."
       project={project}
       loading={loading}
@@ -60,7 +60,12 @@ export default function ProjectIncidentsPage() {
         ]}
       />
 
-      {listLoading ? <section className="panel">Loading incidents…</section> : null}
+      {listLoading ? (
+        <section className="panel workspace-loading">
+          <div className="loading-pulse" />
+          <p>Loading incidents…</p>
+        </section>
+      ) : null}
       {!listLoading && incidents.length === 0 ? (
         <EmptyState
           title="No incidents for this application"
