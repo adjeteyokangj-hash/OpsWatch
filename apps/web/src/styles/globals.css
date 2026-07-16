@@ -7046,6 +7046,25 @@ button {
   text-decoration: none;
 }
 
+.service-card-actions {
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.service-card-actions .text-link,
+.service-card-actions .service-card-link {
+  font-size: 0.84rem;
+  line-height: 1.2;
+}
+
+.service-card-actions-sep {
+  color: var(--ink-soft);
+  font-size: 0.84rem;
+  line-height: 1;
+  user-select: none;
+}
+
 .workspace-run-check-card {
   margin-bottom: 16px;
 }

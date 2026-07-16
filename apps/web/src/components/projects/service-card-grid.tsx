@@ -79,11 +79,24 @@ export function ServiceCardGrid({
             </p>
             <p className="service-card-hint">{row.baseUrl || "No target URL"}</p>
             <p className="service-card-hint">{statusHint(row.status)}</p>
-            <div className="table-actions">
-              <button type="button" className="text-link" onClick={() => setEditingId(row.id)} data-action="local-ui">
+            <div className="table-actions service-card-actions">
+              <button
+                type="button"
+                className="text-link"
+                onClick={() => setEditingId(row.id)}
+                data-action="local-ui"
+                aria-label={`Edit ${row.name}`}
+              >
                 Edit
               </button>
-              <Link className="service-card-link" href={`/checks?projectId=${projectId}&serviceId=${row.id}`}>
+              <span className="service-card-actions-sep" aria-hidden="true">
+                ·
+              </span>
+              <Link
+                className="service-card-link"
+                href={`/checks?projectId=${projectId}&serviceId=${row.id}`}
+                aria-label={`View details for ${row.name}`}
+              >
                 View details →
               </Link>
             </div>
