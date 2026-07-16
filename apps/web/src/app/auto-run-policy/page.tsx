@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
+import { PageSection } from "../../components/ui/page-section";
 import { apiFetch } from "../../lib/api";
 
 type PolicyRow = {
@@ -112,13 +113,11 @@ export default function AutoRunPolicyPage() {
       <Header title="Auto-Run Policy" />
 
       {/* ── Explainer ──────────────────────────────────────────────── */}
-      <section className="panel">
-        <h2>Controlled Auto-Remediation</h2>
-        <p className="metric-label" style={{ marginBottom: "8px" }}>
-          Phase 9 rollout: auto-run is restricted to a narrow safe-action allowlist only.
-          All three levels must permit execution — global, project, and action policies.
-          Cooldown protection prevents action thrashing. HIGH-impact actions cannot auto-run.
-        </p>
+      <PageSection
+        title="Controlled Auto-Remediation"
+        description="Phase 9 rollout: auto-run is restricted to a narrow safe-action allowlist only. All three levels must permit execution — global, project, and action policies. Cooldown protection prevents action thrashing. HIGH-impact actions cannot auto-run."
+        persistKey="org:auto-run-policy:explainer"
+      >
         <div className="suppression-callout suppression-warn" style={{ margin: 0 }}>
           <span className="suppression-icon">⚠</span>
           <div className="suppression-body">
@@ -129,15 +128,14 @@ export default function AutoRunPolicyPage() {
             </p>
           </div>
         </div>
-      </section>
+      </PageSection>
 
       {/* ── Global switch ──────────────────────────────────────────── */}
-      <section className="panel">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <h2>Global Auto-Run</h2>
-            <p className="metric-label">Master switch for the entire organisation.</p>
-          </div>
+      <PageSection
+        title="Global Auto-Run"
+        description="Master switch for the entire organisation."
+        persistKey="org:auto-run-policy:global"
+        actions={
           <button
             className={`policy-toggle ${globalEnabled ? "policy-toggle-on" : "policy-toggle-off"}`}
             disabled={saving === "GLOBAL:"}
@@ -147,13 +145,19 @@ export default function AutoRunPolicyPage() {
           >
             {saving === "GLOBAL:" ? "Saving…" : globalEnabled ? "Enabled — click to disable" : "Disabled — click to enable"}
           </button>
-        </div>
-      </section>
+        }
+      >
+        <p className="metric-label">
+          When disabled, no project or action policy can auto-run remediations.
+        </p>
+      </PageSection>
 
       {/* ── Per-action switches ────────────────────────────────────── */}
-      <section className="panel">
-        <h2>Action Policies</h2>
-        <p className="metric-label">Fine-grained control per safe-allowlist action.</p>
+      <PageSection
+        title="Action Policies"
+        description="Fine-grained control per safe-allowlist action."
+        persistKey="org:auto-run-policy:actions"
+      >
         <table className="data-table" style={{ marginTop: "12px" }}>
           <thead>
             <tr>
@@ -204,13 +208,16 @@ export default function AutoRunPolicyPage() {
             })}
           </tbody>
         </table>
-      </section>
+      </PageSection>
 
       {/* ── Per-project switches ───────────────────────────────────── */}
       {projects.length > 0 && (
-        <section className="panel">
-          <h2>Project Policies</h2>
-          <p className="metric-label">Override auto-run per project. Disabled projects block all auto-runs for their incidents/services.</p>
+        <PageSection
+          title="Project Policies"
+          description="Override auto-run per project. Disabled projects block all auto-runs for their incidents/services."
+          persistKey="org:auto-run-policy:projects"
+          defaultCollapsed
+        >
           <table className="data-table" style={{ marginTop: "12px" }}>
             <thead>
               <tr>
@@ -250,7 +257,7 @@ export default function AutoRunPolicyPage() {
               })}
             </tbody>
           </table>
-        </section>
+        </PageSection>
       )}
     </Shell>
   );

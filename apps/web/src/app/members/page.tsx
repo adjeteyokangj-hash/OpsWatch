@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
+import { PageSection } from "../../components/ui/page-section";
 import { apiFetch } from "../../lib/api";
 import { refreshAuthSession } from "../../lib/auth";
 import { generatePassword } from "../../lib/password-generator";
@@ -482,18 +483,18 @@ export default function MembersPage() {
       {loading ? <section className="panel">Loading platform members…</section> : null}
 
       {!loading && tab === "members" ? (
-        <section className="panel">
-          <div className="section-head">
-            <div>
-              <h2>Platform members</h2>
-              <p>{users.length} OpsWatch account{users.length === 1 ? "" : "s"} in this organization.</p>
-            </div>
-            {isAdmin && !showCreate ? (
+        <PageSection
+          title="Platform members"
+          description={`${users.length} OpsWatch account${users.length === 1 ? "" : "s"} in this organization.`}
+          persistKey="org:members:platform"
+          actions={
+            isAdmin && !showCreate ? (
               <button className="primary-button" onClick={() => setShowCreate(true)} data-action="local-ui">
                 + Create member
               </button>
-            ) : null}
-          </div>
+            ) : null
+          }
+        >
           {!isAdmin ? <p className="dashboard-subtle">Only admins can create members or change access.</p> : null}
           {isAdmin && !isPlatformSuperAdmin ? (
             <p className="dashboard-subtle">
@@ -640,14 +641,16 @@ export default function MembersPage() {
               })}
             </tbody>
           </table>
-        </section>
+        </PageSection>
       ) : null}
 
       {!loading && tab === "emails" ? (
         <>
-          <section className="panel">
-            <h2>Registered emails</h2>
-            <p className="dashboard-subtle">All email addresses with OpsWatch login accounts in this organization.</p>
+          <PageSection
+            title="Registered emails"
+            description="All email addresses with OpsWatch login accounts in this organization."
+            persistKey="org:members:registered-emails"
+          >
             {(center?.registeredEmails ?? []).length === 0 ? (
               <p>No platform login emails yet.</p>
             ) : (
@@ -657,14 +660,14 @@ export default function MembersPage() {
                 ))}
               </ul>
             )}
-          </section>
+          </PageSection>
 
-          <section className="panel">
-            <h2>Project contact emails</h2>
-            <p className="dashboard-subtle">
-              Operational contacts and alert notification emails configured on projects. These are separate from OpsWatch login
-              accounts.
-            </p>
+          <PageSection
+            title="Project contact emails"
+            description="Operational contacts and alert notification emails configured on projects. These are separate from OpsWatch login accounts."
+            persistKey="org:members:project-contacts"
+            defaultCollapsed
+          >
             {(center?.projectContactEmails ?? []).length === 0 ? (
               <p>No projects in this organization.</p>
             ) : (
@@ -699,14 +702,17 @@ export default function MembersPage() {
             ) ? (
               <p className="dashboard-subtle">No project contact emails are configured yet.</p>
             ) : null}
-          </section>
+          </PageSection>
         </>
       ) : null}
 
       {!loading && tab === "logs" && isAdmin ? (
-        <section className="panel">
-          <h2>Member activity log</h2>
-          <p className="dashboard-subtle">Creates, role changes, password resets, and activation changes.</p>
+        <PageSection
+          title="Member activity log"
+          description="Creates, role changes, password resets, and activation changes."
+          persistKey="org:members:activity-log"
+          defaultCollapsed
+        >
           {(center?.auditLogs ?? []).length === 0 ? (
             <p>No member activity recorded yet.</p>
           ) : (
@@ -735,7 +741,7 @@ export default function MembersPage() {
               </table>
             </div>
           )}
-        </section>
+        </PageSection>
       ) : null}
     </Shell>
   );

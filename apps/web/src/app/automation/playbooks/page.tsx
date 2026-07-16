@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Shell } from "../../../components/layout/shell";
 import { Header } from "../../../components/layout/header";
+import { PageSection } from "../../../components/ui/page-section";
 import { apiFetch } from "../../../lib/api";
 
 type PlaybookVersion = {
@@ -69,25 +70,28 @@ export default function PlaybooksGovernancePage() {
   return (
     <Shell>
       <Header title="Playbook Governance" />
-      <section className="panel">
+      <PageSection
+        title="Approval workflow"
+        description="Playbook approval is separate from run approval. Only the latest APPROVED version is used by the automation planner."
+        persistKey="org:playbooks:workflow"
+      >
         <p className="dashboard-subtle">
-          Playbook approval is separate from run approval. Only the latest <strong>APPROVED</strong> version is used by
-          the automation planner.
+          Submit drafts for review, then approve or reject with a required reason before a version can be planned.
         </p>
-      </section>
+      </PageSection>
       {error ? <section className="panel error-panel">{error}</section> : null}
       {loading ? (
         <section className="panel">Loading playbooks…</section>
       ) : (
         <div className="hub-card-grid">
           {playbooks.map((playbook) => (
-            <section className="panel playbook-card" key={playbook.key}>
-              <h2>
-                {playbook.name} <span className="table-subtle">({playbook.key})</span>
-              </h2>
-              <p className="dashboard-subtle">
-                {playbook.description} · Risk {playbook.riskLevel} · Approved v{playbook.latestApprovedVersion ?? "—"}
-              </p>
+            <PageSection
+              className="playbook-card"
+              key={playbook.key}
+              title={playbook.name}
+              description={`${playbook.description} · Risk ${playbook.riskLevel} · Approved v${playbook.latestApprovedVersion ?? "—"} (${playbook.key})`}
+              persistKey={`org:playbooks:${playbook.key}`}
+            >
               {playbook.versions.map((version) => (
               <article className="playbook-version-card" key={version.id}>
                 <div className="playbook-version-head">
@@ -142,7 +146,7 @@ export default function PlaybooksGovernancePage() {
                 </div>
               </article>
             ))}
-            </section>
+            </PageSection>
           ))}
         </div>
       )}

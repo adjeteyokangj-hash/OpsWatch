@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { Shell } from "../../../components/layout/shell";
 import { Header } from "../../../components/layout/header";
+import { PageSection } from "../../../components/ui/page-section";
 import { apiFetch } from "../../../lib/api";
 
 type MaintenanceWindow = {
@@ -121,8 +122,11 @@ export default function MaintenanceWindowsPage() {
 
       {error ? <section className="panel error-panel">{error}</section> : null}
 
-      <section className="panel">
-        <h2>Schedule window</h2>
+      <PageSection
+        title="Schedule window"
+        description="Create a maintenance window with alert and automation policy controls."
+        persistKey="org:settings:maintenance:schedule"
+      >
         <form className="form-grid" onSubmit={(event) => void onSubmit(event)}>
           <label>
             Name
@@ -200,10 +204,13 @@ export default function MaintenanceWindowsPage() {
             {saving ? "Creating…" : "Create window"}
           </button>
         </form>
-      </section>
+      </PageSection>
 
-      <section className="panel">
-        <h2>Windows</h2>
+      <PageSection
+        title="Windows"
+        description="Scheduled, active, and historical maintenance windows."
+        persistKey="org:settings:maintenance:windows"
+      >
         {loading ? (
           <p>Loading…</p>
         ) : rows.length === 0 ? (
@@ -251,7 +258,7 @@ export default function MaintenanceWindowsPage() {
             </table>
           </div>
         )}
-      </section>
+      </PageSection>
     </Shell>
   );
 }

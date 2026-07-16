@@ -5124,6 +5124,39 @@ button {
   overflow: hidden;
 }
 
+.topology-live-ops.page-section > .page-section-summary,
+.topology-live-ops.page-section > .section-head {
+  margin-bottom: 0;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.topology-detail-panel.page-section > .page-section-summary,
+.topology-detail-panel.page-section > .section-head {
+  margin-bottom: 0;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.topology-detail-panel.page-section .page-section-body {
+  display: grid;
+  gap: 0;
+}
+
+.topology-detail-panel.page-section .topology-app-card,
+.topology-detail-panel.page-section .topology-app-hint {
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+.topology-detail-panel.page-section .topology-app-card {
+  padding-top: 14px;
+}
+
+.topology-detail-panel.page-section .topology-app-hint {
+  padding-bottom: 14px;
+}
+
 .topology-live-ops-head {
   display: flex;
   justify-content: space-between;

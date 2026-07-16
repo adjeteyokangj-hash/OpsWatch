@@ -7,6 +7,7 @@ import { ProjectWorkspaceShell } from "../../../../components/projects/project-w
 import { IncidentsTable } from "../../../../components/incidents/incidents-table";
 import { IncidentQuickDrawer } from "../../../../components/incidents/incident-quick-drawer";
 import { EmptyState } from "../../../../components/ui/empty-state";
+import { PageSection } from "../../../../components/ui/page-section";
 import { WorkspaceSummaryStrip } from "../../../../components/projects/workspace-summary-strip";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../lib/api";
@@ -60,27 +61,32 @@ export default function ProjectIncidentsPage() {
         ]}
       />
 
-      {listLoading ? (
-        <section className="panel workspace-loading">
-          <div className="loading-pulse" />
-          <p>Loading incidents…</p>
-        </section>
-      ) : null}
-      {!listLoading && incidents.length === 0 ? (
-        <EmptyState
-          title="No incidents for this application"
-          description="Incidents appear when alerts correlate into an incident record."
-        />
-      ) : null}
-      {!listLoading && incidents.length > 0 ? (
-        <IncidentsTable rows={incidents} onSelectRow={(id) => setSelectedId(id)} selectedId={selectedId} />
-      ) : null}
-
-      <p>
-        <Link className="text-link" href={`/incidents?projectId=${projectId}`}>
-          Open global incidents filter →
-        </Link>
-      </p>
+      <PageSection
+        title="Incident list"
+        description="Severity, ownership, affected scope, and deploy correlation from recorded data."
+        persistKey={`project:${projectId}:incidents:list`}
+        actions={
+          <Link className="text-link" href={`/incidents?projectId=${projectId}`}>
+            Global filter →
+          </Link>
+        }
+      >
+        {listLoading ? (
+          <div className="workspace-loading">
+            <div className="loading-pulse" />
+            <p>Loading incidents…</p>
+          </div>
+        ) : null}
+        {!listLoading && incidents.length === 0 ? (
+          <EmptyState
+            title="No incidents for this application"
+            description="Incidents appear when alerts correlate into an incident record."
+          />
+        ) : null}
+        {!listLoading && incidents.length > 0 ? (
+          <IncidentsTable rows={incidents} onSelectRow={(id) => setSelectedId(id)} selectedId={selectedId} />
+        ) : null}
+      </PageSection>
 
       <IncidentQuickDrawer
         incident={selected}

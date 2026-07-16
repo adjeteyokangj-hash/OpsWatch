@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
+import { PageSection } from "../../components/ui/page-section";
 import { API_BASE_URL } from "../../lib/constants";
 
 type ServiceStatus = "HEALTHY" | "DEGRADED" | "DOWN" | "PAUSED";
@@ -180,8 +181,11 @@ export default function StatusPage() {
 
           {/* ── Active incidents ─────────────────────────────────── */}
           {openIncidents.length > 0 && (
-            <section className="panel">
-              <h2 className="section-title">Active incidents</h2>
+            <PageSection
+              title="Active incidents"
+              description="Open investigations and monitoring across projects."
+              persistKey="org:status:active-incidents"
+            >
               <div className="incident-timeline">
                 {openIncidents.map((inc) => (
                   <div key={inc.id} className={`timeline-item severity-${inc.severity.toLowerCase()}`}>
@@ -200,13 +204,15 @@ export default function StatusPage() {
                   </div>
                 ))}
               </div>
-            </section>
+            </PageSection>
           )}
 
           {/* ── Component status ─────────────────────────────────── */}
-          <section className="panel">
-            <h2 className="section-title">Components</h2>
-            <p className="metric-label" style={{ marginBottom: 12 }}>Uptime based on last 30 days of check results.</p>
+          <PageSection
+            title="Components"
+            description="Uptime based on last 30 days of check results."
+            persistKey="org:status:components"
+          >
             {projects.length === 0 ? (
               <p className="metric-label">No active projects configured.</p>
             ) : (
@@ -245,12 +251,16 @@ export default function StatusPage() {
                 ))}
               </div>
             )}
-          </section>
+          </PageSection>
 
           {/* ── Resolved incidents (last 30d) ─────────────────────── */}
           {resolvedIncidents.length > 0 && (
-            <section className="panel">
-              <h2 className="section-title">Recent resolved incidents</h2>
+            <PageSection
+              title="Recent resolved incidents"
+              description="Resolved in the last 30 days."
+              persistKey="org:status:resolved-incidents"
+              defaultCollapsed
+            >
               <div className="incident-timeline resolved">
                 {resolvedIncidents.map((inc) => (
                   <div key={inc.id} className="timeline-item resolved">
@@ -270,7 +280,7 @@ export default function StatusPage() {
                   </div>
                 ))}
               </div>
-            </section>
+            </PageSection>
           )}
 
           {/* ── All clear ─────────────────────────────────────────── */}

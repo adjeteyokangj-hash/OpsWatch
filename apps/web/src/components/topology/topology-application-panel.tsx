@@ -3,6 +3,7 @@ import type { ProjectTopologyResponse } from "./topology-types";
 import { healthClassName, healthLabel } from "./topology-types";
 import { TopologySparkline } from "./topology-sparkline";
 import { deriveNodeLiveMetrics } from "./topology-metrics";
+import { PageSection } from "../ui/page-section";
 
 type Props = {
   topology: ProjectTopologyResponse;
@@ -55,20 +56,19 @@ export function TopologyApplicationPanel({ topology, projectId, project }: Props
       .slice(0, 4);
 
   return (
-    <aside className="topology-detail-panel topology-application-panel panel" aria-label="Application overview">
+    <PageSection
+      title={topology.project.name}
+      description="Application overview for this topology map."
+      className="topology-detail-panel topology-application-panel"
+      persistKey={`project:${projectId}:topology:application`}
+      aria-label="Application overview"
+      actions={
+        <span className={`topology-detail-badge ${healthClassName(topology.project.status as any)}`}>
+          {healthLabel(topology.project.status as any)}
+        </span>
+      }
+    >
       <section className="topology-app-card">
-        <div className="topology-app-card-head">
-          <span className="topology-app-card-icon" aria-hidden="true">
-            ▦
-          </span>
-          <div>
-            <h2>{topology.project.name}</h2>
-            <span className={`topology-detail-badge ${healthClassName(topology.project.status as any)}`}>
-              {healthLabel(topology.project.status as any)}
-            </span>
-          </div>
-        </div>
-
         <div className="topology-app-availability">
           <strong>{availability == null ? "—" : `${availability.toFixed(2)}%`}</strong>
           <span>Availability</span>
@@ -134,6 +134,6 @@ export function TopologyApplicationPanel({ topology, projectId, project }: Props
       </section>
 
       <p className="field-hint topology-app-hint">Select any node on the map to inspect dependencies and quick actions.</p>
-    </aside>
+    </PageSection>
   );
 }

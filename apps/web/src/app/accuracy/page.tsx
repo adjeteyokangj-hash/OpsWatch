@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
+import { PageSection } from "../../components/ui/page-section";
 import { apiFetch } from "../../lib/api";
 
 type ActionAccuracy = {
@@ -191,9 +192,11 @@ export default function AccuracyPage() {
 
       {/* ── Auto-run metrics (Phase 9) ─────────────────────────────── */}
       {normalizedAutoRunMetrics && (
-        <section className="panel">
-          <h2>Auto-Run Activity</h2>
-          <p className="metric-label">Executions triggered by the controlled automatic path</p>
+        <PageSection
+          title="Auto-Run Activity"
+          description="Executions triggered by the controlled automatic path"
+          persistKey="org:accuracy:auto-run"
+        >
           <div className="grid-6" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginTop: "12px" }}>
             <div className="stat-card">
               <p className="label">Total Auto-Runs</p>
@@ -259,15 +262,16 @@ export default function AccuracyPage() {
               </ul>
             </div>
           )}
-        </section>
+        </PageSection>
       )}
 
       {/* ── Highlights ─────────────────────────────────────────────── */}
       <div className="two-col">
-        {/* Top auto-run candidates */}
-        <section className="panel">
-          <h2>Top Auto-Run Candidates</h2>
-          <p className="metric-label">High success rate, not suppressed, ≥3 runs</p>
+        <PageSection
+          title="Top Auto-Run Candidates"
+          description="High success rate, not suppressed, ≥3 runs"
+          persistKey="org:accuracy:top-candidates"
+        >
           {topAutoRun.length === 0 ? (
             <p className="metric-label">No qualifying actions yet.</p>
           ) : (
@@ -287,12 +291,13 @@ export default function AccuracyPage() {
               ))}
             </ul>
           )}
-        </section>
+        </PageSection>
 
-        {/* Worst performing */}
-        <section className="panel">
-          <h2>Worst Performing</h2>
-          <p className="metric-label">Lowest success rate with ≥3 runs</p>
+        <PageSection
+          title="Worst Performing"
+          description="Lowest success rate with ≥3 runs"
+          persistKey="org:accuracy:worst-performing"
+        >
           {worstPerforming.length === 0 ? (
             <p className="metric-label">No qualifying actions yet.</p>
           ) : (
@@ -312,14 +317,16 @@ export default function AccuracyPage() {
               ))}
             </ul>
           )}
-        </section>
+        </PageSection>
       </div>
 
       {/* ── Suppressed actions ─────────────────────────────────────── */}
       {mostSuppressed.length > 0 && (
-        <section className="panel">
-          <h2>Suppressed Actions</h2>
-          <p className="metric-label">Auto-run currently restricted due to recent failure rate</p>
+        <PageSection
+          title="Suppressed Actions"
+          description="Auto-run currently restricted due to recent failure rate"
+          persistKey="org:accuracy:suppressed"
+        >
           <div className="accuracy-suppressed-list">
             {mostSuppressed.map((a) => (
               <div key={a.action} className="suppression-callout suppression-warn" style={{ marginBottom: "8px" }}>
@@ -337,14 +344,17 @@ export default function AccuracyPage() {
               </div>
             ))}
           </div>
-        </section>
+        </PageSection>
       )}
 
       {/* ── Per-action table ───────────────────────────────────────── */}
-      <section className="panel">
-        <div className="section-head">
-          <h2>All Actions</h2>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+      <PageSection
+        title="All Actions"
+        description="Per-action success, overconfidence, and suppression status."
+        persistKey="org:accuracy:all-actions"
+        defaultCollapsed
+        actions={
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
             <span className="metric-label">Sort by:</span>
             {(["total", "successRate", "overconfidenceRate", "impactTier", "suppressed"] as SortKey[]).map((k) => (
               <button
@@ -361,7 +371,8 @@ export default function AccuracyPage() {
               </button>
             ))}
           </div>
-        </div>
+        }
+      >
         <table className="data-table" style={{ marginTop: "12px" }}>
           <thead>
             <tr>
@@ -408,7 +419,7 @@ export default function AccuracyPage() {
             ))}
           </tbody>
         </table>
-      </section>
+      </PageSection>
     </Shell>
   );
 }

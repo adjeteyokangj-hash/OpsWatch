@@ -22,6 +22,8 @@ type Props = {
   collapsible?: boolean;
   /** Optional accessible name override for the region. */
   "aria-label"?: string;
+  /** Optional test id forwarded to the root panel element. */
+  "data-testid"?: string;
 };
 
 export const pageSectionStorageKey = (persistKey: string) => `opswatch:page-section:${persistKey}`;
@@ -56,7 +58,8 @@ export function PageSection({
   defaultCollapsed = false,
   persistKey,
   collapsible = true,
-  "aria-label": ariaLabel
+  "aria-label": ariaLabel,
+  "data-testid": dataTestId
 }: Props) {
   const reactId = useId();
   const titleId = `${reactId}-title`;
@@ -91,7 +94,12 @@ export function PageSection({
 
   if (!collapsible) {
     return (
-      <section className={classes} aria-label={ariaLabel} aria-labelledby={ariaLabel ? undefined : titleId}>
+      <section
+        className={classes}
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabel ? undefined : titleId}
+        data-testid={dataTestId}
+      >
         <div className="section-head">{head}</div>
         {children}
       </section>
@@ -99,7 +107,7 @@ export function PageSection({
   }
 
   return (
-    <details className={classes} open={open} aria-label={ariaLabel}>
+    <details className={classes} open={open} aria-label={ariaLabel} data-testid={dataTestId}>
       <summary
         className="section-head page-section-summary"
         aria-labelledby={titleId}

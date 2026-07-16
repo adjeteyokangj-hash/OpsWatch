@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
 import { AlertsTable } from "../../../../components/alerts/alerts-table";
 import { EmptyState } from "../../../../components/ui/empty-state";
+import { PageSection } from "../../../../components/ui/page-section";
 import { WorkspaceSummaryStrip } from "../../../../components/projects/workspace-summary-strip";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../lib/api";
@@ -58,47 +59,56 @@ export default function ProjectAlertsPage() {
         ]}
       />
 
-      {listLoading ? (
-        <section className="panel workspace-loading">
-          <div className="loading-pulse" />
-          <p>Loading alerts…</p>
-        </section>
-      ) : null}
-      {!listLoading && alerts.length === 0 ? (
-        <EmptyState title="No alerts for this application" description="Alerts appear from checks, heartbeats, and ingest events." />
-      ) : null}
-      {!listLoading && alerts.length > 0 && groupMode ? (
-        <div className="activity-feed">
-          {groups.map((group) => (
-            <article className="activity-feed-item" key={group.key}>
-              <div className="activity-feed-head">
-                <span className="meta-chip">{group.severity}</span>
-                <span className="meta-chip">{group.count}×</span>
-                {group.linkedIncident ? (
-                  <Link href={`/incidents/${group.linkedIncident.id}`} className="meta-chip">
-                    Incident
-                  </Link>
-                ) : null}
-              </div>
-              <div className="activity-feed-title">
-                <Link href={`/alerts/${group.latestId}`}>{group.title}</Link>
-              </div>
-              <p className="activity-feed-meta">
-                {group.sourceType}
-                {group.serviceName ? ` · ${group.serviceName}` : ""} · first{" "}
-                {new Date(group.firstSeenAt).toLocaleString()} · last {new Date(group.lastSeenAt).toLocaleString()}
-              </p>
-            </article>
-          ))}
-        </div>
-      ) : null}
-      {!listLoading && alerts.length > 0 && !groupMode ? <AlertsTable rows={alerts} /> : null}
-
-      <p>
-        <Link className="text-link" href={`/alerts?projectId=${projectId}`}>
-          Open global alerts filter →
-        </Link>
-      </p>
+      <PageSection
+        title={groupMode ? "Alert groups" : "Alert list"}
+        description={
+          groupMode
+            ? "Grouped by exact title + source + service signature."
+            : "Flat alert rows for this application."
+        }
+        persistKey={`project:${projectId}:alerts:list`}
+        actions={
+          <Link className="text-link" href={`/alerts?projectId=${projectId}`}>
+            Global filter →
+          </Link>
+        }
+      >
+        {listLoading ? (
+          <div className="workspace-loading">
+            <div className="loading-pulse" />
+            <p>Loading alerts…</p>
+          </div>
+        ) : null}
+        {!listLoading && alerts.length === 0 ? (
+          <EmptyState title="No alerts for this application" description="Alerts appear from checks, heartbeats, and ingest events." />
+        ) : null}
+        {!listLoading && alerts.length > 0 && groupMode ? (
+          <div className="activity-feed">
+            {groups.map((group) => (
+              <article className="activity-feed-item" key={group.key}>
+                <div className="activity-feed-head">
+                  <span className="meta-chip">{group.severity}</span>
+                  <span className="meta-chip">{group.count}×</span>
+                  {group.linkedIncident ? (
+                    <Link href={`/incidents/${group.linkedIncident.id}`} className="meta-chip">
+                      Incident
+                    </Link>
+                  ) : null}
+                </div>
+                <div className="activity-feed-title">
+                  <Link href={`/alerts/${group.latestId}`}>{group.title}</Link>
+                </div>
+                <p className="activity-feed-meta">
+                  {group.sourceType}
+                  {group.serviceName ? ` · ${group.serviceName}` : ""} · first{" "}
+                  {new Date(group.firstSeenAt).toLocaleString()} · last {new Date(group.lastSeenAt).toLocaleString()}
+                </p>
+              </article>
+            ))}
+          </div>
+        ) : null}
+        {!listLoading && alerts.length > 0 && !groupMode ? <AlertsTable rows={alerts} /> : null}
+      </PageSection>
     </ProjectWorkspaceShell>
   );
 }

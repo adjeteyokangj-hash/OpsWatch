@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "../../lib/api";
+import { PageSection } from "../ui/page-section";
 import type { ProjectTopologyResponse, TopologyNode } from "./topology-types";
 import {
   buildFactualInsight,
@@ -233,15 +234,15 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
     : [];
 
   return (
-    <aside className="topology-live-ops panel" aria-label="Operations timeline" data-testid="topology-live-ops-feed">
-      <header className="topology-live-ops-head">
-        <div>
-          <p className="topology-live-ops-eyebrow">Facts from monitoring</p>
-          <h2>Operations Timeline</h2>
-        </div>
-        <span className="topology-live-ops-pulse" aria-hidden="true" />
-      </header>
-
+    <PageSection
+      title="Operations Timeline"
+      description="Facts from monitoring"
+      className="topology-live-ops"
+      persistKey={`project:${projectId}:topology:live-ops`}
+      aria-label="Operations timeline"
+      data-testid="topology-live-ops-feed"
+      actions={<span className="topology-live-ops-pulse" aria-hidden="true" />}
+    >
       {opsInsights.length > 0 ? (
         <section className="topology-ops-insights" aria-label="Ops insights" data-testid="topology-ops-insights">
           <p className="topology-ops-insights-label">Ops Insights</p>
@@ -309,7 +310,7 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
           ))}
         </ul>
       )}
-    </aside>
+    </PageSection>
   );
 }
 
