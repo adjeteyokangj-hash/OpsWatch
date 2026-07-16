@@ -330,7 +330,7 @@ pnpm db:migrate
 
 | Layer | Status | Notes |
 |-------|--------|-------|
-| Browser / product readiness | **Ready for push approval** | E2E **10/10** on tip `89aa299` after rebuild; accordion + Modules + session-expired + plan-panel fix included. Docs tip `f0ce9c3`. |
+| Browser / product readiness | **Ready for push approval** | E2E **10/10** on product tip `89aa299` after rebuild; accordion + Modules + session-expired + plan-panel fix included. |
 | **Monitoring readiness** | Ready for deploy with gates off | Heartbeats, checks, topology, alerts/incidents in browser E2E path. |
 | **Autonomous remediation readiness** | **Not proven for prod enablement** | Code + migrations present; keep `OPSWATCH_AUTO_REPAIR_ENABLED` / worker autonomous flags **false** until separate approval. |
 | **True live-heal readiness** | **Not ready** | Browser E2E ≠ proven remediator restart/repair of external apps. Live remediation remains a **separate gap** outside authenticated browser smoke. |
