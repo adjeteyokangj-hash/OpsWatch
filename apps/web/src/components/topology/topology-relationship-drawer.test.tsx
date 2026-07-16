@@ -156,7 +156,9 @@ describe("TopologyRelationshipDrawer", () => {
     expect(screen.getByTestId("topology-setup-remediator-link").getAttribute("href") ?? "").toContain(
       "/integrations/worker_provider"
     );
-    expect(screen.getByTestId("topology-setup-required-status")).toHaveTextContent("Setup required");
+    expect(screen.getByTestId("topology-setup-required-status")).toHaveTextContent(
+      /Setup required — connect and validate a remediator/i
+    );
   });
 });
 

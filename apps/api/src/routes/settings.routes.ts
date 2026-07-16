@@ -8,6 +8,14 @@ import {
   buildSavedIntegrationDetails,
   validateIntegrationConnectivity
 } from "../services/integration-validation.service";
+import {
+  isRemediatorProviderType
+} from "../services/remediation/remediator-actions";
+import {
+  mergeRemediatorConfigForStorage,
+  redactRemediatorConfigForApi,
+  REMEDIATOR_CAPABILITIES_KEY
+} from "../services/remediation/remediator-config";
 
 export const settingsRouter = Router();
 
@@ -15,6 +23,19 @@ const projectSelect = {
   id: true,
   name: true,
   slug: true
+};
+
+const serializeIntegrationRow = <T extends { configJson: unknown; secretRef?: string | null }>(
+  row: T
+): T & { secretConfigured: boolean } => {
+  const { configJson, secretConfigured } = redactRemediatorConfigForApi(
+    (row.configJson as Record<string, unknown> | null) ?? null
+  );
+  return {
+    ...row,
+    configJson: configJson as T["configJson"],
+    secretConfigured: secretConfigured || Boolean(row.secretRef)
+  };
 };
 
 const getOrgId = (req: AuthRequest, res: Response): string | undefined => {
@@ -261,7 +282,7 @@ settingsRouter.get("/settings/integrations", async (req: AuthRequest, res) => {
     orderBy: [{ projectId: "asc" }, { type: "asc" }]
   });
 
-  res.json(rows);
+  res.json(rows.map((row) => serializeIntegrationRow(row)));
 });
 
 settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRequest, res) => {
@@ -287,9 +308,28 @@ settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRe
     return;
   }
 
+  const existing = await prisma.projectIntegration.findUnique({
+    where: {
+      projectId_type: {
+        projectId: parsed.projectId,
+        type: parsed.type
+      }
+    },
+    select: { configJson: true, secretRef: true }
+  });
+
+  let configToStore = parsed.configJson as Record<string, unknown> | undefined;
+  if (parsed.configJson !== undefined && isRemediatorProviderType(parsed.type)) {
+    configToStore = mergeRemediatorConfigForStorage(
+      parsed.type,
+      parsed.configJson,
+      (existing?.configJson as Record<string, unknown> | null) ?? null
+    );
+  }
+
   const savedDetails =
-    parsed.configJson !== undefined
-      ? buildSavedIntegrationDetails(parsed.type, parsed.configJson)
+    configToStore !== undefined
+      ? buildSavedIntegrationDetails(parsed.type, configToStore)
       : undefined;
 
   const row = await prisma.projectIntegration.upsert({
@@ -302,10 +342,10 @@ settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRe
     update: {
       ...(parsed.name !== undefined ? { name: parsed.name } : {}),
       ...(parsed.enabled !== undefined ? { enabled: parsed.enabled } : {}),
-      ...(parsed.configJson !== undefined
-        ? { configJson: parsed.configJson as Prisma.InputJsonValue }
+      ...(configToStore !== undefined
+        ? { configJson: configToStore as Prisma.InputJsonValue }
         : {}),
-      ...(parsed.secretRef !== undefined ? { secretRef: parsed.secretRef } : {}),
+      ...(parsed.secretRef !== undefined ? { secretRef: parsed.secretRef || null } : {}),
       ...(parsed.validationStatus !== undefined ? { validationStatus: parsed.validationStatus } : {}),
       ...(parsed.validationMessage !== undefined ? { validationMessage: parsed.validationMessage } : {}),
       ...(savedDetails
@@ -326,7 +366,7 @@ settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRe
       type: parsed.type,
       name: parsed.name,
       enabled: parsed.enabled ?? true,
-      configJson: parsed.configJson as Prisma.InputJsonValue | undefined,
+      configJson: (configToStore ?? parsed.configJson) as Prisma.InputJsonValue | undefined,
       secretRef: parsed.secretRef,
       validationStatus: parsed.validationStatus ?? "UNKNOWN",
       validationMessage: parsed.validationMessage,
@@ -339,7 +379,7 @@ settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRe
     }
   });
 
-  res.json(row);
+  res.json(serializeIntegrationRow(row));
 });
 
 settingsRouter.post("/settings/integrations/:projectId/:type/validate", async (req: AuthRequest, res) => {
@@ -369,7 +409,9 @@ settingsRouter.post("/settings/integrations/:projectId/:type/validate", async (r
       id: true,
       type: true,
       enabled: true,
-      configJson: true
+      configJson: true,
+      secretRef: true,
+      projectId: true
     }
   });
 
@@ -381,8 +423,23 @@ settingsRouter.post("/settings/integrations/:projectId/:type/validate", async (r
   const result = await validateIntegrationConnectivity({
     type: row.type,
     enabled: row.enabled,
-    configJson: (row.configJson as Record<string, unknown> | null) ?? null
+    configJson: (row.configJson as Record<string, unknown> | null) ?? null,
+    projectId: row.projectId,
+    secretRef: row.secretRef
   });
+
+  let nextConfig = (row.configJson as Record<string, unknown> | null) ?? null;
+  if (
+    isRemediatorProviderType(row.type) &&
+    result.status === "VALID" &&
+    result.details.account?.name?.startsWith("capabilities:")
+  ) {
+    const caps = result.details.account.name.slice("capabilities:".length).split(",").filter(Boolean);
+    nextConfig = {
+      ...(nextConfig ?? {}),
+      [REMEDIATOR_CAPABILITIES_KEY]: caps
+    };
+  }
 
   const updated = await prisma.projectIntegration.update({
     where: { id: row.id },
@@ -390,9 +447,10 @@ settingsRouter.post("/settings/integrations/:projectId/:type/validate", async (r
       validationStatus: result.status,
       validationMessage: result.message,
       validationDetails: result.details as Prisma.InputJsonValue,
+      ...(nextConfig ? { configJson: nextConfig as Prisma.InputJsonValue } : {}),
       lastValidatedAt: new Date()
     }
   });
 
-  res.json(updated);
+  res.json(serializeIntegrationRow(updated));
 });

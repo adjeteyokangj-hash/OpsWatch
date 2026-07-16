@@ -42,6 +42,7 @@ export type ProjectIntegration = {
   enabled: boolean;
   configJson: Record<string, unknown> | null;
   secretRef: string | null;
+  secretConfigured?: boolean;
   validationStatus: IntegrationValidationStatus;
   validationMessage: string | null;
   validationDetails?: IntegrationValidationDetails | null;
@@ -83,15 +84,25 @@ export const PROVIDER_PRESETS: Record<IntegrationType, Record<string, unknown>> 
   },
   WORKER_PROVIDER: {
     WORKER_RESTART_WEBHOOK_URL: "",
-    WORKER_PROVIDER_TIMEOUT_MS: 5000
+    REMEDIATOR_WEBHOOK_SECRET: "",
+    REMEDIATOR_CAPABILITIES:
+      "restart_sync_worker,restart_outbox_processor,retry_failed_jobs,retry_outbox_item",
+    REMEDIATOR_EMERGENCY_DISABLED: false,
+    WORKER_PROVIDER_TIMEOUT_MS: 10000
   },
   SERVICE_PROVIDER: {
     SERVICE_RESTART_WEBHOOK_URL: "",
-    SERVICE_PROVIDER_TIMEOUT_MS: 5000
+    REMEDIATOR_WEBHOOK_SECRET: "",
+    REMEDIATOR_CAPABILITIES: "restart_service",
+    REMEDIATOR_EMERGENCY_DISABLED: false,
+    SERVICE_PROVIDER_TIMEOUT_MS: 10000
   },
   DEPLOYMENT_PROVIDER: {
     DEPLOYMENT_ROLLBACK_WEBHOOK_URL: "",
-    DEPLOYMENT_PROVIDER_TIMEOUT_MS: 5000
+    REMEDIATOR_WEBHOOK_SECRET: "",
+    REMEDIATOR_CAPABILITIES: "rollback_deployment",
+    REMEDIATOR_EMERGENCY_DISABLED: false,
+    DEPLOYMENT_PROVIDER_TIMEOUT_MS: 10000
   },
   STATUS_PROVIDER: {
     PROVIDER_STATUS_URL: "",
@@ -155,39 +166,105 @@ export const PROVIDER_FIELD_GROUPS: Record<IntegrationType, ProviderFieldGroup> 
     ]
   },
   WORKER_PROVIDER: {
-    credentials: [],
+    credentials: [
+      {
+        key: "REMEDIATOR_WEBHOOK_SECRET",
+        label: "Remediator signing secret",
+        kind: "secret",
+        required: true,
+        placeholder: "Shared HMAC secret for signed repair requests"
+      }
+    ],
     configuration: [
       {
         key: "WORKER_RESTART_WEBHOOK_URL",
-        label: "Restart webhook URL",
+        label: "Remediator webhook URL",
         kind: "url",
-        required: true
+        required: true,
+        placeholder: "https://truenumeris.example/opswatch/remediator"
       },
-      { key: "WORKER_PROVIDER_TIMEOUT_MS", label: "Timeout (ms)", kind: "number", defaultValue: 5000 }
+      {
+        key: "REMEDIATOR_CAPABILITIES",
+        label: "Advertised capabilities (comma-separated)",
+        kind: "text",
+        recommended: true,
+        defaultValue:
+          "restart_sync_worker,restart_outbox_processor,retry_failed_jobs,retry_outbox_item"
+      },
+      {
+        key: "REMEDIATOR_EMERGENCY_DISABLED",
+        label: "Emergency disable (true/false)",
+        kind: "text",
+        defaultValue: "false"
+      },
+      { key: "WORKER_PROVIDER_TIMEOUT_MS", label: "Timeout (ms)", kind: "number", defaultValue: 10000 }
     ]
   },
   SERVICE_PROVIDER: {
-    credentials: [],
+    credentials: [
+      {
+        key: "REMEDIATOR_WEBHOOK_SECRET",
+        label: "Remediator signing secret",
+        kind: "secret",
+        required: true
+      }
+    ],
     configuration: [
       {
         key: "SERVICE_RESTART_WEBHOOK_URL",
-        label: "Restart webhook URL",
+        label: "Remediator webhook URL",
         kind: "url",
         required: true
       },
-      { key: "SERVICE_PROVIDER_TIMEOUT_MS", label: "Timeout (ms)", kind: "number", defaultValue: 5000 }
+      {
+        key: "REMEDIATOR_CAPABILITIES",
+        label: "Advertised capabilities",
+        kind: "text",
+        defaultValue: "restart_service"
+      },
+      {
+        key: "REMEDIATOR_EMERGENCY_DISABLED",
+        label: "Emergency disable (true/false)",
+        kind: "text",
+        defaultValue: "false"
+      },
+      { key: "SERVICE_PROVIDER_TIMEOUT_MS", label: "Timeout (ms)", kind: "number", defaultValue: 10000 }
     ]
   },
   DEPLOYMENT_PROVIDER: {
-    credentials: [],
+    credentials: [
+      {
+        key: "REMEDIATOR_WEBHOOK_SECRET",
+        label: "Remediator signing secret",
+        kind: "secret",
+        required: true
+      }
+    ],
     configuration: [
       {
         key: "DEPLOYMENT_ROLLBACK_WEBHOOK_URL",
-        label: "Rollback webhook URL",
+        label: "Remediator webhook URL",
         kind: "url",
         required: true
       },
-      { key: "DEPLOYMENT_PROVIDER_TIMEOUT_MS", label: "Timeout (ms)", kind: "number", defaultValue: 5000 }
+      {
+        key: "REMEDIATOR_CAPABILITIES",
+        label: "Advertised capabilities",
+        kind: "text",
+        defaultValue: "rollback_deployment"
+      },
+      {
+        key: "REMEDIATOR_EMERGENCY_DISABLED",
+        label: "Emergency disable (true/false)",
+        kind: "text",
+        defaultValue: "false"
+      },
+      {
+        key: "DEPLOYMENT_PROVIDER_TIMEOUT_MS",
+        label: "Timeout (ms)",
+        kind: "number",
+        defaultValue: 10000
+      }
     ]
   },
   STATUS_PROVIDER: {
@@ -222,9 +299,9 @@ export const PROVIDER_DISPLAY_NAMES: Record<IntegrationType, string> = {
   WEBHOOK: "Webhooks",
   EMAIL: "Email",
   STRIPE: "Stripe",
-  WORKER_PROVIDER: "Automation Workers",
-  SERVICE_PROVIDER: "Services",
-  DEPLOYMENT_PROVIDER: "Deployment",
+  WORKER_PROVIDER: "Worker remediator",
+  SERVICE_PROVIDER: "Service remediator",
+  DEPLOYMENT_PROVIDER: "Deployment remediator",
   STATUS_PROVIDER: "Status Pages",
   RUNBOOK_PROVIDER: "Runbooks"
 };
@@ -281,31 +358,44 @@ export const formatRelativeTime = (value?: string | null): string => {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 };
 
-export type ConnectionUiState = "not_configured" | "saved" | "testing" | "connected" | "failed" | "disabled";
+export type ConnectionUiState =
+  | "not_configured"
+  | "saved"
+  | "testing"
+  | "connected"
+  | "failed"
+  | "disabled"
+  | "setup_required"
+  | "validation_pending";
 
 export const resolveConnectionState = (
   integration: ProjectIntegration | null | undefined,
   validating = false
 ): ConnectionUiState => {
   if (validating) return "testing";
-  if (!integration) return "not_configured";
+  if (!integration) return "setup_required";
   if (!integration.enabled) return "disabled";
   if (integration.validationStatus === "VALID") return "connected";
   if (integration.validationStatus === "INVALID") return "failed";
-  if (integration.validationDetails?.connectionState === "saved") return "saved";
-  const hasConfig = integration.configJson && Object.values(integration.configJson).some((value) => String(value ?? "").trim());
-  return hasConfig ? "saved" : "not_configured";
+  if (integration.validationDetails?.connectionState === "saved") return "validation_pending";
+  const hasConfig =
+    integration.configJson &&
+    Object.values(integration.configJson).some((value) => String(value ?? "").trim());
+  if (hasConfig) return "validation_pending";
+  return "setup_required";
 };
 
 export const connectionStateMeta: Record<
   ConnectionUiState,
   { label: string; tone: "neutral" | "info" | "success" | "warning" | "danger"; icon: string }
 > = {
-  not_configured: { label: "Not configured", tone: "neutral", icon: "⚪" },
-  saved: { label: "Configuration saved", tone: "warning", icon: "🟡" },
+  not_configured: { label: "Setup required", tone: "neutral", icon: "⚪" },
+  setup_required: { label: "Setup required", tone: "neutral", icon: "⚪" },
+  saved: { label: "Validation pending", tone: "warning", icon: "🟡" },
+  validation_pending: { label: "Validation pending", tone: "warning", icon: "🟡" },
   testing: { label: "Testing...", tone: "info", icon: "🔵" },
   connected: { label: "Connected", tone: "success", icon: "🟢" },
-  failed: { label: "Connection failed", tone: "danger", icon: "🔴" },
+  failed: { label: "Validation failed", tone: "danger", icon: "🔴" },
   disabled: { label: "Disabled", tone: "neutral", icon: "⚪" }
 };
 
@@ -374,7 +464,7 @@ export const summarizeProjectIntegrations = (
     const state = resolveConnectionState(row);
     const health = row?.validationDetails?.health;
 
-    if (state === "not_configured" || state === "disabled") {
+    if (state === "not_configured" || state === "disabled" || state === "setup_required") {
       notConfigured += 1;
       continue;
     }

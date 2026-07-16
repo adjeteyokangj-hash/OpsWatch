@@ -286,6 +286,8 @@ model Project {
   monitoringEnabled       Boolean                   @default(true)
   monitoringStartedAt     DateTime?
   automationMode          String                    @default("OBSERVE")
+  /// Emergency kill-switch: blocks all remediator-driven repair execution for this project.
+  remediationEmergencyDisabled Boolean              @default(false)
   projectOwner            String?
   operationalContact      String?
   defaultRegion           String?
@@ -554,6 +556,48 @@ model RemediationLock {
 
   @@index([expiresAt])
   @@index([organizationId, incidentId])
+}
+
+/// Outbound remediator repair attempt — signed request lifecycle + post-action verification.
+model RemediatorRepairAttempt {
+  id                   String                  @id
+  organizationId       String
+  projectId            String
+  incidentId           String?
+  alertId              String?
+  providerType         IntegrationType
+  remediatorAction     String
+  target               String?
+  reason               String?
+  idempotencyKey       String
+  nonce                String
+  requestTimestamp     DateTime
+  status               RemediatorRepairStatus  @default(REQUESTED)
+  httpStatus           Int?
+  requestPayloadJson   Json?
+  responsePayloadJson  Json?
+  verificationJson     Json?
+  failureReason        String?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime
+  completedAt          DateTime?
+
+  @@unique([organizationId, idempotencyKey])
+  @@unique([organizationId, nonce])
+  @@index([projectId, status, createdAt])
+  @@index([organizationId, remediatorAction, createdAt])
+  @@index([incidentId, createdAt])
+}
+
+enum RemediatorRepairStatus {
+  REQUESTED
+  ACCEPTED
+  REJECTED
+  RUNNING
+  COMPLETED
+  FAILED
+  TIMED_OUT
+  VERIFICATION_FAILED
 }
 
 model AutomationPlaybook {

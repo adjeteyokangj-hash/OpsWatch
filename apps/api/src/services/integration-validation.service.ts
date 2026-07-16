@@ -275,6 +275,8 @@ export const validateIntegrationConnectivity = async (row: {
   type: IntegrationType;
   enabled: boolean;
   configJson: Record<string, unknown> | null;
+  projectId?: string;
+  secretRef?: string | null;
 }): Promise<IntegrationValidationResult> => {
   if (!row.enabled) {
     return {
@@ -312,11 +314,49 @@ export const validateIntegrationConnectivity = async (row: {
     return validateStripe(row.configJson);
   }
 
+  const remediatorTypes: IntegrationType[] = [
+    "WORKER_PROVIDER",
+    "SERVICE_PROVIDER",
+    "DEPLOYMENT_PROVIDER"
+  ];
+  if (remediatorTypes.includes(row.type)) {
+    const { runRemediatorValidationHandshake } = await import(
+      "./remediation/remediator-provider.service"
+    );
+
+    const handshake = await runRemediatorValidationHandshake({
+      projectId: row.projectId ?? "unknown",
+      providerType: row.type as "WORKER_PROVIDER" | "SERVICE_PROVIDER" | "DEPLOYMENT_PROVIDER",
+      configJson: row.configJson,
+      secretRef: row.secretRef
+    });
+
+    return {
+      status: handshake.status,
+      message: handshake.message,
+      details: buildDetails({
+        connectionState: handshake.status === "VALID" ? "connected" : "failed",
+        health: handshake.status === "VALID" ? "healthy" : "unhealthy",
+        webhook: {
+          configured: Boolean(
+            readConfigValue(row.configJson, INTEGRATION_REQUIRED_KEYS[row.type]?.[0] ?? "")
+          ),
+          verified: handshake.status === "VALID"
+        },
+        checks: handshake.checks,
+        ...(handshake.capabilities.length
+          ? {
+              account: {
+                name: `capabilities:${handshake.capabilities.join(",")}`
+              }
+            }
+          : {})
+      })
+    };
+  }
+
   const urlKeys = [
     "WEBHOOK_URL",
-    "WORKER_RESTART_WEBHOOK_URL",
-    "SERVICE_RESTART_WEBHOOK_URL",
-    "DEPLOYMENT_ROLLBACK_WEBHOOK_URL",
     "PROVIDER_STATUS_URL",
     "RUNBOOK_BASE_URL",
     "EMAIL_PROVIDER_HEALTHCHECK_URL"

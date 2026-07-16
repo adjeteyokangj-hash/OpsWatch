@@ -43,10 +43,28 @@ describe("remediation action policy", () => {
         {
           type: "SERVICE_PROVIDER",
           enabled: true,
+          validationStatus: "VALID",
           configJson: { SERVICE_RESTART_WEBHOOK_URL: "https://provider.example/restart" }
         }
       ]
     );
     expect(configured.missingEnvVars).toHaveLength(0);
+  });
+
+  it("requires validated remediator integration (not merely present)", () => {
+    const unvalidated = validateContext(
+      "RESTART_WORKER",
+      { organizationId: "o1", projectId: "p1" },
+      [
+        {
+          type: "WORKER_PROVIDER",
+          enabled: true,
+          validationStatus: "UNKNOWN",
+          configJson: { WORKER_RESTART_WEBHOOK_URL: "https://provider.example/restart" }
+        }
+      ]
+    );
+    expect(unvalidated.valid).toBe(false);
+    expect(unvalidated.invalidIntegration).toBe(true);
   });
 });

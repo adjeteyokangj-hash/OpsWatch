@@ -100,14 +100,18 @@ export const REMEDIATION_REGISTRY: Record<RemediationAction, ActionDef> = {
   },
   REQUEUE_FAILED_JOB: {
     label: "Requeue failed jobs",
-    description: "Push failed worker jobs back onto the queue.",
+    description: "Push failed worker jobs back onto the queue via remediator webhook.",
     group: "GROUP_A_SAFE",
     requiresApproval: false,
     policyTier: "SAFE_AUTOMATIC",
     impactTier: "LOW",
     kind: "fix",
-    requiredContextFields: [],
-    requiredEnvVars: ["JOB_REQUEUE_ENDPOINT"]
+    requiredContextFields: ["projectId"],
+    requiredEnvVars: ["JOB_REQUEUE_ENDPOINT"],
+    requiredIntegration: {
+      type: "WORKER_PROVIDER",
+      requiredConfigKeys: ["WORKER_RESTART_WEBHOOK_URL"]
+    }
   },
   RERUN_HTTP_CHECK: {
     label: "Rerun HTTP check",
@@ -318,7 +322,8 @@ export function validateContext(
     );
     if (!integration) {
       missingEnvVars = def.requiredIntegration.requiredConfigKeys;
-    } else if (integration.validationStatus === "INVALID") {
+    } else if (integration.validationStatus !== "VALID") {
+      // Require Connected + validated — UNKNOWN / INVALID both block remediator execution.
       invalidIntegration = true;
       missingEnvVars = def.requiredIntegration.requiredConfigKeys;
     } else {

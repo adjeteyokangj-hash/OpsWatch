@@ -18,16 +18,57 @@ export type ActiveAutomationRunSummary = {
   targetServiceIds: string[];
 };
 
-/** True when a validated remediator integration is connected for the project. */
+const WORKER_ACTIONS = [
+  "restart_sync_worker",
+  "restart_outbox_processor",
+  "retry_failed_jobs",
+  "retry_outbox_item"
+] as const;
+
+/**
+ * True when a remediator integration is connected + validated and supports the needed action.
+ * Monitoring-only integrations never qualify.
+ */
 export const projectHasRemediationCapability = (
   integrations: ProjectIntegration[],
-  projectId: string
+  projectId: string,
+  requiredAction: string = "restart_sync_worker"
 ): boolean =>
   integrations.some((row) => {
     if (row.projectId !== projectId) return false;
+    if (!row.enabled) return false;
     const type = String(row.type || "").toUpperCase();
     if (!(REMEDIATION_PROVIDER_TYPES as readonly string[]).includes(type)) return false;
-    return resolveConnectionState(row) === "connected";
+    if (resolveConnectionState(row) !== "connected") return false;
+    if (row.validationStatus !== "VALID") return false;
+
+    const config = row.configJson ?? {};
+    const url =
+      (typeof config.WORKER_RESTART_WEBHOOK_URL === "string" && config.WORKER_RESTART_WEBHOOK_URL) ||
+      (typeof config.SERVICE_RESTART_WEBHOOK_URL === "string" && config.SERVICE_RESTART_WEBHOOK_URL) ||
+      (typeof config.DEPLOYMENT_ROLLBACK_WEBHOOK_URL === "string" &&
+        config.DEPLOYMENT_ROLLBACK_WEBHOOK_URL) ||
+      "";
+    if (!String(url).trim()) return false;
+    if (config.REMEDIATOR_EMERGENCY_DISABLED === true || config.REMEDIATOR_EMERGENCY_DISABLED === "true") {
+      return false;
+    }
+
+    const capsRaw = config.REMEDIATOR_CAPABILITIES;
+    let caps: string[] = [];
+    if (Array.isArray(capsRaw)) {
+      caps = capsRaw.map(String);
+    } else if (typeof capsRaw === "string" && capsRaw.trim()) {
+      caps = capsRaw.split(",").map((part) => part.trim()).filter(Boolean);
+    } else if (type === "WORKER_PROVIDER") {
+      caps = [...WORKER_ACTIONS];
+    } else if (type === "SERVICE_PROVIDER") {
+      caps = ["restart_service"];
+    } else if (type === "DEPLOYMENT_PROVIDER") {
+      caps = ["rollback_deployment"];
+    }
+
+    return caps.includes(requiredAction);
   });
 
 export const relatedIncidentsForEdge = (

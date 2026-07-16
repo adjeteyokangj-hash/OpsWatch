@@ -293,7 +293,8 @@ export function TopologyRelationshipDrawer({
             {buttonState === "setup_required" ? (
               <p className="topology-setup-links">
                 <span className="dashboard-subtle" data-testid="topology-setup-required-status">
-                  Setup required
+                  Setup required — connect and validate a remediator provider that can restart or retry this
+                  integration.
                 </span>
                 {" · "}
                 <Link
@@ -367,13 +368,13 @@ export function TopologyRelationshipDrawer({
 
 /** Shared setup/no-action wording — keep aligned with alert automation evaluation. */
 export const RELATIONSHIP_NO_REMEDIATOR_REASON =
-  "OpsWatch detected this problem, but no approved automated repair is currently configured. Connect a provider with a scoped remediation action (worker / service restart webhook), then set organisation policy to Approval or Autonomous.";
+  "Setup required — connect and validate a remediator provider that can restart or retry this integration.";
 
 /** Client-side evaluation until a relationship-scoped remediation connector is registered. */
 export const evaluateRelationshipAutomation = (input: {
   edge: SelectedTopologyEdge;
   projectAutomationMode?: string | null;
-  /** When true, a scoped remediator is registered (tests / future connectors). Default: false. */
+  /** When true, a scoped remediator is registered and validated. Default: false. */
   hasRemediationCapability?: boolean;
   /** Active remediating/verifying run for endpoints of this edge. */
   activeRun?: { id: string; incidentId: string; status: string } | null;

@@ -239,7 +239,8 @@ export default function ProviderIntegrationDetailPage() {
           <strong>Return to topology</strong>
           <p>
             After this remediator validates as connected, return to the relationship drawer to re-evaluate Fix with
-            automation.
+            automation. Until then the drawer stays on Setup required — Fixed / Repairing / Auto-healed are never
+            shown without a real remediator execution and verification.
           </p>
           <Link className="secondary-button" href={returnTo} data-testid="integration-return-link">
             ← Back to topology

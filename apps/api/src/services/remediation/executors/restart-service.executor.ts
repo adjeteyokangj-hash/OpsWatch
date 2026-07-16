@@ -1,26 +1,27 @@
 import type { RemediationExecutor } from "../types";
-import { completed, misconfigured, failed } from "./_common";
+import { completed, misconfigured } from "./_common";
+import { executeRemediatorRepair } from "../remediator-provider.service";
 
-const SERVICE_RESTART_WEBHOOK_URL = process.env.SERVICE_RESTART_WEBHOOK_URL;
-
+/** Service restart via project SERVICE_PROVIDER remediator (schema/UI ready; uses remediator path). */
 export const executeRestartService: RemediationExecutor = async ({ context }) => {
-  if (!SERVICE_RESTART_WEBHOOK_URL) {
-    return misconfigured("Service restart is not configured.", ["SERVICE_RESTART_WEBHOOK_URL"]);
+  if (!context.projectId || !context.serviceId) {
+    return misconfigured("Service restart requires projectId and serviceId.", [
+      "projectId",
+      "serviceId"
+    ]);
   }
 
-  const response = await fetch(SERVICE_RESTART_WEBHOOK_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      projectId: context.projectId,
-      serviceId: context.serviceId,
-      incidentId: context.incidentId
-    })
+  const result = await executeRemediatorRepair({
+    registryAction: "RESTART_SERVICE",
+    context: {
+      ...context,
+      extra: {
+        ...(context.extra ?? {}),
+        remediatorAction: "restart_service"
+      }
+    },
+    providerType: "SERVICE_PROVIDER"
   });
 
-  if (!response.ok) {
-    return failed(`Service restart provider call failed with ${response.status}`);
-  }
-
-  return completed("Service restart requested via provider webhook.");
+  return result.status === "COMPLETED" ? completed(result.summary, result.details) : result;
 };

@@ -33,6 +33,29 @@ describe("projectHasRemediationCapability", () => {
     expect(projectHasRemediationCapability([baseIntegration({})], "proj-1")).toBe(true);
     expect(projectHasRemediationCapability([baseIntegration({})], "other")).toBe(false);
   });
+
+  it("rejects monitoring-only and incompatible capabilities", () => {
+    expect(
+      projectHasRemediationCapability(
+        [baseIntegration({ type: "WEBHOOK" as never })],
+        "proj-1"
+      )
+    ).toBe(false);
+    expect(
+      projectHasRemediationCapability(
+        [
+          baseIntegration({
+            configJson: {
+              WORKER_RESTART_WEBHOOK_URL: "https://example.com/restart",
+              REMEDIATOR_CAPABILITIES: "retry_failed_jobs"
+            }
+          })
+        ],
+        "proj-1",
+        "restart_sync_worker"
+      )
+    ).toBe(false);
+  });
 });
 
 describe("remediatingEdgeIdsFromRuns", () => {
