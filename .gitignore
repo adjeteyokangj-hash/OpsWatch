@@ -46,6 +46,8 @@ tmp/db-backups/
 # Playwright / e2e artefacts
 apps/web/test-results/
 apps/web/playwright-report/
+apps/web/e2e/.auth/
+test-artifacts/
 
 # Cursor local agent scratch (committed rules live under .cursor/rules/)
 .cursor/*

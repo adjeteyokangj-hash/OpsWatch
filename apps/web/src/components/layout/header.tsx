@@ -54,10 +54,10 @@ export function Header({
   };
 
   return (
-    <header className="page-header platform-header">
+    <header className="page-header platform-header" data-testid="page-header">
       <div className="page-header-main">
         <span className="page-eyebrow">Operations workspace</span>
-        <h1>{title}</h1>
+        <h1 data-testid="page-heading">{title}</h1>
         <p>{description ?? pageDescriptions[title] ?? "Monitor, investigate, and improve application reliability."}</p>
       </div>
       <div className="page-header-actions">

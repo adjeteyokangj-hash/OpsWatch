@@ -87,6 +87,21 @@ type IntelligenceTeaser = {
   }>;
 };
 
+type CheckMetrics = {
+  items: CheckRow[];
+  summary: { total: number; pass: number; fail: number; warn: number; pending: number };
+};
+
+type MetricsResults = [
+  PromiseSettledResult<ProjectRow[]>,
+  PromiseSettledResult<AlertRow[]>,
+  PromiseSettledResult<IncidentRow[]>,
+  PromiseSettledResult<CheckMetrics>,
+  PromiseSettledResult<{ projects: InsightsProject[] }>,
+  PromiseSettledResult<LayerHealthRow[]>,
+  PromiseSettledResult<IntelligenceTeaser>
+];
+
 const formatLoadFailure = (label: string, reason: unknown): string => {
   const message = reason instanceof Error ? reason.message : String(reason);
   return `${label} (${message || "failed"})`;
@@ -124,18 +139,15 @@ export default function DashboardPage() {
         // left mobile (and desktop) stuck on “Loading live metrics…” forever.
         const sessionPromise = fetchSessionUser().catch(() => null);
 
-        const metricsPromise = Promise.allSettled([
+        const metricsPromise: Promise<MetricsResults> = Promise.allSettled([
           apiFetch<ProjectRow[]>("/projects", { suppressAuthRedirect: true }),
           apiFetch<AlertRow[]>("/alerts", { suppressAuthRedirect: true }),
           apiFetch<IncidentRow[]>("/incidents", { suppressAuthRedirect: true }),
-          apiFetch<{
-            items: CheckRow[];
-            summary: { total: number; pass: number; fail: number; warn: number; pending: number };
-          }>("/checks", { suppressAuthRedirect: true }),
+          apiFetch<CheckMetrics>("/checks", { suppressAuthRedirect: true }),
           apiFetch<{ projects: InsightsProject[] }>("/insights/product", { suppressAuthRedirect: true }),
           apiFetch<LayerHealthRow[]>("/analytics/layer-health", { suppressAuthRedirect: true }),
           apiFetch<IntelligenceTeaser>("/intelligence?harvest=false", { suppressAuthRedirect: true })
-        ]);
+        ] as const);
 
         const budget = new Promise<"budget">((resolve) => {
           window.setTimeout(() => resolve("budget"), LOAD_BUDGET_MS);
@@ -184,20 +196,7 @@ export default function DashboardPage() {
       }
     };
 
-    const applyMetricsResults = (
-      results: Awaited<ReturnType<typeof Promise.allSettled<[
-        Promise<ProjectRow[]>,
-        Promise<AlertRow[]>,
-        Promise<IncidentRow[]>,
-        Promise<{
-          items: CheckRow[];
-          summary: { total: number; pass: number; fail: number; warn: number; pending: number };
-        }>,
-        Promise<{ projects: InsightsProject[] }>,
-        Promise<LayerHealthRow[]>,
-        Promise<IntelligenceTeaser>
-      ]>>>
-    ) => {
+    const applyMetricsResults = (results: MetricsResults) => {
       const [
         projectsResult,
         alertsResult,
