@@ -1,21 +1,40 @@
-# Local live-heal blocker (2026-07-16)
+# Local live-heal (2026-07-16)
 
-**Status: BLOCKED** — Fix→recover was **not** proven locally for Noble/TrueNumeris.
+**Status: PROVEN** (local mock remediator) — Fix→recover handshake + repair `COMPLETED` against `http://127.0.0.1:8791/`.
 
-## Why
+## Evidence (2026-07-16 ~18:10 UTC+1)
 
-- Stack down: only Postgres `:5432` listening; API (`:4000`), web (`:3000`), Redis (`:6379`), mock remediator (`:8791`) not running.
-- Remediator wiring missing in local env: no `REMEDIATOR*`, `NOBLE*`, `TRUE*`, or `OPSWATCH_SECRETS_ENCRYPTION_KEY` in `apps/api/.env` / `apps/worker/.env` / `.env.local`.
-- No local evidence of a remediator repair `COMPLETED` / accepted for an external app.
+Wrote `test-artifacts/live-heal-local-evidence.json`:
 
-## Not a substitute
+| Field | Value |
+|-------|--------|
+| `proven` | `true` |
+| Remediator | `local-mock-remediator` `:8791` |
+| Handshake | `VALID` — capabilities include `restart_sync_worker`, etc. |
+| Repair | `COMPLETED` — `restart_sync_worker` (attempt `4bb1c8c7-…`, DB `COMPLETED`) |
+| Project | `smoke-isolation-app-b` (`4a0e2442-…`) |
 
-Unit suite `remediator-provider.service.test.ts` (20/20) proves signing/gates with mocks only — **not** live Fix→recover.
+## Stack at proof time
 
-## Unblock checklist (local)
+| Component | Status | Notes |
+|-----------|--------|--------|
+| Postgres `:5432` | OK | Prisma usable (`db=true` in wait poll; fixtures OK) |
+| Redis `:6379` | OK | Docker `opswatch-redis` (`redis:7-alpine`) started this session |
+| API `:4000` | OK | `/api/health` → `ok` |
+| Web `:3000` | DOWN | `next start` failed: no production `.next` build (`-SkipBuild`). **Not required** for `prove-live-heal-local.ts` |
+| Mock remediator `:8791` | OK | `GET /health` → `{"ok":true,"role":"local-mock-remediator"}` |
 
-1. Start API + worker + Redis; optionally `node scripts/mock-remediator-server.mjs`.
-2. Set `OPSWATCH_SECRETS_ENCRYPTION_KEY`; configure project remediator webhook URL + secret (Noble/TN or mock).
-3. Validate provider handshake, then run Fix→recover on a real incident and record attempt status.
+Full `start-local-smoke-stack.ps1 -SkipBuild` still fails on web until `pnpm --filter @opswatch/web build` (or use `next dev`).
 
-Do not mark live-heal ready until that path succeeds against a reachable remediator.
+## Not yet proven
+
+- TrueNumeris / Noble remediator (TN env still lacks `OPSWATCH_REMEDIATOR_*`).
+- UI Fix→recover click path (web not up).
+
+## How to re-run
+
+1. Redis: `docker start opswatch-redis` (or `docker run -d --name opswatch-redis -p 6379:6379 redis:7-alpine`)
+2. API: `scripts/start-local-smoke-stack.ps1` (build web if you need `:3000`) or run API alone
+3. Mock remediator on `:8791`
+4. `pnpm exec tsx scripts/ensure-smoke-fixtures.ts`
+5. `pnpm exec tsx scripts/prove-live-heal-local.ts`
