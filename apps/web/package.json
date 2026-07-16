@@ -13,6 +13,7 @@
     "test:watch": "vitest --config vitest.config.ts",
     "test:incident": "vitest run src/app/incidents/[incidentId]/page.test.tsx --config vitest.config.ts",
     "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test --project=setup --project=smoke-auth --project=smoke-monitoring --project=smoke-operations --project=smoke-intelligence --project=smoke-configuration",
     "test:e2e:automation": "playwright test e2e/automation-flow.spec.ts"
   },
   "dependencies": {

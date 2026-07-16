@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -51,7 +51,7 @@ const safeReturnPath = (value: string | null): string | null => {
   return value;
 };
 
-export default function ConnectionsPage() {
+function ConnectionsPageContent() {
   const searchParams = useSearchParams();
   const returnTo = safeReturnPath(searchParams.get("returnTo"));
   const scopedProjectId = searchParams.get("projectId") || "";
@@ -404,5 +404,13 @@ export default function ConnectionsPage() {
         {ledger.length === 0 ? <p>No recorded changes for this organization.</p> : <div className="table-cards-wrap"><table className="data-table"><thead><tr><th>When</th><th>Kind</th><th>Change</th><th>Source</th></tr></thead><tbody>{ledger.map((entry) => <tr key={entry.id}><td data-label="When">{new Date(entry.occurredAt).toLocaleString()}</td><td data-label="Kind">{entry.kind}</td><td data-label="Change">{entry.summary}<small>{entry.project?.name ?? entry.connection?.name ?? "Organization-wide"}</small></td><td data-label="Source">{entry.source}</td></tr>)}</tbody></table></div>}
       </section>
     </Shell>
+  );
+}
+
+export default function ConnectionsPage() {
+  return (
+    <Suspense fallback={<Shell><Header title="Connections" /><section className="panel">Loading connections...</section></Shell>}>
+      <ConnectionsPageContent />
+    </Suspense>
   );
 }

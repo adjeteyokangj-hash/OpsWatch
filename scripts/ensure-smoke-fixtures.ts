@@ -109,7 +109,28 @@ async function main() {
   );
 }
 
-main()
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function mainWithRetry(attempts = 5) {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      await main();
+      return;
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/Can't reach database|P1001|P2024|Timed out fetching/i.test(message) || i === attempts - 1) {
+        throw error;
+      }
+      console.warn(`ensure-smoke-fixtures retry ${i + 1}/${attempts}: ${message.split("\n")[0]}`);
+      await sleep(1500 * (i + 1));
+    }
+  }
+  throw lastError;
+}
+
+mainWithRetry()
   .catch((error) => {
     console.error("ensure-smoke-fixtures FAIL", error);
     process.exitCode = 1;
