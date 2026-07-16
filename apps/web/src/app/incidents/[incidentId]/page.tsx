@@ -296,9 +296,17 @@ export default function IncidentDetailPage() {
   }, [automationPlan?.runId, refreshAutomationRun]);
 
   useEffect(() => {
-    if (!incident || !diagnosis || automationPlan || planningAutomation) return;
+    // Stop after a failed attempt — otherwise 404/denied planning loops forever on "Planning…".
+    if (!incident || !diagnosis || automationPlan || planningAutomation || automationPlanError) return;
     void generateAutomationPlan();
-  }, [incident, diagnosis, automationPlan, planningAutomation, generateAutomationPlan]);
+  }, [
+    incident,
+    diagnosis,
+    automationPlan,
+    planningAutomation,
+    automationPlanError,
+    generateAutomationPlan
+  ]);
 
   const triggerAutoHeal = async () => {
     if (!incident) return;

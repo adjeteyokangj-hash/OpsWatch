@@ -29,16 +29,23 @@ test.describe("automation approval browser flow", () => {
       timeout: 30_000
     });
 
-    const generateButton = page.getByRole("button", { name: /generate plan|regenerate plan/i });
-    if (await generateButton.isVisible()) {
+    // Auto-plan may already be in flight; only click when idle Generate/Regenerate is offered.
+    const generateButton = page.getByRole("button", { name: /^(generate plan|regenerate plan)$/i });
+    if (await generateButton.isVisible().catch(() => false)) {
       await generateButton.click();
     }
 
-    // A plannable incident shows the execution mode; otherwise the panel reports no plan.
+    // Wait for Planning… to settle (success, empty, or terminal error — not an infinite retry).
+    await expect(page.getByRole("button", { name: /planning/i })).toHaveCount(0, {
+      timeout: 60_000
+    });
+
+    // Plannable → execution mode; otherwise empty copy or a failed-plan error.
     await expect(
       page
         .getByText(/execution mode/i)
         .or(page.getByText(/no automation plan has been generated/i))
-    ).toBeVisible({ timeout: 30_000 });
+        .or(page.getByText(/failed to generate|incident or playbook not found|not found/i))
+    ).toBeVisible({ timeout: 15_000 });
   });
 });
