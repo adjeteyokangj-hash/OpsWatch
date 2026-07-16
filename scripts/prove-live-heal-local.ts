@@ -1,6 +1,6 @@
 /**
  * Smallest local Fix→recover proof against a reachable remediator (mock or TN).
- * Writes evidence JSON to test-artifacts/live-heal-local-evidence.json (no secrets).
+ * Writes evidence JSON to test-artifacts (no secrets).
  *
  *   pnpm exec tsx scripts/prove-live-heal-local.ts
  */
@@ -24,12 +24,32 @@ for (const key of [
 
 const WEBHOOK_URL =
   process.env.LIVE_HEAL_REMEDIATOR_URL || "http://127.0.0.1:8791/";
+const TN_SERVER =
+  process.env.TN_SERVER ||
+  "C:/Users/edwar/OneDrive/My Project/TrueNumeris/server";
+const isTnRemediator = WEBHOOK_URL.includes("/api/internal/opswatch/remediator");
+const tnEnv =
+  isTnRemediator && !process.env.LIVE_HEAL_REMEDIATOR_SECRET
+    ? parseEnvFile(path.join(TN_SERVER, ".env"))
+    : {};
 const WEBHOOK_SECRET =
-  process.env.LIVE_HEAL_REMEDIATOR_SECRET || "local-remediator-secret";
+  process.env.LIVE_HEAL_REMEDIATOR_SECRET ||
+  tnEnv.OPSWATCH_REMEDIATOR_WEBHOOK_SECRET ||
+  "local-remediator-secret";
 const PROJECT_SLUG =
   process.env.LIVE_HEAL_PROJECT_SLUG ||
   process.env.PLAYWRIGHT_ISOLATION_PROJECT_SLUG ||
   "smoke-isolation-app-b";
+const INTEGRATION_NAME =
+  process.env.LIVE_HEAL_INTEGRATION_NAME ||
+  (isTnRemediator
+    ? "TrueNumeris Worker Remediator"
+    : "Local live-heal remediator");
+const EVIDENCE_BASENAME =
+  process.env.LIVE_HEAL_EVIDENCE_FILE ||
+  (isTnRemediator
+    ? "live-heal-tn-evidence.json"
+    : "live-heal-local-evidence.json");
 
 type Evidence = {
   at: string;
@@ -67,7 +87,11 @@ async function main() {
   }
 
   try {
-    const healthUrl = new URL("/health", WEBHOOK_URL).toString();
+    // Append /health to the webhook path (not origin-root /health) so nested
+    // TN paths like /api/internal/opswatch/remediator keep working. Mock :8791/
+    // still resolves to http://127.0.0.1:8791/health.
+    const base = WEBHOOK_URL.replace(/\/$/, "");
+    const healthUrl = `${base}/health`;
     const healthRes = await fetch(healthUrl);
     const healthBody = (await healthRes.json().catch(() => ({}))) as {
       ok?: boolean;
@@ -137,7 +161,7 @@ async function main() {
           where: { id: existing.id },
           data: {
             enabled: true,
-            name: "Local live-heal remediator",
+            name: INTEGRATION_NAME,
             configJson,
             validationStatus: "UNKNOWN",
             validationMessage: "Pending handshake",
@@ -149,7 +173,7 @@ async function main() {
             id: randomUUID(),
             projectId: project.id,
             type: "WORKER_PROVIDER",
-            name: "Local live-heal remediator",
+            name: INTEGRATION_NAME,
             enabled: true,
             configJson,
             validationStatus: "UNKNOWN",
@@ -274,10 +298,14 @@ async function main() {
 function writeEvidence(evidence: Evidence) {
   const outDir = path.join(rootDir, "test-artifacts");
   fs.mkdirSync(outDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(outDir, "live-heal-local-evidence.json"),
-    JSON.stringify(evidence, null, 2)
-  );
+  const payload = JSON.stringify(evidence, null, 2);
+  fs.writeFileSync(path.join(outDir, EVIDENCE_BASENAME), payload);
+  if (EVIDENCE_BASENAME !== "live-heal-local-evidence.json") {
+    fs.writeFileSync(
+      path.join(outDir, "live-heal-local-evidence.json"),
+      payload
+    );
+  }
 }
 
 main();
