@@ -10,8 +10,8 @@
 
 | Item | Result |
 |------|--------|
-| Tip SHA | `89aa299` (`fix(web): stop automation plan auto-retry loop on 404`) |
-| Range | `origin/main..HEAD` — **52** commits; Modules fix `ca92098` **included** |
+| Tip SHA | `f0ce9c3` (`docs(release): mark 2026-07-16 prep READY FOR PUSH APPROVAL`) — product tip `89aa299` |
+| Range | `origin/main..HEAD` — **53** commits; Modules fix `ca92098` **included** |
 | Product dirty files | **Committed** (session-expired UX, Prisma local pool, header testids, gitignore, test isolation, plan retry fix) |
 | Left uncommitted (intentional) | `.e2e-post-ui-validation/`, `.phase*-validation/`, `.phase5-validate.ps1`, `.release-prep/`, `apps/web/scripts/` — **out of release** |
 | Secrets | Not staged; `.env` never committed |
@@ -24,7 +24,7 @@
 
 ## 1. Working tree
 
-**Status after blocker clear:** No tracked modifications. Branch `main` ahead of `origin/main` by **52** commits. Untracked validation/tooling dirs only (excluded below).
+**Status after blocker clear:** No tracked modifications. Branch `main` ahead of `origin/main` by **53** commits. Untracked validation/tooling dirs only (excluded below).
 
 | Path | Classification | Blocks release? |
 |------|----------------|-----------------|
@@ -41,8 +41,8 @@
 
 **Range:** `origin/main..HEAD`  
 **Base:** `fe5c9b4884fe22d1b2346e8e2f578cfff4965926` (`origin/main`)  
-**Tip at prep (updated):** `89aa299` — `fix(web): stop automation plan auto-retry loop on 404`  
-**Count:** 52 commits (includes original prep docs `a928987` + five blocker-clear commits)
+**Tip at prep (updated):** `f0ce9c3` — docs READY verdict (product tip `89aa299`)  
+**Count:** 53 commits (includes original prep docs `a928987` + blocker-clear commits + this verdict update)
 
 | SHA | Subject |
 |-----|---------|
@@ -98,8 +98,9 @@
 | `a7a4a3e` | feat(web): show session-expired notice on login redirect |
 | `288283e` | chore(web): add header testids and ignore e2e auth artefacts |
 | `89aa299` | fix(web): stop automation plan auto-retry loop on 404 |
+| `f0ce9c3` | docs(release): mark 2026-07-16 prep READY FOR PUSH APPROVAL |
 
-**Proposed push tip:** `89aa299` (verify: `git rev-parse HEAD`).
+**Proposed push tip:** `f0ce9c3` (verify: `git rev-parse HEAD`).
 
 ---
 
@@ -328,7 +329,7 @@ pnpm db:migrate
 
 | Layer | Status | Notes |
 |-------|--------|-------|
-| **Browser / product readiness** | **Ready for push approval** | E2E **10/10** on tip `89aa299` after rebuild; accordion + Modules + session-expired + plan-panel fix included. |
+| Browser / product readiness | **Ready for push approval** | E2E **10/10** on tip `89aa299` after rebuild; accordion + Modules + session-expired + plan-panel fix included. Docs tip `f0ce9c3`. |
 | **Monitoring readiness** | Ready for deploy with gates off | Heartbeats, checks, topology, alerts/incidents in browser E2E path. |
 | **Autonomous remediation readiness** | **Not proven for prod enablement** | Code + migrations present; keep `OPSWATCH_AUTO_REPAIR_ENABLED` / worker autonomous flags **false** until separate approval. |
 | **True live-heal readiness** | **Not ready** | Browser E2E ≠ proven remediator restart/repair of external apps. Live remediation remains a **separate gap** outside authenticated browser smoke. |
