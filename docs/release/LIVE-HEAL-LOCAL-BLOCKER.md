@@ -35,7 +35,7 @@ Proven at: `2026-07-16T17:10:32.821Z` via `pnpm exec tsx scripts/prove-live-heal
 
 ## Not yet proven
 
-- TrueNumeris / Noble remediator (TN env still lacks `OPSWATCH_REMEDIATOR_*`).
+- TrueNumeris remediator end-to-end (not exercised; mock `:8791` only).
 - UI Fix→recover click path (API path proven; UI not exercised this run).
 
 ## Reproduce
@@ -55,4 +55,4 @@ pnpm exec tsx scripts/ensure-smoke-fixtures.ts
 pnpm exec tsx scripts/prove-live-heal-local.ts
 ```
 
-Do not mark TN/Noble remediator ready until the same path succeeds against a TN-configured remediator.
+Do not mark a TrueNumeris remediator ready until the same path succeeds against a TN-configured remediator.
