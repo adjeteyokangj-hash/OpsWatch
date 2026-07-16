@@ -10,8 +10,8 @@
 
 | Item | Result |
 |------|--------|
-| Tip SHA | `f0ce9c3` (`docs(release): mark 2026-07-16 prep READY FOR PUSH APPROVAL`) — product tip `89aa299` |
-| Range | `origin/main..HEAD` — **53** commits; Modules fix `ca92098` **included** |
+| Tip SHA | verify `git rev-parse HEAD` (product tip `89aa299`) |
+| Range | `origin/main..HEAD`; Modules fix `ca92098` **included** |
 | Product dirty files | **Committed** (session-expired UX, Prisma local pool, header testids, gitignore, test isolation, plan retry fix) |
 | Left uncommitted (intentional) | `.e2e-post-ui-validation/`, `.phase*-validation/`, `.phase5-validate.ps1`, `.release-prep/`, `apps/web/scripts/` — **out of release** |
 | Secrets | Not staged; `.env` never committed |
@@ -24,7 +24,7 @@
 
 ## 1. Working tree
 
-**Status after blocker clear:** No tracked modifications. Branch `main` ahead of `origin/main` by **53** commits. Untracked validation/tooling dirs only (excluded below).
+**Status after blocker clear:** No tracked modifications on product files. Untracked validation/tooling dirs only (excluded below). Ahead of `origin/main` — count via `git rev-list --count origin/main..HEAD`.
 
 | Path | Classification | Blocks release? |
 |------|----------------|-----------------|
@@ -41,8 +41,8 @@
 
 **Range:** `origin/main..HEAD`  
 **Base:** `fe5c9b4884fe22d1b2346e8e2f578cfff4965926` (`origin/main`)  
-**Tip at prep (updated):** `f0ce9c3` — docs READY verdict (product tip `89aa299`)  
-**Count:** 53 commits (includes original prep docs `a928987` + blocker-clear commits + this verdict update)
+**Tip at prep (updated):** verify with `git rev-parse HEAD` (product tip `89aa299`)  
+**Count:** `git rev-list --count origin/main..HEAD`
 
 | SHA | Subject |
 |-----|---------|
@@ -98,9 +98,10 @@
 | `a7a4a3e` | feat(web): show session-expired notice on login redirect |
 | `288283e` | chore(web): add header testids and ignore e2e auth artefacts |
 | `89aa299` | fix(web): stop automation plan auto-retry loop on 404 |
-| `f0ce9c3` | docs(release): mark 2026-07-16 prep READY FOR PUSH APPROVAL |
+| `89aa299` | fix(web): stop automation plan auto-retry loop on 404 |
+| *(docs)* | READY FOR PUSH APPROVAL notes — tip may include follow-up docs SHA |
 
-**Proposed push tip:** `f0ce9c3` (verify: `git rev-parse HEAD`).
+**Proposed push tip:** current `HEAD` (verify: `git rev-parse HEAD`).
 
 ---
 
