@@ -10,6 +10,7 @@ import { IncidentsTable } from "../../components/incidents/incidents-table";
 import { IncidentQuickDrawer } from "../../components/incidents/incident-quick-drawer";
 import { FilterPresets, type FilterPreset } from "../../components/ui/filter-presets";
 import { CopyFilterLink } from "../../components/ui/copy-filter-link";
+import { PageSection } from "../../components/ui/page-section";
 import { StatCard } from "../../components/dashboard/stat-card";
 
 type IncidentListItemDto = {
@@ -128,7 +129,11 @@ function IncidentsPageContent() {
         <StatCard label="Investigating" value={incidents.filter((incident) => incident.status === "INVESTIGATING").length} href="/incidents?status=INVESTIGATING" />
       </section>
 
-      <section className="panel">
+      <PageSection
+        title="Filters"
+        description="Org-wide incident filters. Presets and shareable query links."
+        persistKey="org:incidents:filters"
+      >
         <div className="section-head" style={{ marginBottom: "10px" }}>
           <FilterPresets basePath="/incidents" presets={INCIDENT_PRESETS} currentParams={searchParams.toString()} />
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -195,33 +200,32 @@ function IncidentsPageContent() {
             <input type="datetime-local" value={dateTo} onChange={(event) => updateFilter("dateTo", event.target.value)} />
           </label>
         </div>
-      </section>
+      </PageSection>
       {error ? <section className="panel error-panel">{error}</section> : null}
-      {loading ? (
-        <section className="panel">Loading incidents...</section>
-      ) : displayIncidents.length === 0 ? (
-        <section className="panel">No incidents match current filters. Broaden filters to include historical incidents.</section>
-      ) : (
-        <>
-          <section className="panel">
-            <p>
-              Showing active incidents first. Resolved incidents are grouped after active investigations.
-            </p>
-          </section>
+      <PageSection
+        title="Incident list"
+        description="Showing active incidents first. Resolved incidents are grouped after active investigations."
+        persistKey="org:incidents:list"
+      >
+        {loading ? <p>Loading incidents...</p> : null}
+        {!loading && displayIncidents.length === 0 ? (
+          <p>No incidents match current filters. Broaden filters to include historical incidents.</p>
+        ) : null}
+        {!loading && displayIncidents.length > 0 ? (
           <IncidentsTable
             rows={displayIncidents}
             selectedId={selectedId}
             onSelectRow={(id) => setSelectedId(id)}
           />
-          <IncidentQuickDrawer
-            incident={selected}
-            onClose={() => setSelectedId(null)}
-            onStatusChanged={(id, status) => {
-              setIncidents((rows) => rows.map((row) => (row.id === id ? { ...row, status } : row)));
-            }}
-          />
-        </>
-      )}
+        ) : null}
+      </PageSection>
+      <IncidentQuickDrawer
+        incident={selected}
+        onClose={() => setSelectedId(null)}
+        onStatusChanged={(id, status) => {
+          setIncidents((rows) => rows.map((row) => (row.id === id ? { ...row, status } : row)));
+        }}
+      />
     </Shell>
   );
 }

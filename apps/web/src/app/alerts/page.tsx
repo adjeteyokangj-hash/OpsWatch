@@ -10,6 +10,7 @@ import { AlertsTable } from "../../components/alerts/alerts-table";
 import { groupAlertsBySignature, type AlertListRow } from "../../components/alerts/alert-grouping";
 import { FilterPresets, type FilterPreset } from "../../components/ui/filter-presets";
 import { CopyFilterLink } from "../../components/ui/copy-filter-link";
+import { PageSection } from "../../components/ui/page-section";
 import { StatCard } from "../../components/dashboard/stat-card";
 
 type AlertListItemDto = AlertListRow;
@@ -134,7 +135,12 @@ function AlertsPageContent() {
         <StatCard label="Groups" value={groups.length} href="/alerts" />
       </section>
 
-      <section className="panel alerts-filter-panel">
+      <PageSection
+        title="Filters"
+        description="Org-wide alert filters. Presets and shareable query links."
+        persistKey="org:alerts:filters"
+        className="alerts-filter-panel"
+      >
         <div className="section-head alerts-filter-head">
           <FilterPresets basePath="/alerts" presets={ALERT_PRESETS} currentParams={searchParams.toString()} />
           <div className="alerts-filter-actions">
@@ -209,51 +215,49 @@ function AlertsPageContent() {
             <input type="datetime-local" value={dateTo} onChange={(event) => updateFilter("dateTo", event.target.value)} />
           </label>
         </div>
-      </section>
+      </PageSection>
       {error ? <section className="panel error-panel">{error}</section> : null}
-      {loading ? (
-        <section className="panel">Loading alerts...</section>
-      ) : displayAlerts.length === 0 ? (
-        <section className="panel">No alerts match current filters. Try broadening filters or open alert history.</section>
-      ) : (
-        <>
-          <section className="panel">
-            <p>
-              {groupMode
-                ? "Grouped by exact title + source + service signature (deterministic dedup). No invented recommendations."
-                : "Showing active alerts first. Historical resolved alerts are listed after unresolved signals."}
-            </p>
-          </section>
-          {groupMode ? (
-            <div className="activity-feed panel">
-              {groups.map((group) => (
-                <article className="activity-feed-item" key={group.key}>
-                  <div className="activity-feed-head">
-                    <span className="meta-chip">{group.severity}</span>
-                    <span className="meta-chip">{group.count}×</span>
-                    {group.linkedIncident ? (
-                      <Link href={`/incidents/${group.linkedIncident.id}`} className="meta-chip">
-                        Linked incident
-                      </Link>
-                    ) : null}
-                  </div>
-                  <div className="activity-feed-title">
-                    <Link href={`/alerts/${group.latestId}`}>{group.title}</Link>
-                  </div>
-                  <p className="activity-feed-meta">
-                    {group.sourceType}
-                    {group.serviceName ? ` · ${group.serviceName}` : ""} · first{" "}
-                    {new Date(group.firstSeenAt).toLocaleString()} · last{" "}
-                    {new Date(group.lastSeenAt).toLocaleString()}
-                  </p>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <AlertsTable rows={displayAlerts} />
-          )}
-        </>
-      )}
+      <PageSection
+        title={groupMode ? "Alert groups" : "Alert list"}
+        description={
+          groupMode
+            ? "Grouped by exact title + source + service signature (deterministic dedup). No invented recommendations."
+            : "Showing active alerts first. Historical resolved alerts are listed after unresolved signals."
+        }
+        persistKey="org:alerts:list"
+      >
+        {loading ? <p>Loading alerts...</p> : null}
+        {!loading && displayAlerts.length === 0 ? (
+          <p>No alerts match current filters. Try broadening filters or open alert history.</p>
+        ) : null}
+        {!loading && displayAlerts.length > 0 && groupMode ? (
+          <div className="activity-feed">
+            {groups.map((group) => (
+              <article className="activity-feed-item" key={group.key}>
+                <div className="activity-feed-head">
+                  <span className="meta-chip">{group.severity}</span>
+                  <span className="meta-chip">{group.count}×</span>
+                  {group.linkedIncident ? (
+                    <Link href={`/incidents/${group.linkedIncident.id}`} className="meta-chip">
+                      Linked incident
+                    </Link>
+                  ) : null}
+                </div>
+                <div className="activity-feed-title">
+                  <Link href={`/alerts/${group.latestId}`}>{group.title}</Link>
+                </div>
+                <p className="activity-feed-meta">
+                  {group.sourceType}
+                  {group.serviceName ? ` · ${group.serviceName}` : ""} · first{" "}
+                  {new Date(group.firstSeenAt).toLocaleString()} · last{" "}
+                  {new Date(group.lastSeenAt).toLocaleString()}
+                </p>
+              </article>
+            ))}
+          </div>
+        ) : null}
+        {!loading && displayAlerts.length > 0 && !groupMode ? <AlertsTable rows={displayAlerts} /> : null}
+      </PageSection>
     </Shell>
   );
 }
