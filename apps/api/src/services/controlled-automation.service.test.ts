@@ -11,6 +11,12 @@ describe("controlled-automation.service (phase 7)", () => {
   const originalTest = process.env.OPSWATCH_AUTOMATION_TEST_MODE;
   const originalRepair = process.env.OPSWATCH_AUTO_REPAIR_ENABLED;
 
+  const clearGateEnv = () => {
+    // Local/API .env may set these true; isolate every case from process env pollution.
+    delete process.env.OPSWATCH_AUTOMATION_TEST_MODE;
+    delete process.env.OPSWATCH_AUTO_REPAIR_ENABLED;
+  };
+
   afterEach(() => {
     if (originalTest === undefined) delete process.env.OPSWATCH_AUTOMATION_TEST_MODE;
     else process.env.OPSWATCH_AUTOMATION_TEST_MODE = originalTest;
@@ -19,14 +25,13 @@ describe("controlled-automation.service (phase 7)", () => {
   });
 
   it("keeps automation test mode and auto-repair OFF by default", () => {
-    delete process.env.OPSWATCH_AUTOMATION_TEST_MODE;
-    delete process.env.OPSWATCH_AUTO_REPAIR_ENABLED;
+    clearGateEnv();
     expect(isAutomationTestMode()).toBe(false);
     expect(isAutoRepairEnabled()).toBe(false);
   });
 
   it("blocks high-impact actions by default", () => {
-    delete process.env.OPSWATCH_AUTO_REPAIR_ENABLED;
+    clearGateEnv();
     const gate = evaluateControlledAutomationGate("ROLLBACK_DEPLOYMENT");
     expect(gate.allowed).toBe(false);
     expect(gate.mode).toBe("BLOCKED");
@@ -34,6 +39,7 @@ describe("controlled-automation.service (phase 7)", () => {
   });
 
   it("requires approval for medium-impact restart even when auto-repair is on", () => {
+    clearGateEnv();
     process.env.OPSWATCH_AUTO_REPAIR_ENABLED = "true";
     const gate = evaluateControlledAutomationGate("RESTART_SERVICE");
     expect(gate.mode).toBe("APPROVAL_REQUIRED");
@@ -41,7 +47,7 @@ describe("controlled-automation.service (phase 7)", () => {
   });
 
   it("allows low-impact allowlisted actions to execute", () => {
-    delete process.env.OPSWATCH_AUTOMATION_TEST_MODE;
+    clearGateEnv();
     const gate = evaluateControlledAutomationGate("RERUN_HTTP_CHECK");
     expect(gate.allowed).toBe(true);
     expect(gate.mode).toBe("EXECUTE");
@@ -49,6 +55,7 @@ describe("controlled-automation.service (phase 7)", () => {
   });
 
   it("records test-mode results without enabling live high-risk execution", () => {
+    clearGateEnv();
     process.env.OPSWATCH_AUTOMATION_TEST_MODE = "true";
     const result = runAutomationTestMode("ROLLBACK_DEPLOYMENT");
     expect(result.gate.mode).toBe("TEST_ONLY");
