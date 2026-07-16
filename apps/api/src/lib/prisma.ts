@@ -18,9 +18,10 @@ export const buildDatabaseUrl = (rawUrl = process.env.DATABASE_URL ?? ""): strin
   }
 
   if (!/connection_limit=/i.test(url)) {
-    const limit = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME ? "1" : "5";
+    // Local/dev needs more than serverless (5 was too low for next start + browser smoke storms).
+    const limit = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME ? "1" : "20";
     url += url.includes("?") ? "&" : "?";
-    url += `connection_limit=${limit}&pool_timeout=15`;
+    url += `connection_limit=${limit}&pool_timeout=30`;
   }
 
   return url;

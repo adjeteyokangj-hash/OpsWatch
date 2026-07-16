@@ -28,6 +28,6 @@ describe("buildDatabaseUrl", () => {
     process.env.DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/opswatch?schema=public";
     const url = buildDatabaseUrl();
     expect(url).not.toContain("pgbouncer=true");
-    expect(url).toContain("connection_limit=5");
+    expect(url).toContain("connection_limit=20");
   });
 });
