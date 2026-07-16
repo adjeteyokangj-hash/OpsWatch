@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { HealthBadge } from "../../../../components/health/health-badge";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
+import { PageSection } from "../../../../components/ui/page-section";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../lib/api";
 
@@ -158,8 +159,11 @@ export default function ReliabilityManagementPage() {
       loading={projectLoading}
       error={projectError ?? error}
     >
-      <section className="panel">
-        <h2>Four-layer health model</h2>
+      <PageSection
+        title="Four-layer health model"
+        description="Dependencies connect monitored components. SLO scope keeps app, module, workflow and component health distinct."
+        persistKey={`project:${projectId}:reliability:layers`}
+      >
         <div className="metric-strip">
           {(["APP", "MODULE", "WORKFLOW", "COMPONENT"] as const).map((layer) => (
             <article className="metric-card metric-card-neutral" key={layer}>
@@ -171,12 +175,13 @@ export default function ReliabilityManagementPage() {
             </article>
           ))}
         </div>
-        <p className="dashboard-subtle">Dependencies connect monitored components. SLO scope keeps app, module, workflow and component health distinct.</p>
-      </section>
+      </PageSection>
 
-      <section className="panel">
-        <h2>Ownership & runbooks</h2>
-        <p className="dashboard-subtle">Route ownership and runbook links for components used in automation and incident response.</p>
+      <PageSection
+        title="Ownership & runbooks"
+        description="Route ownership and runbook links for components used in automation and incident response."
+        persistKey={`project:${projectId}:reliability:ownership`}
+      >
         <form className="stack-form reliability-form" onSubmit={saveOwnership}>
           <div className="ownership-grid">
             <label>
@@ -220,10 +225,13 @@ export default function ReliabilityManagementPage() {
             Save ownership
           </button>
         </form>
-      </section>
+      </PageSection>
 
-      <section className="panel">
-        <h2>Dependency relationships</h2>
+      <PageSection
+        title="Dependency relationships"
+        description="Upstream/downstream links used for incident correlation."
+        persistKey={`project:${projectId}:reliability:dependencies`}
+      >
         <form className="stack-form reliability-form" onSubmit={saveDependency}>
           <div className="form-grid">
             <label>
@@ -315,10 +323,13 @@ export default function ReliabilityManagementPage() {
             </tbody>
           </table>
         </div>
-      </section>
+      </PageSection>
 
-      <section className="panel">
-        <h2>Service-level objectives</h2>
+      <PageSection
+        title="Service-level objectives"
+        description="Define and track availability, error-rate, and latency objectives."
+        persistKey={`project:${projectId}:reliability:slos`}
+      >
         <form className="stack-form reliability-form" onSubmit={saveSlo}>
           <div className="form-grid">
             <label>
@@ -447,7 +458,7 @@ export default function ReliabilityManagementPage() {
             </tbody>
           </table>
         </div>
-      </section>
+      </PageSection>
     </ProjectWorkspaceShell>
   );
 }

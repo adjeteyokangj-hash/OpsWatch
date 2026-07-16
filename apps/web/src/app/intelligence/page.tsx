@@ -309,6 +309,7 @@ export default function IntelligencePage() {
               title="Operations timeline"
               description="Chronological factual events for this organization."
               defaultCollapsed
+              persistKey="intelligence:timeline"
             >
               {data.recentTimeline.length === 0 ? (
                 <EmptyState title="Timeline is empty" description="Deployments, alerts, automation, and baseline updates will land here." />
@@ -332,6 +333,7 @@ export default function IntelligencePage() {
               title="Incident memory"
               description="Permanent retention of known resolution facts only."
               defaultCollapsed
+              persistKey="intelligence:incident-memory"
             >
               {data.incidentMemories.length === 0 ? (
                 <EmptyState title="No incident memories" description="Resolved incidents with recorded diagnosis will appear here." />
@@ -359,6 +361,7 @@ export default function IntelligencePage() {
               title="Deployment intelligence"
               description="Deployments correlated with resulting incidents/alerts in-window."
               defaultCollapsed
+              persistKey="intelligence:deployments"
             >
               {data.deployments.length === 0 ? (
                 <EmptyState title="No deployments recorded" description="Change events and deploy webhooks populate this list." />
@@ -385,6 +388,7 @@ export default function IntelligencePage() {
               title="Automation history"
               description="Trigger, reason, success, and verification from real runs."
               defaultCollapsed
+              persistKey="intelligence:automation-history"
             >
               {data.automationHistory.length === 0 ? (
                 <EmptyState title="No automation history" description="Planned and executed automation runs will appear here." />

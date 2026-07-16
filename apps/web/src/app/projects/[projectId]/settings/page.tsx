@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
+import { PageSection } from "../../../../components/ui/page-section";
 import { apiFetch } from "../../../../lib/api";
 
 export default function ProjectSettingsPage() {
@@ -65,7 +66,11 @@ export default function ProjectSettingsPage() {
 
       {project ? (
         <>
-          <section className="panel">
+          <PageSection
+            title="Project details"
+            description="Environment, ownership, and monitoring posture."
+            persistKey={`project:${projectId}:config:details`}
+          >
             <dl className="topology-detail-grid">
               <div>
                 <dt>Environment</dt>
@@ -84,15 +89,13 @@ export default function ProjectSettingsPage() {
                 <dd>{project.monitoringEnabled ? "Enabled" : "Paused"}</dd>
               </div>
             </dl>
-          </section>
+          </PageSection>
 
-          <section className="panel">
-            <div className="section-head">
-              <div>
-                <h2>Secondary workspaces</h2>
-                <p className="dashboard-subtle">Kept reachable without crowding the primary navigation.</p>
-              </div>
-            </div>
+          <PageSection
+            title="Secondary workspaces"
+            description="Kept reachable without crowding the primary navigation."
+            persistKey={`project:${projectId}:config:workspaces`}
+          >
             <div className="quick-link-grid">
               <Link className="quick-link-card" href={`/projects/${projectId}/metrics`}>
                 <strong>Metrics</strong>
@@ -119,17 +122,14 @@ export default function ProjectSettingsPage() {
                 <span>People with access to this application.</span>
               </Link>
             </div>
-          </section>
+          </PageSection>
 
-          <section className="panel danger-zone">
-            <div className="section-head">
-              <div>
-                <h2>Danger zone</h2>
-                <p>
-                  Delete this project and its services, checks, results, alerts, incidents, events, and heartbeats.
-                  Administrator permission is required.
-                </p>
-              </div>
+          <PageSection
+            title="Danger zone"
+            description="Delete this project and its services, checks, results, alerts, incidents, events, and heartbeats. Administrator permission is required."
+            className="danger-zone"
+            persistKey={`project:${projectId}:config:danger`}
+            actions={
               <button
                 type="button"
                 className="danger-button solid-danger-button"
@@ -137,8 +137,12 @@ export default function ProjectSettingsPage() {
               >
                 Delete project
               </button>
-            </div>
-          </section>
+            }
+          >
+            <p className="dashboard-subtle" style={{ margin: 0 }}>
+              This action permanently removes the application workspace and cannot be undone.
+            </p>
+          </PageSection>
 
           {showDeleteConfirm ? (
             <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Delete project">

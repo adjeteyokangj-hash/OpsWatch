@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
 import { WorkspaceSummaryStrip } from "../../../../components/projects/workspace-summary-strip";
 import { EmptyState } from "../../../../components/ui/empty-state";
+import { PageSection } from "../../../../components/ui/page-section";
 import { StatusBadge } from "../../../../components/ui/status-badge";
 import { AutonomousModeControl } from "../../../../components/automation/autonomous-mode-control";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
@@ -78,17 +79,19 @@ export default function ProjectAutomationPage() {
         ]}
       />
 
-      <section className="panel">
+      <PageSection
+        title="Autonomous mode"
+        description="Observe, suggest, or auto-run controls for this application."
+        persistKey={`project:${projectId}:automation:mode`}
+      >
         <AutonomousModeControl projectId={projectId} />
-      </section>
+      </PageSection>
 
-      <section className="panel">
-        <div className="section-head">
-          <div>
-            <h2>Configure</h2>
-            <p className="dashboard-subtle">Estate-wide playbooks and policies apply to this application.</p>
-          </div>
-        </div>
+      <PageSection
+        title="Configure"
+        description="Estate-wide playbooks and policies apply to this application."
+        persistKey={`project:${projectId}:automation:configure`}
+      >
         <div className="quick-link-grid">
           <Link className="quick-link-card" href="/automation/playbooks">
             <strong>Playbooks</strong>
@@ -103,15 +106,13 @@ export default function ProjectAutomationPage() {
             <span>Recorded prediction vs outcome for remediation actions.</span>
           </Link>
         </div>
-      </section>
+      </PageSection>
 
-      <section className="panel">
-        <div className="section-head">
-          <div>
-            <h2>Recent automation history</h2>
-            <p className="dashboard-subtle">Filtered to this application from org automation runs.</p>
-          </div>
-        </div>
+      <PageSection
+        title="Recent automation history"
+        description="Filtered to this application from org automation runs."
+        persistKey={`project:${projectId}:automation:history`}
+      >
         {historyError ? <p className="error-panel">{historyError}</p> : null}
         {historyLoading ? <p>Loading automation history…</p> : null}
         {!historyLoading && items.length === 0 ? (
@@ -142,7 +143,7 @@ export default function ProjectAutomationPage() {
             ))}
           </div>
         ) : null}
-      </section>
+      </PageSection>
     </ProjectWorkspaceShell>
   );
 }

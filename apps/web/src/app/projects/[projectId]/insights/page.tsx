@@ -95,6 +95,7 @@ export default function ProjectInsightsPage() {
         <PageSection
           title="Predictions"
           description="Prediction readiness for this application. Claims stay disabled until confidence thresholds are met."
+          persistKey={`project:${projectId}:insights:predictions`}
         >
           {dataLoading ? <p>Loading prediction readiness…</p> : null}
           {!dataLoading ? (
@@ -109,7 +110,11 @@ export default function ProjectInsightsPage() {
         </PageSection>
       </section>
 
-      <PageSection title="Product insights" description="Coverage and monitoring recommendations for this application.">
+      <PageSection
+        title="Product insights"
+        description="Coverage and monitoring recommendations for this application."
+        persistKey={`project:${projectId}:insights:recommendations`}
+      >
         {dataLoading ? <p>Loading insights…</p> : null}
         {!dataLoading && recommendations.length === 0 ? (
           <EmptyState title="No open recommendations" description="Product insight engine has nothing open for this app." />
@@ -137,6 +142,7 @@ export default function ProjectInsightsPage() {
       <PageSection
         title="Display-eligible patterns"
         description={`Only patterns at or above confidence ${intel?.confidenceGates.minDisplayConfidence ?? 0.7}.`}
+        persistKey={`project:${projectId}:insights:patterns`}
       >
         {patterns.length === 0 ? (
           <EmptyState

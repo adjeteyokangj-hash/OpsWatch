@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { HealthBadge } from "../health/health-badge";
 import { EmptyState } from "../ui/empty-state";
+import { PageSection } from "../ui/page-section";
 import { EditServiceForm } from "./edit-service-form";
 import { ProjectWorkspaceShell } from "./project-workspace-shell";
 import { useProjectWorkspace } from "../../hooks/use-project-workspace";
@@ -177,16 +178,14 @@ export function ModuleDetailPage() {
             </section>
           ) : null}
 
-          <section className="panel workspace-section-card" aria-label="Module overview">
-            <div className="section-head">
-              <div>
-                <h2>Overview</h2>
-                <p className="dashboard-subtle" style={{ margin: 0 }}>
-                  Registered module details from this application’s inventory.
-                </p>
-              </div>
-              <HealthBadge status={service.status} />
-            </div>
+          <PageSection
+            title="Overview"
+            description="Registered module details from this application’s inventory."
+            className="workspace-section-card"
+            aria-label="Module overview"
+            persistKey={`project:${projectId}:module:${serviceId}:overview`}
+            actions={<HealthBadge status={service.status} />}
+          >
             <dl className="topology-detail-grid module-detail-grid">
               <div>
                 <dt>Name</dt>
@@ -261,22 +260,22 @@ export function ModuleDetailPage() {
                 Checks console
               </Link>
             </p>
-          </section>
+          </PageSection>
 
-          <section className="panel workspace-section-card" aria-label="Open alerts">
-            <div className="section-head">
-              <div>
-                <h2>Open alerts</h2>
-                <p className="dashboard-subtle" style={{ margin: 0 }}>
-                  Unresolved alerts linked to this module.
-                </p>
-              </div>
-              {openAlerts.length > 0 ? (
+          <PageSection
+            title="Open alerts"
+            description="Unresolved alerts linked to this module."
+            className="workspace-section-card"
+            aria-label="Open alerts"
+            persistKey={`project:${projectId}:module:${serviceId}:alerts`}
+            actions={
+              openAlerts.length > 0 ? (
                 <Link href={alertsHref} className="text-link">
                   View all →
                 </Link>
-              ) : null}
-            </div>
+              ) : null
+            }
+          >
             {openAlerts.length === 0 ? (
               <p className="dashboard-subtle">No open alerts for this module.</p>
             ) : (
@@ -291,23 +290,22 @@ export function ModuleDetailPage() {
                 ))}
               </ul>
             )}
-          </section>
+          </PageSection>
 
-          <section className="panel workspace-section-card" aria-label="Checks">
-            <div className="section-head">
-              <div>
-                <h2>Checks</h2>
-                <p className="dashboard-subtle" style={{ margin: 0 }}>
-                  Monitoring checks configured for this module.
-                </p>
-              </div>
-              {!checksLoading && checks.length > 0 ? (
+          <PageSection
+            title="Checks"
+            description="Monitoring checks configured for this module."
+            className="workspace-section-card"
+            aria-label="Checks"
+            persistKey={`project:${projectId}:module:${serviceId}:checks`}
+            actions={
+              !checksLoading && checks.length > 0 ? (
                 <Link href={addCheckHref} className="secondary-button">
                   Add check
                 </Link>
-              ) : null}
-            </div>
-
+              ) : null
+            }
+          >
             {checksLoading ? (
               <div className="workspace-loading">
                 <div className="loading-pulse" />
@@ -369,7 +367,7 @@ export function ModuleDetailPage() {
                 </table>
               </div>
             ) : null}
-          </section>
+          </PageSection>
         </>
       ) : null}
     </ProjectWorkspaceShell>

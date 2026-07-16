@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HealthBadge } from "../health/health-badge";
+import { PageSection } from "../ui/page-section";
 import { WorkspaceSummaryStrip } from "./workspace-summary-strip";
 
 type CheckRow = {
@@ -48,13 +49,12 @@ export function CheckResultsTable({ rows }: { rows: CheckRow[] }) {
           { key: "pending", label: "Pending", value: summary.pending, tone: "neutral" }
         ]}
       />
-      <section className="panel workspace-section-card">
-        <div className="section-head">
-          <div>
-            <h2>Recent checks</h2>
-            <p className="dashboard-subtle">{rows.length} monitoring check{rows.length === 1 ? "" : "s"} for this application.</p>
-          </div>
-        </div>
+      <PageSection
+        title="Recent checks"
+        description={`${rows.length} monitoring check${rows.length === 1 ? "" : "s"} for this application.`}
+        className="workspace-section-card"
+        persistKey="project:checks:recent"
+      >
         <div className="layer-health-table-wrap">
           <table className="data-table check-results-table">
             <thead>
@@ -88,7 +88,7 @@ export function CheckResultsTable({ rows }: { rows: CheckRow[] }) {
             </tbody>
           </table>
         </div>
-      </section>
+      </PageSection>
     </>
   );
 }

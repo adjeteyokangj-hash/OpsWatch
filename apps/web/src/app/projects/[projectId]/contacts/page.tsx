@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
+import { PageSection } from "../../../../components/ui/page-section";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../lib/api";
 
@@ -71,12 +72,11 @@ export default function ProjectContactsPage() {
     >
       {successMsg ? <section className="panel success-panel">{successMsg}</section> : null}
       <section className="two-col settings-grid">
-        <section className="panel">
-          <h2>Operational contacts</h2>
-          <p className="dashboard-subtle">
-            People responsible for <strong>{project?.name || "this project"}</strong>. These are not OpsWatch login
-            accounts.
-          </p>
+        <PageSection
+          title="Operational contacts"
+          description={`People responsible for ${project?.name || "this project"}. These are not OpsWatch login accounts.`}
+          persistKey={`project:${projectId}:contacts:operational`}
+        >
           {loading ? (
             <p>Loading contacts…</p>
           ) : (
@@ -105,17 +105,20 @@ export default function ProjectContactsPage() {
               </label>
             </form>
           )}
-        </section>
-        <aside className="panel">
-          <h2>OpsWatch platform access</h2>
+        </PageSection>
+        <PageSection
+          title="OpsWatch platform access"
+          description="Manage people who can log in to OpsWatch (admins, operators, viewers)."
+          persistKey={`project:${projectId}:contacts:access`}
+        >
           <p className="dashboard-subtle">
-            To add or manage people who can log in to OpsWatch (admins, operators, viewers), use{" "}
-            <Link href="/members">Members</Link> in the sidebar.
+            To add or manage people who can log in to OpsWatch, use <Link href="/members">Members</Link> in the
+            sidebar.
           </p>
           <Link className="secondary-button" href="/members">
             Open Members
           </Link>
-        </aside>
+        </PageSection>
       </section>
     </ProjectWorkspaceShell>
   );

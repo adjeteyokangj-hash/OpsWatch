@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SeverityBadge } from "../alerts/severity-badge";
+import { PageSection } from "../ui/page-section";
 
 type AlertRow = {
   id: string;
@@ -23,7 +24,8 @@ export function ProjectActivityFeed({
   emptyHref,
   emptyHrefLabel,
   alerts,
-  incidents
+  incidents,
+  persistKey
 }: {
   title: string;
   emptyMessage: string;
@@ -31,6 +33,7 @@ export function ProjectActivityFeed({
   emptyHrefLabel?: string;
   alerts?: AlertRow[];
   incidents?: IncidentRow[];
+  persistKey?: string;
 }) {
   const hasAlerts = (alerts?.length ?? 0) > 0;
   const hasIncidents = (incidents?.length ?? 0) > 0;
@@ -50,8 +53,7 @@ export function ProjectActivityFeed({
   }
 
   return (
-    <section className="panel">
-      <h2>{title}</h2>
+    <PageSection title={title} persistKey={persistKey}>
       <div className="activity-feed">
         {alerts?.map((alert) => (
           <article className="activity-feed-item" key={`alert-${alert.id}`}>
@@ -78,6 +80,6 @@ export function ProjectActivityFeed({
           </article>
         ))}
       </div>
-    </section>
+    </PageSection>
   );
 }

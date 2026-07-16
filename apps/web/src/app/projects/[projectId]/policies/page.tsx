@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { PolicyLinkCards } from "../../../../components/projects/policy-link-cards";
 import { PolicyRuleCards } from "../../../../components/projects/policy-rule-cards";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
+import { PageSection } from "../../../../components/ui/page-section";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 
 export default function ProjectPoliciesPage() {
@@ -19,24 +20,22 @@ export default function ProjectPoliciesPage() {
       loading={loading}
       error={error}
     >
-      <section className="panel workspace-section-card">
-        <div className="section-head">
-          <div>
-            <h2>Monitoring policies</h2>
-            <p className="dashboard-subtle">Alert and incident rules scoped to this project.</p>
-          </div>
-        </div>
+      <PageSection
+        title="Monitoring policies"
+        description="Alert and incident rules scoped to this project."
+        className="workspace-section-card"
+        persistKey={`project:${projectId}:policies:monitoring`}
+      >
         <PolicyRuleCards projectId={projectId} />
-      </section>
-      <section className="panel workspace-section-card">
-        <div className="section-head">
-          <div>
-            <h2>Related controls</h2>
-            <p className="dashboard-subtle">Org-wide policy entry points linked to this project.</p>
-          </div>
-        </div>
+      </PageSection>
+      <PageSection
+        title="Related controls"
+        description="Org-wide policy entry points linked to this project."
+        className="workspace-section-card"
+        persistKey={`project:${projectId}:policies:related`}
+      >
         <PolicyLinkCards projectId={projectId} />
-      </section>
+      </PageSection>
     </ProjectWorkspaceShell>
   );
 }

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { ProjectActivityFeed } from "../../../components/projects/project-activity-feed";
 import { ProjectHealthCard, ProjectSnapshotPanel } from "../../../components/projects/project-health-card";
 import { ProjectWorkspaceShell } from "../../../components/projects/project-workspace-shell";
+import { PageSection } from "../../../components/ui/page-section";
 import { useProjectWorkspace } from "../../../hooks/use-project-workspace";
 
 const signalAgeLabel = (receivedAt?: string | null): string => {
@@ -92,6 +93,7 @@ export default function ProjectDetailPage() {
 						affectedModules={project.affectedModules}
 						affectedWorkflows={project.affectedWorkflows}
 						affectedComponents={project.affectedComponents}
+						persistKey={`project:${project.id}:overview:snapshot`}
 					/>
 					<section className="metric-strip">
 						<ProjectHealthCard title="Status" value={healthLabel} href={`/projects/${project.id}/checks`} />
@@ -107,8 +109,12 @@ export default function ProjectDetailPage() {
 						/>
 						<ProjectHealthCard title="Latest Signal" value={latestSignalLabel} href={`/projects/${project.id}/checks`} />
 					</section>
-					<section className="panel quick-links-panel">
-						<h2>Quick links</h2>
+					<PageSection
+						title="Quick links"
+						description="Jump to the primary operational surfaces for this application."
+						className="quick-links-panel"
+						persistKey={`project:${project.id}:overview:quick-links`}
+					>
 						<div className="quick-link-grid">
 							<Link className="quick-link-card" href={`/projects/${project.id}/topology`}>
 								<strong>Topology</strong>
@@ -127,13 +133,14 @@ export default function ProjectDetailPage() {
 								<span>Run history and playbook controls for this app.</span>
 							</Link>
 						</div>
-					</section>
+					</PageSection>
 					<ProjectActivityFeed
 						title="Open alerts"
 						emptyMessage="No open alerts for this project."
 						emptyHref={`/alerts?projectId=${project.id}`}
 						emptyHrefLabel="View alert history"
 						alerts={openAlerts}
+						persistKey={`project:${project.id}:overview:alerts`}
 					/>
 					<ProjectActivityFeed
 						title="Active incidents"
@@ -141,6 +148,7 @@ export default function ProjectDetailPage() {
 						emptyHref={`/incidents?projectId=${project.id}`}
 						emptyHrefLabel="View incident history"
 						incidents={unresolvedIncidents}
+						persistKey={`project:${project.id}:overview:incidents`}
 					/>
 					{resolvedIncidents.length > 0 ? (
 						<p className="dashboard-subtle workspace-footnote">Resolved incidents are secondary ({resolvedIncidents.length}).</p>

@@ -7,6 +7,7 @@ import { ProjectWorkspaceShell } from "./project-workspace-shell";
 import { ServiceCardGrid } from "./service-card-grid";
 import { ServiceList } from "./service-list";
 import { WorkspaceSummaryStrip } from "./workspace-summary-strip";
+import { PageSection } from "../ui/page-section";
 import { useProjectWorkspace } from "../../hooks/use-project-workspace";
 
 const componentTypes = new Set([
@@ -98,15 +99,12 @@ export function ProjectLayerPage({ layerKey }: { layerKey: LayerKey }) {
               { key: "unknown", label: "Awaiting", value: summary.unknown, tone: "neutral" }
             ]}
           />
-          <section className="panel workspace-section-card">
-            <div className="section-head">
-              <div>
-                <p className="dashboard-subtle" style={{ margin: 0 }}>
-                  {filteredServices.length} monitored {pageTitle.toLowerCase()} in this application.
-                </p>
-              </div>
-            </div>
-
+          <PageSection
+            title={pageTitle}
+            description={`${filteredServices.length} monitored ${pageTitle.toLowerCase()} in this application.`}
+            className="workspace-section-card"
+            persistKey={`project:${projectId}:layer:${layerKey}`}
+          >
             {layerKey === "components" ? (
               <div className="workspace-tab-bar" role="tablist" aria-label="Component views">
                 <button
@@ -146,7 +144,7 @@ export function ProjectLayerPage({ layerKey }: { layerKey: LayerKey }) {
             ) : (
               <ServiceList rows={filteredServices} projectId={projectId} onUpdated={() => void reload()} />
             )}
-          </section>
+          </PageSection>
         </>
       )}
     </ProjectWorkspaceShell>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HealthBadge } from "../health/health-badge";
+import { PageSection } from "../ui/page-section";
 
 const metricTone = (title: string, value: string | number): string => {
   const label = String(title).toLowerCase();
@@ -51,7 +52,8 @@ export function ProjectSnapshotPanel({
   latestSignalLabel,
   affectedModules,
   affectedWorkflows,
-  affectedComponents
+  affectedComponents,
+  persistKey = "project:overview:snapshot"
 }: {
   healthLabel: string;
   healthReason?: string | null;
@@ -60,16 +62,21 @@ export function ProjectSnapshotPanel({
   affectedModules?: string[];
   affectedWorkflows?: string[];
   affectedComponents?: string[];
+  persistKey?: string;
 }) {
   return (
-    <section className="panel snapshot-panel">
-      <div className="section-head">
-        <div>
-          <h2>Operational snapshot</h2>
-          <p className="dashboard-subtle">Current health, risk, and signal context for this application.</p>
-        </div>
-        <HealthBadge status={healthLabel === "Waiting for first heartbeat" ? "UNKNOWN" : healthLabel.toUpperCase()} displayLabel={healthLabel} />
-      </div>
+    <PageSection
+      title="Operational snapshot"
+      description="Current health, risk, and signal context for this application."
+      className="snapshot-panel"
+      persistKey={persistKey}
+      actions={
+        <HealthBadge
+          status={healthLabel === "Waiting for first heartbeat" ? "UNKNOWN" : healthLabel.toUpperCase()}
+          displayLabel={healthLabel}
+        />
+      }
+    >
       <div className="snapshot-grid">
         <div className="snapshot-item">
           <span className="snapshot-label">Status reason</span>
@@ -102,6 +109,6 @@ export function ProjectSnapshotPanel({
           </div>
         ) : null}
       </div>
-    </section>
+    </PageSection>
   );
 }

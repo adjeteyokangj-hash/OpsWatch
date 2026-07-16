@@ -1,5 +1,6 @@
 "use client";
 
+import { PageSection } from "../ui/page-section";
 import { formatRelativeTime, type OrganizationIntegrationSummary } from "../../lib/integrations";
 
 type IntegrationsOverviewSummaryProps = {
@@ -8,13 +9,12 @@ type IntegrationsOverviewSummaryProps = {
 };
 
 export const IntegrationsOverviewSummary = ({ summary, projectCount }: IntegrationsOverviewSummaryProps) => (
-  <section className="panel integrations-overview-summary">
-    <div className="section-head">
-      <div>
-        <h2>External integrations</h2>
-        <p>Operational provider connections across {projectCount} application{projectCount === 1 ? "" : "s"}.</p>
-      </div>
-    </div>
+  <PageSection
+    title="External integrations"
+    description={`Operational provider connections across ${projectCount} application${projectCount === 1 ? "" : "s"}.`}
+    className="integrations-overview-summary"
+    persistKey="integrations:overview-summary"
+  >
     <dl className="integrations-overview-summary__stats">
       <div>
         <dt>Connected</dt>
@@ -33,5 +33,5 @@ export const IntegrationsOverviewSummary = ({ summary, projectCount }: Integrati
         <dd>{formatRelativeTime(summary.lastValidatedAt)}</dd>
       </div>
     </dl>
-  </section>
+  </PageSection>
 );

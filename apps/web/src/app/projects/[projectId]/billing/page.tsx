@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
 import { BillingUsageCard } from "../../../../components/projects/billing-usage-card";
 import { BillingAllowanceField } from "../../../../components/projects/billing-allowance-field";
+import { PageSection } from "../../../../components/ui/page-section";
 import { apiFetch } from "../../../../lib/api";
 import {
   applyPlanDefaults,
@@ -209,23 +210,25 @@ export default function ProjectBillingPage() {
         </section>
       ) : (
         <>
-          <section className="panel billing-plan-summary">
-            <div className="billing-plan-summary__head">
-              <div>
-                <h2>{formatPlanLabel(billing.plan)} plan</h2>
-                {pricingLabel === "CUSTOM" || billing.isCustomPricing ? (
-                  <p className="billing-custom-badge">
-                    Custom pricing — limits or price differ from standard tier defaults.
-                  </p>
-                ) : (
-                  <p className="dashboard-subtle">Standard {formatPlanLabel(billing.plan)} defaults applied.</p>
-                )}
-              </div>
+          <PageSection
+            title={`${formatPlanLabel(billing.plan)} plan`}
+            description={
+              pricingLabel === "CUSTOM" || billing.isCustomPricing
+                ? "Custom pricing — limits or price differ from standard tier defaults."
+                : `Standard ${formatPlanLabel(billing.plan)} defaults applied.`
+            }
+            className="billing-plan-summary"
+            persistKey={`project:${projectId}:billing:summary`}
+            actions={
               <strong className="billing-plan-summary__price">
                 {formatPrice(billing.monthlyPrice, billing.currency)} / month
               </strong>
-            </div>
-          </section>
+            }
+          >
+            <p className="dashboard-subtle" style={{ margin: 0 }}>
+              Plan summary for this application only.
+            </p>
+          </PageSection>
           <section className="billing-usage-grid">
             <BillingUsageCard title="Checks" used={billing.usage?.checks ?? 0} limit={billing.checkLimit} />
             <BillingUsageCard
@@ -240,8 +243,11 @@ export default function ProjectBillingPage() {
               staticLabel={`${billing.dataRetentionDays} days`}
             />
           </section>
-          <section className="panel">
-            <h2>Billing editor</h2>
+          <PageSection
+            title="Billing editor"
+            description="Update plan, price, allowances, and retention for this application."
+            persistKey={`project:${projectId}:billing:editor`}
+          >
             <form
               id="project-billing-form"
               className="billing-form-grid"
@@ -340,7 +346,7 @@ export default function ProjectBillingPage() {
                 />
               </label>
             </form>
-          </section>
+          </PageSection>
         </>
       )}
     </ProjectWorkspaceShell>

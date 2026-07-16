@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
 import { ServiceList } from "../../../../components/projects/service-list";
+import { PageSection } from "../../../../components/ui/page-section";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 
 const layerTitle: Record<string, string> = {
@@ -42,16 +43,20 @@ export default function MonitoredAreasPage() {
           const rows = services.filter((service: any) => service.type === layer);
           if (rows.length === 0) return null;
           return (
-            <section className="panel layer-section" key={layer}>
-              <div className="section-head">
-                <div>
-                  <h2>{layerTitle[layer]}</h2>
-                  <p className="dashboard-subtle">{layerDescription[layer]}</p>
-                </div>
-                <span className="layer-count-badge">{rows.length} area{rows.length === 1 ? "" : "s"}</span>
-              </div>
+            <PageSection
+              key={layer}
+              title={layerTitle[layer] ?? layer}
+              description={layerDescription[layer] ?? ""}
+              className="layer-section"
+              persistKey={`project:${projectId}:monitored:${layer.toLowerCase()}`}
+              actions={
+                <span className="layer-count-badge">
+                  {rows.length} area{rows.length === 1 ? "" : "s"}
+                </span>
+              }
+            >
               <ServiceList rows={rows} projectId={projectId} />
-            </section>
+            </PageSection>
           );
         })
       )}
