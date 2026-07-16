@@ -59,3 +59,9 @@ tmp-browser-smoke.txt
 tmp-connect-journey.txt
 tmp-db-e2e-api.txt
 apps/web/test-results/
+
+# Local validation / release-prep evidence (exit dumps, logs — do not commit)
+.e2e-post-ui-validation/
+.phase*-validation/
+.phase*-validate.ps1
+.release-prep/
