@@ -23,16 +23,31 @@ const statusHint = (status: string): string => {
   return "Waiting for first heartbeat";
 };
 
+export type ServiceCardPrimaryCta = {
+  label: string;
+  hrefFor: (serviceId: string) => string;
+  ariaLabelFor: (name: string) => string;
+};
+
 export function ServiceCardGrid({
   rows,
   projectId,
-  onUpdated
+  onUpdated,
+  primaryCta
 }: {
   rows: Array<any>;
   projectId: string;
   onUpdated?: () => void;
+  /** Primary link after Edit. Defaults to checks console for non-module layers. */
+  primaryCta?: ServiceCardPrimaryCta;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const cta: ServiceCardPrimaryCta = primaryCta ?? {
+    label: "View checks →",
+    hrefFor: (serviceId) => `/checks?projectId=${projectId}&serviceId=${serviceId}`,
+    ariaLabelFor: (name) => `View checks for ${name}`
+  };
 
   if (rows.length === 0) {
     return (
@@ -94,10 +109,10 @@ export function ServiceCardGrid({
               </span>
               <Link
                 className="service-card-link"
-                href={`/checks?projectId=${projectId}&serviceId=${row.id}`}
-                aria-label={`View checks for ${row.name}`}
+                href={cta.hrefFor(row.id)}
+                aria-label={cta.ariaLabelFor(row.name)}
               >
-                View checks →
+                {cta.label}
               </Link>
             </div>
           </article>

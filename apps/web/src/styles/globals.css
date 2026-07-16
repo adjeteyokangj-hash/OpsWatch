@@ -6469,6 +6469,17 @@ button {
   font-weight: 600;
 }
 
+.module-detail-grid {
+  margin-top: 12px;
+}
+
+.module-detail-grid dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 .topology-detail-subheading {
   margin: 8px 0 6px;
   font-size: 0.78rem;

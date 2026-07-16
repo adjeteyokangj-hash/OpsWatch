@@ -37,20 +37,42 @@ const rows = [
 describe("ServiceCardGrid", () => {
   afterEach(() => cleanup());
 
-  it("renders Edit and View checks as separate actions with correct targets", () => {
-    render(<ServiceCardGrid rows={rows} projectId="app-noble-express" />);
+  it("renders Edit and View module as separate actions with correct targets", () => {
+    render(
+      <ServiceCardGrid
+        rows={rows}
+        projectId="app-noble-express"
+        primaryCta={{
+          label: "View module →",
+          hrefFor: (serviceId) => `/projects/app-noble-express/modules/${serviceId}`,
+          ariaLabelFor: (name) => `View module ${name}`
+        }}
+      />
+    );
 
     const card = screen.getByRole("article");
     const edit = within(card).getByRole("button", { name: /edit public website/i });
-    const checks = within(card).getByRole("link", { name: /view checks for public website/i });
+    const detail = within(card).getByRole("link", { name: /view module public website/i });
 
     expect(edit).toBeInTheDocument();
+    expect(detail).toHaveTextContent("View module →");
+    expect(detail).toHaveAttribute(
+      "href",
+      "/projects/app-noble-express/modules/svc-public-website"
+    );
+    expect(edit.compareDocumentPosition(detail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(card).getByText("·")).toBeInTheDocument();
+  });
+
+  it("defaults primary CTA to View checks when no primaryCta is provided", () => {
+    render(<ServiceCardGrid rows={rows} projectId="app-noble-express" />);
+
+    const checks = screen.getByRole("link", { name: /view checks for public website/i });
+    expect(checks).toHaveTextContent("View checks →");
     expect(checks).toHaveAttribute(
       "href",
       "/checks?projectId=app-noble-express&serviceId=svc-public-website"
     );
-    expect(edit.compareDocumentPosition(checks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(card).getByText("·")).toBeInTheDocument();
   });
 
   it("opens the inline edit form for the selected module", () => {

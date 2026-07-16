@@ -96,6 +96,15 @@ describe("isProjectNavLinkActive", () => {
     expect(isProjectNavLinkActive("/projects/proj-1", overview, "")).toBe(true);
     expect(isProjectNavLinkActive("/projects/proj-1/topology", overview, "")).toBe(false);
   });
+
+  it("keeps Modules active on nested module detail routes", () => {
+    const modules = { label: "Modules", href: "/projects/proj-1/modules" };
+    expect(isProjectNavLinkActive("/projects/proj-1/modules", modules, "")).toBe(true);
+    expect(
+      isProjectNavLinkActive("/projects/proj-1/modules/svc-public-website", modules, "")
+    ).toBe(true);
+    expect(isProjectNavLinkActive("/projects/proj-1/workflows", modules, "")).toBe(false);
+  });
 });
 
 describe("findActiveProjectNavGroupLabel", () => {

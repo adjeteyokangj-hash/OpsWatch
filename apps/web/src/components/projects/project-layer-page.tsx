@@ -129,7 +129,20 @@ export function ProjectLayerPage({ layerKey }: { layerKey: LayerKey }) {
             ) : null}
 
             {config.layout === "cards" ? (
-              <ServiceCardGrid rows={filteredServices} projectId={projectId} onUpdated={() => void reload()} />
+              <ServiceCardGrid
+                rows={filteredServices}
+                projectId={projectId}
+                onUpdated={() => void reload()}
+                primaryCta={
+                  layerKey === "modules"
+                    ? {
+                        label: "View module →",
+                        hrefFor: (serviceId) => `/projects/${projectId}/modules/${serviceId}`,
+                        ariaLabelFor: (name) => `View module ${name}`
+                      }
+                    : undefined
+                }
+              />
             ) : (
               <ServiceList rows={filteredServices} projectId={projectId} onUpdated={() => void reload()} />
             )}
