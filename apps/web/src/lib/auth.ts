@@ -103,7 +103,7 @@ export const refreshAuthSession = async (
           // clearAuthCookies also invalidates the session cache.
           clearAuthCookies();
           if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-            window.location.href = "/login";
+            window.location.href = "/login?reason=session_expired";
           }
           return null;
         }

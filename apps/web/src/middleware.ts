@@ -97,7 +97,12 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!canAccessProtectedRoute(request, sessionCheck)) {
-    const response = NextResponse.redirect(new URL("/login", request.url));
+    const loginUrl = new URL("/login", request.url);
+    // Soft 401 / missing session — not an API-down blip (those stay "unavailable").
+    if (sessionCheck === "invalid") {
+      loginUrl.searchParams.set("reason", "session_expired");
+    }
+    const response = NextResponse.redirect(loginUrl);
     clearSessionCookies(response, request.nextUrl.hostname);
     return response;
   }

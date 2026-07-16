@@ -13,11 +13,17 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [logoMissing, setLogoMissing] = useState(false);
 
   useEffect(() => {
     setMounted(true);
+    if (typeof window === "undefined") return;
+    const reason = new URLSearchParams(window.location.search).get("reason");
+    if (reason === "session_expired") {
+      setSessionNotice("Your session expired. Sign in again to continue.");
+    }
   }, []);
 
   // Prefill only when the field is still empty so automation fill() is not raced.
@@ -123,6 +129,11 @@ export default function LoginPage() {
         <div className="auth-card">
           <h2>Sign in</h2>
           <p className="dashboard-subtle">Use your OpsWatch platform account.</p>
+          {sessionNotice ? (
+            <p className="dashboard-subtle" role="status" data-testid="login-session-notice">
+              {sessionNotice}
+            </p>
+          ) : null}
           {mounted ? (
             <form onSubmit={onSubmit} data-testid="login-form">
               <label>

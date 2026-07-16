@@ -111,7 +111,7 @@ export const apiFetch = async <T>(path: string, init?: ApiFetchOptions): Promise
   if (response.status === 401 && !suppressAuthRedirect && typeof window !== "undefined") {
     clearAuthCookies();
     if (!window.location.pathname.startsWith("/login")) {
-      window.location.href = "/login";
+      window.location.href = "/login?reason=session_expired";
     }
   }
 
