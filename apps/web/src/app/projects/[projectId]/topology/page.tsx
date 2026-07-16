@@ -655,11 +655,11 @@ export default function ProjectTopologyPage() {
                 {!selectedEdge && !selectedNode ? (
                   <TopologyApplicationPanel topology={topology} projectId={projectId} project={project} />
                 ) : null}
-                <section className="panel topology-intel-slot">
-                  <h3>Intelligence</h3>
+                <section className="panel topology-intel-slot" id="incident-memory">
+                  <h3>Incident memory</h3>
                   <p className="dashboard-subtle">
-                    Predictions stay disabled. Patterns and deploy correlation live on the Intelligence tab when evidence
-                    exists.
+                    Relationship-level learning appears when you select an edge on the map. Predictions stay disabled;
+                    patterns and deploy correlation live on the Intelligence tab when evidence exists.
                   </p>
                   <Link className="text-link" href={`/projects/${projectId}/insights`}>
                     Open Intelligence →

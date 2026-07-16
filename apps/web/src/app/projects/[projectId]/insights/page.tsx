@@ -91,6 +91,24 @@ export default function ProjectInsightsPage() {
         action={<Link className="text-link" href="/intelligence">Org Intelligence →</Link>}
       />
 
+      <section id="predictions">
+        <PageSection
+          title="Predictions"
+          description="Prediction readiness for this application. Claims stay disabled until confidence thresholds are met."
+        >
+          {dataLoading ? <p>Loading prediction readiness…</p> : null}
+          {!dataLoading ? (
+            <EmptyState
+              title={intel?.predictions.enabled ? "Predictions enabled" : "Predictions not ready"}
+              description={
+                intel?.predictions.reason ??
+                "Evidence and confidence gates must be satisfied before predictive output is shown."
+              }
+            />
+          ) : null}
+        </PageSection>
+      </section>
+
       <PageSection title="Product insights" description="Coverage and monitoring recommendations for this application.">
         {dataLoading ? <p>Loading insights…</p> : null}
         {!dataLoading && recommendations.length === 0 ? (
