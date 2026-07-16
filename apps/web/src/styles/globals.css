@@ -5715,6 +5715,116 @@ button {
   color: var(--brand-hover);
 }
 
+.topology-automation-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.topology-automation-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.topology-mode-badge--observe {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #047857;
+}
+
+.topology-mode-badge--approval {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
+}
+
+.topology-mode-badge--autonomous {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.topology-mode-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.topology-mode-dot--observe {
+  background: #10b981;
+}
+
+.topology-mode-dot--approval {
+  background: #f59e0b;
+}
+
+.topology-mode-dot--autonomous {
+  background: #3b82f6;
+}
+
+.topology-detail-subsection {
+  margin: 12px 0;
+}
+
+.topology-detail-subsection h4 {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+}
+
+.topology-evidence-list,
+.topology-blocker-checklist {
+  margin: 8px 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.topology-blocker-checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+}
+
+.topology-blocker-checklist li.is-active {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.topology-blocker-mark {
+  width: 1rem;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.topology-risk-explanation {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.84rem;
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
+.topology-observe-blocked-note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff7ed;
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  font-size: 0.86rem;
+}
+
 .topology-node-card.compact.is-collapsed,
 .topology-node-card--compact.is-collapsed {
   gap: 4px;

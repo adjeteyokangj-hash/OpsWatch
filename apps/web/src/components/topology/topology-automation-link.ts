@@ -29,6 +29,47 @@ const WORKER_ACTIONS = [
  * True when a remediator integration is connected + validated and supports the needed action.
  * Monitoring-only integrations never qualify.
  */
+/** Connected + validated remediator on the project (may still lack a specific action capability). */
+export const projectHasConnectedRemediator = (
+  integrations: ProjectIntegration[],
+  projectId: string
+): boolean =>
+  integrations.some((row) => {
+    if (row.projectId !== projectId) return false;
+    if (!row.enabled) return false;
+    const type = String(row.type || "").toUpperCase();
+    if (!(REMEDIATION_PROVIDER_TYPES as readonly string[]).includes(type)) return false;
+    if (resolveConnectionState(row) !== "connected") return false;
+    return row.validationStatus === "VALID";
+  });
+
+/** True when any project remediator has emergency disable engaged. */
+export const remediatorEmergencyDisabled = (
+  integrations: ProjectIntegration[],
+  projectId: string
+): boolean =>
+  integrations.some((row) => {
+    if (row.projectId !== projectId) return false;
+    if (!row.enabled) return false;
+    const type = String(row.type || "").toUpperCase();
+    if (!(REMEDIATION_PROVIDER_TYPES as readonly string[]).includes(type)) return false;
+    const config = row.configJson ?? {};
+    return config.REMEDIATOR_EMERGENCY_DISABLED === true || config.REMEDIATOR_EMERGENCY_DISABLED === "true";
+  });
+
+export type RemediationPolicyGate = {
+  globalEnabled: boolean;
+  projectEnabled: boolean;
+};
+
+/** Org + project auto-run gates must allow execution before suggesting mode change. */
+export const remediationPolicyAllowsExecution = (
+  gate: RemediationPolicyGate | null | undefined
+): boolean => {
+  if (!gate) return true;
+  return gate.globalEnabled && gate.projectEnabled;
+};
+
 export const projectHasRemediationCapability = (
   integrations: ProjectIntegration[],
   projectId: string,
@@ -125,6 +166,9 @@ export const remediatingEdgeIdsFromRuns = (
   }
   return edgeIds;
 };
+
+export const automationModeSettingsHref = (projectId: string): string =>
+  `/projects/${projectId}/automation`;
 
 export const topologyReturnPath = (projectId: string, edgeId?: string | null): string => {
   const base = `/projects/${projectId}/topology`;

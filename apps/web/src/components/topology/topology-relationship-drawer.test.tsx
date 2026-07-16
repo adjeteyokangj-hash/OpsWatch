@@ -2,8 +2,10 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   TopologyRelationshipDrawer,
+  buildExecutionBlockers,
   evaluateRelationshipAutomation,
-  relationshipSetupHrefs
+  relationshipSetupHrefs,
+  resolveAutomationConfidence
 } from "./topology-relationship-drawer";
 import type { SelectedTopologyEdge } from "./topology-edge-style";
 import type { ProjectTopologyResponse } from "./topology-types";
@@ -100,21 +102,29 @@ const topology: ProjectTopologyResponse = {
   }
 };
 
+const renderDrawer = (evaluation: ReturnType<typeof evaluateRelationshipAutomation>) =>
+  render(
+    <TopologyRelationshipDrawer
+      edge={edge}
+      topology={topology}
+      projectId="proj-1"
+      evaluation={evaluation}
+      onClose={vi.fn()}
+      onFixWithAutomation={vi.fn()}
+    />
+  );
+
 describe("TopologyRelationshipDrawer", () => {
   afterEach(() => cleanup());
 
   it("shows source, target, written health, colour meaning, and related alert", () => {
-    const evaluation = evaluateRelationshipAutomation({ edge, projectAutomationMode: "OBSERVE" });
-    render(
-      <TopologyRelationshipDrawer
-        edge={edge}
-        topology={topology}
-        projectId="proj-1"
-        evaluation={evaluation}
-        onClose={vi.fn()}
-        onFixWithAutomation={vi.fn()}
-      />
-    );
+    const evaluation = evaluateRelationshipAutomation({
+      edge,
+      topology,
+      projectAutomationMode: "OBSERVE",
+      hasRemediationCapability: true
+    });
+    renderDrawer(evaluation);
 
     expect(screen.getByTestId("topology-relationship-drawer")).toBeInTheDocument();
     expect(screen.getByText("Checkout")).toBeInTheDocument();
@@ -123,42 +133,127 @@ describe("TopologyRelationshipDrawer", () => {
     expect(screen.getAllByText(/Payments dependency failing/i).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders an enabled Connect provider CTA linking to the remediator integration when setup is required", () => {
-    const evaluation = evaluateRelationshipAutomation({ edge, projectAutomationMode: "APPROVAL" });
+  it("renders Connect Remediator CTA linking to the remediator integration when setup is required", () => {
+    const evaluation = evaluateRelationshipAutomation({
+      edge,
+      topology,
+      projectAutomationMode: "APPROVAL"
+    });
     expect(evaluation.buttonState).toBe("setup_required");
-    render(
-      <TopologyRelationshipDrawer
-        edge={edge}
-        topology={topology}
-        projectId="proj-1"
-        evaluation={evaluation}
-        onClose={vi.fn()}
-        onFixWithAutomation={vi.fn()}
-      />
-    );
+    renderDrawer(evaluation);
 
     const cta = screen.getByTestId("topology-fix-with-automation");
     expect(cta).toHaveAttribute("data-state", "setup_required");
     const href = cta.getAttribute("href") ?? "";
     expect(href).toContain("/projects/proj-1/integrations/worker_provider?");
     expect(href).toContain("returnTo=");
-    expect(cta).toHaveTextContent("Connect provider");
+    expect(cta).toHaveTextContent("Connect Remediator to Enable Repair");
     expect(cta.tagName).toBe("A");
     expect(cta).not.toBeDisabled();
 
-    expect(screen.getByTestId("topology-setup-config-link")).toHaveAttribute(
-      "href",
-      "/projects/proj-1/settings"
-    );
-    expect(screen.getByTestId("topology-setup-connections-link").getAttribute("href") ?? "").toContain(
-      "/connections?"
-    );
-    expect(screen.getByTestId("topology-setup-remediator-link").getAttribute("href") ?? "").toContain(
-      "/integrations/worker_provider"
-    );
     expect(screen.getByTestId("topology-setup-required-status")).toHaveTextContent(
       /Setup required — connect and validate a remediator/i
     );
+  });
+
+  it("renders evidence section from monitoring signals", () => {
+    const evaluation = evaluateRelationshipAutomation({
+      edge,
+      topology,
+      projectAutomationMode: "APPROVAL",
+      hasRemediationCapability: true
+    });
+    renderDrawer(evaluation);
+
+    expect(screen.getByTestId("topology-automation-evidence")).toBeInTheDocument();
+    expect(screen.getByTestId("topology-evidence-summary")).toHaveTextContent(/Monitoring signals/i);
+    expect(screen.getByTestId("topology-automation-evidence")).toHaveTextContent(/Failed checks/i);
+    expect(screen.getByTestId("topology-automation-evidence")).toHaveTextContent(/Checkout/);
+  });
+
+  it("shows observe blocker checklist and Enable Autonomous Mode CTA when policy allows", () => {
+    const evaluation = evaluateRelationshipAutomation({
+      edge,
+      topology,
+      projectAutomationMode: "OBSERVE",
+      hasRemediationCapability: true,
+      policyAllowsModeChange: true
+    });
+    expect(evaluation.buttonState).toBe("observe_blocked");
+    renderDrawer(evaluation);
+
+    expect(screen.getByTestId("topology-blocker-observe_mode")).toHaveAttribute("data-active", "true");
+    expect(screen.getByTestId("topology-fix-with-automation")).toHaveTextContent("Enable Autonomous Mode");
+    expect(screen.getByTestId("topology-automation-mode-badge")).toHaveTextContent("Observe");
+  });
+
+  it("hides Enable Autonomous Mode when policy forbids mode change", () => {
+    const evaluation = evaluateRelationshipAutomation({
+      edge,
+      topology,
+      projectAutomationMode: "OBSERVE",
+      hasRemediationCapability: true,
+      policyAllowsModeChange: false
+    });
+    renderDrawer(evaluation);
+
+    expect(screen.queryByTestId("topology-fix-with-automation")).not.toBeInTheDocument();
+    expect(screen.getByTestId("topology-observe-blocked-note")).toHaveTextContent(/Observe mode blocks execution/i);
+  });
+
+  it("shows approval CTA label and awaiting approval blocker", () => {
+    const evaluation = evaluateRelationshipAutomation({
+      edge,
+      topology,
+      projectAutomationMode: "APPROVAL",
+      hasRemediationCapability: true
+    });
+    renderDrawer(evaluation);
+
+    expect(screen.getByTestId("topology-fix-with-automation")).toHaveTextContent("Request Approval");
+    expect(screen.getByTestId("topology-blocker-awaiting_approval")).toHaveAttribute("data-active", "true");
+    expect(screen.getByTestId("topology-automation-mode-badge")).toHaveTextContent("Approval Required");
+  });
+
+  it("does not show fake confidence when learning data is absent", () => {
+    const evaluation = evaluateRelationshipAutomation({
+      edge,
+      topology,
+      projectAutomationMode: "APPROVAL",
+      hasRemediationCapability: true
+    });
+    renderDrawer(evaluation);
+
+    expect(screen.getByTestId("topology-automation-confidence")).toHaveTextContent(
+      /Not available \(insufficient learning data\)/i
+    );
+    expect(screen.getByTestId("topology-automation-confidence")).not.toHaveTextContent(/96%/);
+  });
+
+  it("shows real confidence when incident memory score is provided", () => {
+    const evaluation = evaluateRelationshipAutomation({
+      edge,
+      topology,
+      projectAutomationMode: "APPROVAL",
+      hasRemediationCapability: true,
+      incidentMemory: { confidenceScore: 0.82, occurrenceCount: 3 }
+    });
+    renderDrawer(evaluation);
+
+    expect(screen.getByTestId("topology-automation-confidence")).toHaveTextContent("82%");
+    expect(screen.getByTestId("topology-evidence-summary")).toHaveTextContent(/3 prior occurrences/i);
+  });
+
+  it("shows risk explanation for high-risk critical edges", () => {
+    const evaluation = evaluateRelationshipAutomation({
+      edge: { ...edge, critical: true },
+      topology,
+      projectAutomationMode: "APPROVAL",
+      hasRemediationCapability: true
+    });
+    renderDrawer(evaluation);
+
+    expect(screen.getByTestId("topology-risk-explanation")).toHaveTextContent(/critical dependency edge/i);
   });
 });
 
@@ -171,17 +266,19 @@ describe("relationshipSetupHrefs", () => {
     expect(hrefs.remediator).toContain("edgeId=edge-critical");
     expect(hrefs.connections).toContain("/connections?");
     expect(hrefs.connections).toContain("projectId=proj-1");
+    expect(hrefs.automationMode).toBe("/projects/proj-1/automation");
   });
 });
 
 describe("evaluateRelationshipAutomation", () => {
   it("returns setup_required when no remediation capability exists", () => {
-    expect(evaluateRelationshipAutomation({ edge }).buttonState).toBe("setup_required");
+    expect(evaluateRelationshipAutomation({ edge, topology }).buttonState).toBe("setup_required");
   });
 
   it("returns remediating when an active run targets the edge", () => {
     const result = evaluateRelationshipAutomation({
       edge,
+      topology,
       projectAutomationMode: "APPROVAL",
       hasRemediationCapability: true,
       activeRun: { id: "run-1", incidentId: "inc-1", status: "VERIFYING" }
@@ -190,19 +287,22 @@ describe("evaluateRelationshipAutomation", () => {
     expect(result.activeIncidentId).toBe("inc-1");
   });
 
-  it("returns no_automated_fix in Observe mode even when a remediator exists", () => {
+  it("returns observe_blocked in Observe mode when a remediator exists", () => {
     const result = evaluateRelationshipAutomation({
       edge,
+      topology,
       projectAutomationMode: "OBSERVE",
       hasRemediationCapability: true
     });
-    expect(result.buttonState).toBe("no_automated_fix");
+    expect(result.buttonState).toBe("observe_blocked");
     expect(result.reason).toMatch(/Observe mode/i);
+    expect(result.executionBlockers.find((row) => row.id === "observe_mode")?.active).toBe(true);
   });
 
   it("returns approval_required in Approval mode when a remediator exists", () => {
     const result = evaluateRelationshipAutomation({
       edge,
+      topology,
       projectAutomationMode: "APPROVAL",
       hasRemediationCapability: true
     });
@@ -212,6 +312,7 @@ describe("evaluateRelationshipAutomation", () => {
   it("returns ready in Autonomous mode for non-critical low-risk actions", () => {
     const result = evaluateRelationshipAutomation({
       edge: { ...edge, critical: false },
+      topology,
       projectAutomationMode: "AUTONOMOUS",
       hasRemediationCapability: true
     });
@@ -221,10 +322,31 @@ describe("evaluateRelationshipAutomation", () => {
   it("requires approval in Autonomous mode for critical/high-risk actions", () => {
     const result = evaluateRelationshipAutomation({
       edge: { ...edge, critical: true },
+      topology,
       projectAutomationMode: "AUTONOMOUS",
       hasRemediationCapability: true
     });
     expect(result.buttonState).toBe("approval_required");
+  });
+});
+
+describe("buildExecutionBlockers", () => {
+  it("marks setup and missing capability blockers separately", () => {
+    const blockers = buildExecutionBlockers({
+      buttonState: "setup_required",
+      automationMode: "APPROVAL",
+      hasRemediationCapability: false,
+      hasConnectedRemediator: true,
+      remediatorEmergencyDisabled: false
+    });
+    expect(blockers.find((row) => row.id === "no_remediator")?.active).toBe(false);
+    expect(blockers.find((row) => row.id === "missing_capability")?.active).toBe(true);
+  });
+});
+
+describe("resolveAutomationConfidence", () => {
+  it("returns unavailable label without incident memory", () => {
+    expect(resolveAutomationConfidence(null).label).toMatch(/Not available/i);
   });
 });
 
@@ -250,7 +372,7 @@ describe("hierarchy relationship drawer", () => {
         "Source (Customer Portal): Relationship discovery pending — OpsWatch has not mapped dependencies for this module yet."
       ]
     };
-    const evaluation = evaluateRelationshipAutomation({ edge: hierarchyEdge });
+    const evaluation = evaluateRelationshipAutomation({ edge: hierarchyEdge, topology });
     render(
       <TopologyRelationshipDrawer
         edge={hierarchyEdge}

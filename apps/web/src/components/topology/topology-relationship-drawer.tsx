@@ -4,14 +4,47 @@ import Link from "next/link";
 import type { SelectedTopologyEdge } from "./topology-edge-style";
 import type { ProjectTopologyResponse } from "./topology-types";
 import { buildNodeRelationshipDiagnostics } from "./topology-relationship";
-import { topologyReturnPath } from "./topology-automation-link";
+import {
+  automationModeSettingsHref,
+  relatedAlertsForEdge,
+  topologyReturnPath
+} from "./topology-automation-link";
 
 export type AutomationButtonState =
   | "ready"
   | "approval_required"
   | "setup_required"
+  | "observe_blocked"
   | "no_automated_fix"
   | "remediating";
+
+export type AutomationExecutionBlockerId =
+  | "observe_mode"
+  | "no_remediator"
+  | "missing_capability"
+  | "awaiting_approval"
+  | "emergency_disable";
+
+export type AutomationExecutionBlocker = {
+  id: AutomationExecutionBlockerId;
+  label: string;
+  active: boolean;
+};
+
+export type RelationshipAutomationEvidence = {
+  summary: string;
+  relatedAlertCount: number;
+  failedCheckEndpoints: string[];
+  openAlertCount: number;
+  relationshipHealth: string;
+  lastFailure: string | null;
+  incidentMemoryOccurrences: number | null;
+};
+
+export type RelationshipIncidentMemory = {
+  confidenceScore?: number | null;
+  occurrenceCount?: number | null;
+};
 
 export type RelationshipAutomationEvaluation = {
   buttonState: AutomationButtonState;
@@ -20,8 +53,14 @@ export type RelationshipAutomationEvaluation = {
   proposedAction: string | null;
   requiredScope: string | null;
   riskLevel: "LOW" | "MEDIUM" | "HIGH" | null;
+  riskExplanation: string | null;
   verificationMethod: string | null;
   rollbackMethod: string | null;
+  confidenceScore: number | null;
+  confidenceLabel: string;
+  executionBlockers: AutomationExecutionBlocker[];
+  evidence: RelationshipAutomationEvidence;
+  policyAllowsModeChange: boolean;
   /** When remediating, link to the incident carrying the active run. */
   activeIncidentId?: string | null;
   activeRunId?: string | null;
@@ -38,13 +77,192 @@ type Props = {
   onFixWithAutomation: () => void;
 };
 
-const buttonLabel = (state: AutomationButtonState): string => {
+export const buttonLabel = (state: AutomationButtonState): string => {
   if (state === "ready") return "Fix with automation";
-  if (state === "approval_required") return "Request approval to fix";
-  if (state === "setup_required") return "Connect provider";
+  if (state === "approval_required") return "Request Approval";
+  if (state === "setup_required") return "Connect Remediator to Enable Repair";
+  if (state === "observe_blocked") return "Enable Autonomous Mode";
   if (state === "remediating") return "View repair in progress";
   return "No automated fix";
 };
+
+export const riskExplanationForAction = (
+  riskLevel: "LOW" | "MEDIUM" | "HIGH" | null,
+  proposedAction: string | null,
+  critical: boolean
+): string | null => {
+  if (!riskLevel || !proposedAction) return null;
+  if (critical || riskLevel === "HIGH") {
+    return "High — may interrupt live traffic or sync on a critical dependency edge.";
+  }
+  if (riskLevel === "MEDIUM") {
+    if (/restart/i.test(proposedAction)) {
+      return "Medium — worker restart may briefly interrupt sync or queued jobs.";
+    }
+    return "Medium — may cause a short service disruption while recovery runs.";
+  }
+  if (/retry/i.test(proposedAction)) {
+    return "Low — retry is unlikely to disrupt healthy endpoints.";
+  }
+  if (/restart/i.test(proposedAction)) {
+    return "Low — brief worker restart with minimal blast radius.";
+  }
+  return "Low — limited operational impact expected.";
+};
+
+export const resolveAutomationConfidence = (
+  incidentMemory?: RelationshipIncidentMemory | null
+): { score: number | null; label: string } => {
+  const raw = incidentMemory?.confidenceScore;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const percent = raw <= 1 ? Math.round(raw * 100) : Math.round(raw);
+    return { score: percent, label: `${percent}%` };
+  }
+  return {
+    score: null,
+    label: "Not available (insufficient learning data)"
+  };
+};
+
+export const buildRelationshipEvidence = (
+  edge: SelectedTopologyEdge,
+  topology: ProjectTopologyResponse,
+  incidentMemory?: RelationshipIncidentMemory | null
+): RelationshipAutomationEvidence => {
+  const alerts = relatedAlertsForEdge(topology, edge);
+  const sourceCtx = topology.nodeContext[edge.sourceId];
+  const targetCtx = topology.nodeContext[edge.targetId];
+  const nodeById = new Map(topology.nodes.map((node) => [node.id, node]));
+
+  const failedCheckEndpoints: string[] = [];
+  for (const nodeId of [edge.sourceId, edge.targetId]) {
+    const ctx = topology.nodeContext[nodeId];
+    if (ctx?.lastCheckStatus === "FAIL") {
+      failedCheckEndpoints.push(nodeById.get(nodeId)?.name ?? nodeId);
+    }
+  }
+
+  const lastFailure =
+    alerts[0]?.title ??
+    (edge.status === "CRITICAL" || edge.status === "DEGRADED"
+      ? targetCtx?.lastCheckAt ?? sourceCtx?.lastCheckAt ?? "Failure inferred from relationship health"
+      : null);
+
+  const occurrenceCount =
+    typeof incidentMemory?.occurrenceCount === "number" && incidentMemory.occurrenceCount > 0
+      ? incidentMemory.occurrenceCount
+      : null;
+
+  const hasRichSignals =
+    alerts.length > 0 ||
+    failedCheckEndpoints.length > 0 ||
+    occurrenceCount != null ||
+    edge.status === "CRITICAL" ||
+    edge.status === "DEGRADED";
+
+  const summary =
+    occurrenceCount != null
+      ? `${occurrenceCount} prior occurrence${occurrenceCount === 1 ? "" : "s"} recorded in incident memory.`
+      : hasRichSignals
+        ? "Monitoring signals from linked endpoints and relationship health."
+        : "Limited evidence — monitoring signals only";
+
+  return {
+    summary,
+    relatedAlertCount: alerts.length,
+    failedCheckEndpoints,
+    openAlertCount: alerts.length,
+    relationshipHealth: edge.writtenHealth,
+    lastFailure: lastFailure == null ? null : String(lastFailure),
+    incidentMemoryOccurrences: occurrenceCount
+  };
+};
+
+export const buildExecutionBlockers = (input: {
+  buttonState: AutomationButtonState;
+  automationMode: RelationshipAutomationEvaluation["automationMode"];
+  hasRemediationCapability: boolean;
+  hasConnectedRemediator: boolean;
+  remediatorEmergencyDisabled: boolean;
+}): AutomationExecutionBlocker[] => {
+  const observeActive =
+    input.automationMode === "OBSERVE" &&
+    (input.buttonState === "observe_blocked" || input.buttonState === "no_automated_fix");
+  const noRemediatorActive =
+    !input.hasConnectedRemediator &&
+    (input.buttonState === "setup_required" || input.buttonState === "no_automated_fix");
+  const missingCapabilityActive =
+    input.hasConnectedRemediator && !input.hasRemediationCapability && input.buttonState === "setup_required";
+  const awaitingApprovalActive = input.buttonState === "approval_required";
+  const emergencyActive = input.remediatorEmergencyDisabled;
+
+  return [
+    {
+      id: "observe_mode",
+      label: "Observe mode enabled",
+      active: observeActive
+    },
+    {
+      id: "no_remediator",
+      label: "No remediator connected / not validated",
+      active: noRemediatorActive
+    },
+    {
+      id: "missing_capability",
+      label: "Missing capability",
+      active: missingCapabilityActive
+    },
+    {
+      id: "awaiting_approval",
+      label: "Awaiting approval",
+      active: awaitingApprovalActive
+    },
+    {
+      id: "emergency_disable",
+      label: "Emergency disable",
+      active: emergencyActive
+    }
+  ];
+};
+
+const MODE_BADGE: Record<
+  RelationshipAutomationEvaluation["automationMode"],
+  { label: string; tone: string; dotClass: string }
+> = {
+  OBSERVE: {
+    label: "Observe",
+    tone: "topology-mode-badge--observe",
+    dotClass: "topology-mode-dot--observe"
+  },
+  APPROVAL: {
+    label: "Approval Required",
+    tone: "topology-mode-badge--approval",
+    dotClass: "topology-mode-dot--approval"
+  },
+  AUTONOMOUS: {
+    label: "Autonomous",
+    tone: "topology-mode-badge--autonomous",
+    dotClass: "topology-mode-dot--autonomous"
+  }
+};
+
+export function AutomationModeBadge({
+  mode
+}: {
+  mode: RelationshipAutomationEvaluation["automationMode"];
+}) {
+  const config = MODE_BADGE[mode];
+  return (
+    <span
+      className={`topology-automation-mode-badge ${config.tone}`}
+      data-testid="topology-automation-mode-badge"
+      data-mode={mode}
+    >
+      <span className={`topology-mode-dot ${config.dotClass}`} aria-hidden="true" />
+      <span>{config.label}</span>
+    </span>
+  );
+}
 
 /** Destinations for setup_required CTAs — remediator first, then connections + settings. */
 export const relationshipSetupHrefs = (
@@ -58,7 +276,8 @@ export const relationshipSetupHrefs = (
   return {
     configuration: `/projects/${projectId}/settings`,
     connections: `/connections?${query}`,
-    remediator: `/projects/${projectId}/integrations/worker_provider?${query}`
+    remediator: `/projects/${projectId}/integrations/worker_provider?${query}`,
+    automationMode: automationModeSettingsHref(projectId)
   };
 };
 
@@ -72,9 +291,7 @@ export function TopologyRelationshipDrawer({
   onClose,
   onFixWithAutomation
 }: Props) {
-  const relatedAlerts = Object.entries(topology.nodeContext)
-    .filter(([nodeId]) => nodeId === edge.sourceId || nodeId === edge.targetId)
-    .flatMap(([, context]) => context.openAlerts);
+  const relatedAlerts = relatedAlertsForEdge(topology, edge);
   const relatedIncidents = Object.entries(topology.nodeContext)
     .filter(([nodeId]) => nodeId === edge.sourceId || nodeId === edge.targetId)
     .flatMap(([, context]) => context.unresolvedIncidents);
@@ -101,6 +318,77 @@ export function TopologyRelationshipDrawer({
   const canClick =
     buttonState === "ready" || buttonState === "approval_required" || buttonState === "remediating";
   const setupHrefs = relationshipSetupHrefs(projectId, { edgeId: edge.id });
+  const evidence = evaluation?.evidence ?? buildRelationshipEvidence(edge, topology);
+
+  const renderPrimaryCta = () => {
+    if (buttonState === "setup_required") {
+      return (
+        <Link
+          href={setupHrefs.remediator}
+          className="primary-button"
+          data-testid="topology-fix-with-automation"
+          data-state={buttonState}
+        >
+          {buttonLabel(buttonState)}
+        </Link>
+      );
+    }
+
+    if (buttonState === "observe_blocked") {
+      if (evaluation?.policyAllowsModeChange) {
+        return (
+          <Link
+            href={setupHrefs.automationMode}
+            className="primary-button"
+            data-testid="topology-fix-with-automation"
+            data-state={buttonState}
+          >
+            {buttonLabel(buttonState)}
+          </Link>
+        );
+      }
+      return (
+        <p className="topology-observe-blocked-note" data-testid="topology-observe-blocked-note" role="status">
+          Observe mode blocks execution. Organisation or project policy does not allow enabling autonomous
+          repairs — contact an administrator to update auto-run policy.
+        </p>
+      );
+    }
+
+    if (buttonState === "remediating" && evaluation?.activeIncidentId) {
+      return (
+        <Link
+          href={`/incidents/${evaluation.activeIncidentId}`}
+          className="primary-button"
+          data-testid="topology-fix-with-automation"
+          data-state={buttonState}
+        >
+          {buttonLabel(buttonState)}
+        </Link>
+      );
+    }
+
+    if (buttonState === "no_automated_fix") {
+      return (
+        <p className="dashboard-subtle" data-testid="topology-no-automated-fix-note" role="status">
+          {evaluation?.reason ?? "No automated repair is available for this relationship."}
+        </p>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        className="primary-button"
+        disabled={!canClick || acting}
+        onClick={onFixWithAutomation}
+        data-testid="topology-fix-with-automation"
+        data-state={buttonState}
+      >
+        {acting ? "Working…" : buttonLabel(buttonState)}
+      </button>
+    );
+  };
 
   return (
     <aside className="panel topology-relationship-drawer" data-testid="topology-relationship-drawer">
@@ -214,7 +502,7 @@ export function TopologyRelationshipDrawer({
           <dd>Declared</dd>
         </div>
         <div>
-          <dt>Confidence</dt>
+          <dt>Discovery confidence</dt>
           <dd>Confirmed</dd>
         </div>
         <div>
@@ -262,10 +550,54 @@ export function TopologyRelationshipDrawer({
         {evaluating ? <p className="dashboard-subtle">Evaluating automation…</p> : null}
         {evaluation ? (
           <>
-            <p>
-              <strong>Mode:</strong> {evaluation.automationMode}
-            </p>
+            <div className="topology-automation-mode-row">
+              <span className="dashboard-subtle">Mode</span>
+              <AutomationModeBadge mode={evaluation.automationMode} />
+            </div>
             <p data-testid="topology-automation-reason">{evaluation.reason}</p>
+
+            <section className="topology-detail-subsection" data-testid="topology-automation-evidence">
+              <h4>Evidence</h4>
+              <p className="dashboard-subtle" data-testid="topology-evidence-summary">
+                {evidence.summary}
+              </p>
+              <ul className="topology-evidence-list">
+                <li>
+                  Relationship health: <strong>{evidence.relationshipHealth}</strong>
+                </li>
+                <li>
+                  Open alerts on endpoints: <strong>{evidence.openAlertCount}</strong>
+                </li>
+                <li>
+                  Failed checks:{" "}
+                  <strong>
+                    {evidence.failedCheckEndpoints.length > 0
+                      ? evidence.failedCheckEndpoints.join(", ")
+                      : "None recorded"}
+                  </strong>
+                </li>
+                <li>
+                  Last failure:{" "}
+                  <strong>
+                    {evidence.lastFailure
+                      ? evidence.lastFailure.includes("T")
+                        ? new Date(evidence.lastFailure).toLocaleString()
+                        : evidence.lastFailure
+                      : "None observed"}
+                  </strong>
+                </li>
+                {evidence.incidentMemoryOccurrences != null ? (
+                  <li>
+                    Incident memory:{" "}
+                    <strong>
+                      {evidence.incidentMemoryOccurrences} prior occurrence
+                      {evidence.incidentMemoryOccurrences === 1 ? "" : "s"}
+                    </strong>
+                  </li>
+                ) : null}
+              </ul>
+            </section>
+
             {evaluation.proposedAction ? (
               <dl className="topology-detail-grid">
                 <div>
@@ -274,7 +606,19 @@ export function TopologyRelationshipDrawer({
                 </div>
                 <div>
                   <dt>Risk</dt>
-                  <dd>{evaluation.riskLevel ?? "—"}</dd>
+                  <dd>
+                    {evaluation.riskLevel ?? "—"}
+                    {evaluation.riskExplanation ? (
+                      <span className="topology-risk-explanation" data-testid="topology-risk-explanation">
+                        {" "}
+                        — {evaluation.riskExplanation}
+                      </span>
+                    ) : null}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Confidence</dt>
+                  <dd data-testid="topology-automation-confidence">{evaluation.confidenceLabel}</dd>
                 </div>
                 <div>
                   <dt>Required scope</dt>
@@ -290,6 +634,26 @@ export function TopologyRelationshipDrawer({
                 </div>
               </dl>
             ) : null}
+
+            <section className="topology-detail-subsection" data-testid="topology-execution-blockers">
+              <h4>Execution blockers</h4>
+              <ul className="topology-blocker-checklist">
+                {evaluation.executionBlockers.map((blocker) => (
+                  <li
+                    key={blocker.id}
+                    data-testid={`topology-blocker-${blocker.id}`}
+                    data-active={blocker.active ? "true" : "false"}
+                    className={blocker.active ? "is-active" : undefined}
+                  >
+                    <span className="topology-blocker-mark" aria-hidden="true">
+                      {blocker.active ? "✓" : "○"}
+                    </span>
+                    <span>{blocker.label}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
             {buttonState === "setup_required" ? (
               <p className="topology-setup-links">
                 <span className="dashboard-subtle" data-testid="topology-setup-required-status">
@@ -322,36 +686,9 @@ export function TopologyRelationshipDrawer({
                 </Link>
               </p>
             ) : null}
-            {buttonState === "setup_required" ? (
-              <Link
-                href={setupHrefs.remediator}
-                className="primary-button"
-                data-testid="topology-fix-with-automation"
-                data-state={buttonState}
-              >
-                {buttonLabel(buttonState)}
-              </Link>
-            ) : buttonState === "remediating" && evaluation.activeIncidentId ? (
-              <Link
-                href={`/incidents/${evaluation.activeIncidentId}`}
-                className="primary-button"
-                data-testid="topology-fix-with-automation"
-                data-state={buttonState}
-              >
-                {buttonLabel(buttonState)}
-              </Link>
-            ) : (
-              <button
-                type="button"
-                className="primary-button"
-                disabled={!canClick || acting}
-                onClick={onFixWithAutomation}
-                data-testid="topology-fix-with-automation"
-                data-state={buttonState}
-              >
-                {acting ? "Working…" : buttonLabel(buttonState)}
-              </button>
-            )}
+
+            {renderPrimaryCta()}
+
             {buttonState === "ready" || buttonState === "approval_required" ? (
               <p className="dashboard-subtle">Confirmation wording: “Run approved automated repair”</p>
             ) : null}
@@ -370,12 +707,29 @@ export function TopologyRelationshipDrawer({
 export const RELATIONSHIP_NO_REMEDIATOR_REASON =
   "Setup required — connect and validate a remediator provider that can restart or retry this integration.";
 
+const PROPOSED_ACTION = "Restart dependency worker / retry integration";
+
+const baseProposed = (riskLevel: "LOW" | "MEDIUM" | "HIGH", critical: boolean) => ({
+  proposedAction: PROPOSED_ACTION,
+  requiredScope: "remediation:execute",
+  riskLevel,
+  riskExplanation: riskExplanationForAction(riskLevel, PROPOSED_ACTION, critical),
+  verificationMethod: "Confirm healthy dependency traffic for a stable recovery window",
+  rollbackMethod: "Manual operator review — no automatic rollback without provider support"
+});
+
 /** Client-side evaluation until a relationship-scoped remediation connector is registered. */
 export const evaluateRelationshipAutomation = (input: {
   edge: SelectedTopologyEdge;
+  topology?: ProjectTopologyResponse;
   projectAutomationMode?: string | null;
   /** When true, a scoped remediator is registered and validated. Default: false. */
   hasRemediationCapability?: boolean;
+  /** Connected remediator without required action capability. */
+  hasConnectedRemediator?: boolean;
+  remediatorEmergencyDisabled?: boolean;
+  policyAllowsModeChange?: boolean;
+  incidentMemory?: RelationshipIncidentMemory | null;
   /** Active remediating/verifying run for endpoints of this edge. */
   activeRun?: { id: string; incidentId: string; status: string } | null;
 }): RelationshipAutomationEvaluation => {
@@ -385,8 +739,57 @@ export const evaluateRelationshipAutomation = (input: {
       ? (modeRaw as RelationshipAutomationEvaluation["automationMode"])
       : "OBSERVE";
 
+  const hasRemediationCapability = input.hasRemediationCapability ?? false;
+  const hasConnectedRemediator = input.hasConnectedRemediator ?? hasRemediationCapability;
+  const remediatorEmergencyDisabled = input.remediatorEmergencyDisabled ?? false;
+  const policyAllowsModeChange =
+    input.policyAllowsModeChange !== false && !remediatorEmergencyDisabled;
+  const confidence = resolveAutomationConfidence(input.incidentMemory);
+  const evidence = input.topology
+    ? buildRelationshipEvidence(input.edge, input.topology, input.incidentMemory)
+    : buildRelationshipEvidence(
+        input.edge,
+        {
+          project: { id: "unknown", name: "", status: "UNKNOWN" },
+          generatedAt: new Date().toISOString(),
+          nodes: [],
+          edges: [],
+          summary: {
+            total: 0,
+            healthy: 0,
+            degraded: 0,
+            critical: 0,
+            unknown: 0,
+            openAlerts: 0,
+            openIncidents: 0
+          },
+          nodeContext: {}
+        },
+        input.incidentMemory
+      );
+
+  const withBlockers = (
+    partial: Omit<
+      RelationshipAutomationEvaluation,
+      "executionBlockers" | "evidence" | "confidenceScore" | "confidenceLabel" | "policyAllowsModeChange"
+    >
+  ): RelationshipAutomationEvaluation => ({
+    ...partial,
+    confidenceScore: confidence.score,
+    confidenceLabel: confidence.label,
+    evidence,
+    policyAllowsModeChange,
+    executionBlockers: buildExecutionBlockers({
+      buttonState: partial.buttonState,
+      automationMode: partial.automationMode,
+      hasRemediationCapability,
+      hasConnectedRemediator,
+      remediatorEmergencyDisabled
+    })
+  });
+
   if (input.edge.kind === "hierarchy") {
-    return {
+    return withBlockers({
       buttonState: "no_automated_fix",
       automationMode,
       reason:
@@ -394,91 +797,98 @@ export const evaluateRelationshipAutomation = (input: {
       proposedAction: null,
       requiredScope: null,
       riskLevel: null,
+      riskExplanation: null,
       verificationMethod: null,
       rollbackMethod: null
-    };
+    });
   }
 
   if (input.activeRun) {
-    return {
+    return withBlockers({
       buttonState: "remediating",
       automationMode,
       reason: `Automated repair is ${input.activeRun.status.toLowerCase().replaceAll("_", " ")}. OpsWatch will verify recovery on this dependency after the run completes.`,
       proposedAction: "Repair in progress",
       requiredScope: "remediation:execute",
       riskLevel: null,
+      riskExplanation: null,
       verificationMethod: "Dependency health after consecutive successful checks",
       rollbackMethod: null,
       activeIncidentId: input.activeRun.incidentId,
       activeRunId: input.activeRun.id
-    };
+    });
   }
 
   if (input.edge.status === "HEALTHY") {
-    return {
+    return withBlockers({
       buttonState: "no_automated_fix",
       automationMode,
       reason: "This dependency is currently healthy. No repair is required.",
       proposedAction: null,
       requiredScope: null,
       riskLevel: null,
+      riskExplanation: null,
       verificationMethod: null,
       rollbackMethod: null
-    };
+    });
   }
 
   const riskLevel: "LOW" | "MEDIUM" | "HIGH" = input.edge.critical ? "HIGH" : "LOW";
-  const proposed = {
-    proposedAction: "Restart dependency worker / retry integration",
-    requiredScope: "remediation:execute",
-    riskLevel,
-    verificationMethod: "Confirm healthy dependency traffic for a stable recovery window",
-    rollbackMethod: "Manual operator review — no automatic rollback without provider support"
-  };
+  const proposed = baseProposed(riskLevel, input.edge.critical);
 
-  if (!input.hasRemediationCapability) {
-    return {
+  if (remediatorEmergencyDisabled) {
+    return withBlockers({
+      buttonState: "no_automated_fix",
+      automationMode,
+      reason:
+        "Emergency disable is active on the remediator — automated repair is blocked until an operator re-enables it.",
+      ...proposed
+    });
+  }
+
+  if (!hasRemediationCapability) {
+    return withBlockers({
       buttonState: "setup_required",
       automationMode,
       reason: RELATIONSHIP_NO_REMEDIATOR_REASON,
       ...proposed
-    };
+    });
   }
 
   if (automationMode === "OBSERVE") {
-    return {
-      buttonState: "no_automated_fix",
+    return withBlockers({
+      buttonState: "observe_blocked",
       automationMode,
       reason:
         "Observe mode: OpsWatch diagnosed a repair candidate but will not execute. Switch the application to Approval or Autonomous to request or run approved repairs.",
       ...proposed
-    };
+    });
   }
 
   if (automationMode === "APPROVAL") {
-    return {
+    return withBlockers({
       buttonState: "approval_required",
       automationMode,
       reason: "Approval mode: an administrator must approve before OpsWatch runs this repair.",
       ...proposed
-    };
+    });
   }
 
   // AUTONOMOUS — only previously approved low-risk actions execute without a new approval.
   if (riskLevel !== "LOW") {
-    return {
+    return withBlockers({
       buttonState: "approval_required",
       automationMode,
       reason:
         "Autonomous mode only auto-executes previously approved low-risk actions. This repair requires approval.",
       ...proposed
-    };
+    });
   }
 
-  return {
+  return withBlockers({
     buttonState: "ready",
     automationMode,
     reason: "A supported, approved low-risk remediation action is ready to run.",
     ...proposed
-  };
+  });
 };

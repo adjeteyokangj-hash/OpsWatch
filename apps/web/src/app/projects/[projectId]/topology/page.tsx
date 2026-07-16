@@ -34,9 +34,13 @@ import {
 } from "../../../../components/topology/topology-relationship-drawer";
 import {
   type ActiveAutomationRunSummary,
+  projectHasConnectedRemediator,
   projectHasRemediationCapability,
+  remediationPolicyAllowsExecution,
+  remediatorEmergencyDisabled,
   relatedIncidentsForEdge,
-  remediatingEdgeIdsFromRuns
+  remediatingEdgeIdsFromRuns,
+  type RemediationPolicyGate
 } from "../../../../components/topology/topology-automation-link";
 import type { SelectedTopologyEdge } from "../../../../components/topology/topology-edge-style";
 import { describeSelectedEdge } from "../../../../components/topology/topology-edge-style";
@@ -68,6 +72,7 @@ export default function ProjectTopologyPage() {
   const [maintenance, setMaintenance] = useState<MaintenanceBanner[]>([]);
   const [integrations, setIntegrations] = useState<ProjectIntegration[]>([]);
   const [activeRuns, setActiveRuns] = useState<ActiveAutomationRunSummary[]>([]);
+  const [remediationPolicyGate, setRemediationPolicyGate] = useState<RemediationPolicyGate | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ClassifiedTopologyError | null>(null);
   const [fixError, setFixError] = useState<string | null>(null);
@@ -97,6 +102,21 @@ export default function ProjectTopologyPage() {
     [integrations, projectId]
   );
 
+  const hasConnectedRemediator = useMemo(
+    () => (projectId ? projectHasConnectedRemediator(integrations, projectId) : false),
+    [integrations, projectId]
+  );
+
+  const emergencyDisabled = useMemo(
+    () => (projectId ? remediatorEmergencyDisabled(integrations, projectId) : false),
+    [integrations, projectId]
+  );
+
+  const policyAllowsModeChange = useMemo(
+    () => remediationPolicyAllowsExecution(remediationPolicyGate),
+    [remediationPolicyGate]
+  );
+
   const remediatingEdgeIds = useMemo(
     () => (topology ? remediatingEdgeIdsFromRuns(topology, activeRuns) : new Set<string>()),
     [topology, activeRuns]
@@ -118,11 +138,24 @@ export default function ProjectTopologyPage() {
     if (!selectedEdge) return null;
     return evaluateRelationshipAutomation({
       edge: selectedEdge,
+      topology: topology ?? undefined,
       projectAutomationMode: project?.automationMode,
       hasRemediationCapability,
+      hasConnectedRemediator,
+      remediatorEmergencyDisabled: emergencyDisabled,
+      policyAllowsModeChange,
       activeRun: activeRunForSelectedEdge
     });
-  }, [selectedEdge, project?.automationMode, hasRemediationCapability, activeRunForSelectedEdge]);
+  }, [
+    selectedEdge,
+    topology,
+    project?.automationMode,
+    hasRemediationCapability,
+    hasConnectedRemediator,
+    emergencyDisabled,
+    policyAllowsModeChange,
+    activeRunForSelectedEdge
+  ]);
 
   useEffect(() => {
     if (!selectedEdge) return;
@@ -199,7 +232,7 @@ export default function ProjectTopologyPage() {
       if (!projectId) return;
       if (manual) setRefreshing(true);
       try {
-        const [row, activeMaintenance, integrationRows, runRows] = await Promise.all([
+        const [row, activeMaintenance, integrationRows, runRows, policyPayload] = await Promise.all([
           apiFetch<ProjectTopologyResponse>(`/projects/${projectId}/topology`),
           apiFetch<MaintenanceBanner[]>(`/maintenance-windows/active?projectId=${projectId}`),
           apiFetch<ProjectIntegration[]>(
@@ -207,12 +240,24 @@ export default function ProjectTopologyPage() {
           ).catch(() => [] as ProjectIntegration[]),
           apiFetch<ActiveAutomationRunSummary[]>(
             `/automation/projects/${encodeURIComponent(projectId)}/active-runs`
-          ).catch(() => [] as ActiveAutomationRunSummary[])
+          ).catch(() => [] as ActiveAutomationRunSummary[]),
+          apiFetch<{ policies: Array<{ policyType: string; policyKey: string; enabled: boolean }> }>(
+            "/remediation/policy"
+          ).catch(() => null)
         ]);
         setTopology(row);
         setMaintenance(activeMaintenance);
         setIntegrations(integrationRows);
         setActiveRuns(runRows);
+        if (policyPayload?.policies) {
+          const globalEnabled =
+            policyPayload.policies.find((p) => p.policyType === "GLOBAL" && p.policyKey === "")?.enabled ??
+            false;
+          const projectEnabled =
+            policyPayload.policies.find((p) => p.policyType === "PROJECT" && p.policyKey === projectId)
+              ?.enabled ?? false;
+          setRemediationPolicyGate({ globalEnabled, projectEnabled });
+        }
         setLastSuccessfulAt(row.generatedAt || new Date().toISOString());
         setError(null);
       } catch (err: unknown) {
@@ -258,13 +303,18 @@ export default function ProjectTopologyPage() {
     if (!selectedEdge || !topology || !projectId) return;
     const evaluation = evaluateRelationshipAutomation({
       edge: selectedEdge,
+      topology,
       projectAutomationMode: project?.automationMode,
       hasRemediationCapability,
+      hasConnectedRemediator,
+      remediatorEmergencyDisabled: emergencyDisabled,
+      policyAllowsModeChange,
       activeRun: activeRunForSelectedEdge
     });
     if (
       evaluation.buttonState === "setup_required" ||
       evaluation.buttonState === "no_automated_fix" ||
+      evaluation.buttonState === "observe_blocked" ||
       evaluation.buttonState === "remediating"
     ) {
       return;
@@ -321,6 +371,9 @@ export default function ProjectTopologyPage() {
     projectId,
     project?.automationMode,
     hasRemediationCapability,
+    hasConnectedRemediator,
+    emergencyDisabled,
+    policyAllowsModeChange,
     activeRunForSelectedEdge,
     load
   ]);

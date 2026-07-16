@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  projectHasConnectedRemediator,
   projectHasRemediationCapability,
+  remediationPolicyAllowsExecution,
   remediatingEdgeIdsFromRuns,
+  remediatorEmergencyDisabled,
   topologyReturnPath
 } from "./topology-automation-link";
 import type { ProjectIntegration } from "../../lib/integrations";
@@ -55,6 +58,34 @@ describe("projectHasRemediationCapability", () => {
         "restart_sync_worker"
       )
     ).toBe(false);
+  });
+
+  it("detects connected remediator without required action capability", () => {
+    const integration = baseIntegration({
+      configJson: {
+        WORKER_RESTART_WEBHOOK_URL: "https://example.com/restart",
+        REMEDIATOR_CAPABILITIES: "retry_failed_jobs"
+      }
+    });
+    expect(projectHasConnectedRemediator([integration], "proj-1")).toBe(true);
+    expect(projectHasRemediationCapability([integration], "proj-1", "restart_sync_worker")).toBe(false);
+  });
+
+  it("detects emergency disable on remediator integrations", () => {
+    expect(
+      remediatorEmergencyDisabled(
+        [baseIntegration({ configJson: { REMEDIATOR_EMERGENCY_DISABLED: true } })],
+        "proj-1"
+      )
+    ).toBe(true);
+  });
+});
+
+describe("remediationPolicyAllowsExecution", () => {
+  it("requires global and project gates when provided", () => {
+    expect(remediationPolicyAllowsExecution({ globalEnabled: true, projectEnabled: true })).toBe(true);
+    expect(remediationPolicyAllowsExecution({ globalEnabled: false, projectEnabled: true })).toBe(false);
+    expect(remediationPolicyAllowsExecution(null)).toBe(true);
   });
 });
 
