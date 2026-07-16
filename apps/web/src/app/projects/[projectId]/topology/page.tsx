@@ -43,7 +43,7 @@ import {
   remediatingEdgeIdsFromRuns,
   type RemediationPolicyGate
 } from "../../../../components/topology/topology-automation-link";
-import type { SelectedTopologyEdge } from "../../../../components/topology/topology-edge-style";
+import { patchProjectAutonomousMode } from "../../../../components/automation/autonomous-mode-control";
 import { describeSelectedEdge } from "../../../../components/topology/topology-edge-style";
 import { resolveDependencyDisplayLinks, resolveHierarchyDisplayLinks } from "../../../../components/topology/topology-edge-resolve";
 import { computeLayeredLayout } from "../../../../components/topology/topology-layout";
@@ -68,7 +68,7 @@ type AutomationPlanResponse = {
 export default function ProjectTopologyPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const searchParams = useSearchParams();
-  const { project, loading: projectLoading, error: projectError } = useProjectWorkspace(projectId);
+  const { project, loading: projectLoading, error: projectError, reload: reloadProject } = useProjectWorkspace(projectId);
   const [topology, setTopology] = useState<ProjectTopologyResponse | null>(null);
   const [maintenance, setMaintenance] = useState<MaintenanceBanner[]>([]);
   const [integrations, setIntegrations] = useState<ProjectIntegration[]>([]);
@@ -339,6 +339,20 @@ export default function ProjectTopologyPage() {
     setSelectedNodeId(null);
     setRestoredEdgeId(edgeId);
   }, [topology, searchParams, restoredEdgeId]);
+
+  const enableAutonomousMode = useCallback(async () => {
+    if (!projectId) return;
+    setFixActing(true);
+    setFixError(null);
+    try {
+      await patchProjectAutonomousMode(projectId, "AUTO_HEAL_SAFE");
+      await reloadProject();
+    } catch (err: unknown) {
+      setFixError(err instanceof Error ? err.message : "Failed to enable auto-heal mode");
+    } finally {
+      setFixActing(false);
+    }
+  }, [projectId, reloadProject]);
 
   const runFixWithAutomation = useCallback(async () => {
     if (!selectedEdge || !topology || !projectId) return;
@@ -615,6 +629,9 @@ export default function ProjectTopologyPage() {
                     onClose={() => setSelectedEdge(null)}
                     onFixWithAutomation={() => {
                       void runFixWithAutomation();
+                    }}
+                    onEnableAutonomousMode={() => {
+                      void enableAutonomousMode();
                     }}
                   />
                 ) : (

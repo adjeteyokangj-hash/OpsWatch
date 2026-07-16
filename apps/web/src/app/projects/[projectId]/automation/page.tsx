@@ -7,6 +7,7 @@ import { ProjectWorkspaceShell } from "../../../../components/projects/project-w
 import { WorkspaceSummaryStrip } from "../../../../components/projects/workspace-summary-strip";
 import { EmptyState } from "../../../../components/ui/empty-state";
 import { StatusBadge } from "../../../../components/ui/status-badge";
+import { AutonomousModeControl } from "../../../../components/automation/autonomous-mode-control";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../lib/api";
 
@@ -76,6 +77,10 @@ export default function ProjectAutomationPage() {
           { key: "pending", label: "Pending / planned", value: historyLoading ? "…" : pending, tone: pending > 0 ? "degraded" : "info" }
         ]}
       />
+
+      <section className="panel">
+        <AutonomousModeControl projectId={projectId} />
+      </section>
 
       <section className="panel">
         <div className="section-head">

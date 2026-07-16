@@ -27,6 +27,10 @@ import {
 import { getProjectTopology } from "../controllers/topology.controller";
 import { getRelationshipIncidentMemorySignals } from "../controllers/topology.controller";
 import {
+  getProjectAutonomousMode,
+  patchProjectAutonomousMode
+} from "../controllers/project-automation-mode.controller";
+import {
   getProjectBillingHandler,
   updateProjectBillingHandler
 } from "../controllers/project-billing.controller";
@@ -45,6 +49,9 @@ projectsRouter.get(
   "/projects/:projectId/topology/relationships/:edgeId/incident-memory",
   getRelationshipIncidentMemorySignals
 );
+
+projectsRouter.get("/projects/:projectId/automation-mode", getProjectAutonomousMode);
+projectsRouter.patch("/projects/:projectId/automation-mode", patchProjectAutonomousMode);
 
 projectsRouter.get("/projects/:projectId/services", listServicesByProject);
 projectsRouter.post("/projects/:projectId/services", createServiceByProject);

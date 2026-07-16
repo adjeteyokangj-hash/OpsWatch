@@ -22,6 +22,7 @@ import {
 import { findActiveMaintenanceForService } from "../maintenance-window-policy.service";
 import { assertPolicyControlledRemediationAllowed } from "../entitlements/remediation-governance.service";
 import { isEntitlementError } from "../entitlements/entitlement.service";
+import { projectAllowsAutonomousExecution } from "../automation/project-autonomous-mode.service";
 
 export interface AutoHealAttemptResult {
   incidentId: string;
@@ -162,6 +163,14 @@ const runIncidentAutoHealLocked = async (
   }
   if (incident.status === "RESOLVED") {
     return { incidentId, attempted: false, blockedReason: "Incident already resolved" };
+  }
+
+  const projectGate = await projectAllowsAutonomousExecution({
+    organizationId,
+    projectId: incident.projectId
+  });
+  if (!projectGate.allowed) {
+    return { incidentId, attempted: false, blockedReason: projectGate.reason };
   }
 
   const contextForMaintenance = await buildContext(organizationId, incidentId);

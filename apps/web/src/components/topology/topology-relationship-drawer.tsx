@@ -9,6 +9,12 @@ import {
   relatedAlertsForEdge,
   topologyReturnPath
 } from "./topology-automation-link";
+import {
+  AUTONOMOUS_MODE_LABELS,
+  normalizeProjectAutonomousMode,
+  type ProjectAutonomousMode
+} from "../../lib/autonomous-mode";
+import { AutonomousModeBadge } from "../automation/autonomous-mode-control";
 
 export type AutomationButtonState =
   | "ready"
@@ -70,7 +76,7 @@ export type RelationshipIncidentMemorySignals = {
 
 export type RelationshipAutomationEvaluation = {
   buttonState: AutomationButtonState;
-  automationMode: "OBSERVE" | "APPROVAL" | "AUTONOMOUS";
+  automationMode: ProjectAutonomousMode;
   reason: string;
   proposedAction: string | null;
   requiredScope: string | null;
@@ -97,13 +103,14 @@ type Props = {
   acting?: boolean;
   onClose: () => void;
   onFixWithAutomation: () => void;
+  onEnableAutonomousMode?: () => void;
 };
 
 export const buttonLabel = (state: AutomationButtonState): string => {
   if (state === "ready") return "Fix with automation";
   if (state === "approval_required") return "Request Approval";
   if (state === "setup_required") return "Connect Remediator to Enable Repair";
-  if (state === "observe_blocked") return "Enable Autonomous Mode";
+  if (state === "observe_blocked") return "Enable Auto-Heal";
   if (state === "remediating") return "View repair in progress";
   return "No automated fix";
 };
@@ -348,7 +355,7 @@ export const buildExecutionBlockers = (input: {
   remediatorEmergencyDisabled: boolean;
 }): AutomationExecutionBlocker[] => {
   const observeActive =
-    input.automationMode === "OBSERVE" &&
+    (input.automationMode === "MONITOR_ONLY" || input.automationMode === "DISABLED") &&
     (input.buttonState === "observe_blocked" || input.buttonState === "no_automated_fix");
   const noRemediatorActive =
     !input.hasConnectedRemediator &&
@@ -361,7 +368,7 @@ export const buildExecutionBlockers = (input: {
   return [
     {
       id: "observe_mode",
-      label: "Observe mode enabled",
+      label: "Monitor-only mode enabled",
       active: observeActive
     },
     {
@@ -387,45 +394,6 @@ export const buildExecutionBlockers = (input: {
   ];
 };
 
-const MODE_BADGE: Record<
-  RelationshipAutomationEvaluation["automationMode"],
-  { label: string; tone: string; dotClass: string }
-> = {
-  OBSERVE: {
-    label: "Observe",
-    tone: "topology-mode-badge--observe",
-    dotClass: "topology-mode-dot--observe"
-  },
-  APPROVAL: {
-    label: "Approval Required",
-    tone: "topology-mode-badge--approval",
-    dotClass: "topology-mode-dot--approval"
-  },
-  AUTONOMOUS: {
-    label: "Autonomous",
-    tone: "topology-mode-badge--autonomous",
-    dotClass: "topology-mode-dot--autonomous"
-  }
-};
-
-export function AutomationModeBadge({
-  mode
-}: {
-  mode: RelationshipAutomationEvaluation["automationMode"];
-}) {
-  const config = MODE_BADGE[mode];
-  return (
-    <span
-      className={`topology-automation-mode-badge ${config.tone}`}
-      data-testid="topology-automation-mode-badge"
-      data-mode={mode}
-    >
-      <span className={`topology-mode-dot ${config.dotClass}`} aria-hidden="true" />
-      <span>{config.label}</span>
-    </span>
-  );
-}
-
 /** Destinations for setup_required CTAs — remediator first, then connections + settings. */
 export const relationshipSetupHrefs = (
   projectId: string,
@@ -443,6 +411,8 @@ export const relationshipSetupHrefs = (
   };
 };
 
+export { AutonomousModeBadge as AutomationModeBadge };
+
 export function TopologyRelationshipDrawer({
   edge,
   topology,
@@ -451,7 +421,8 @@ export function TopologyRelationshipDrawer({
   evaluating = false,
   acting = false,
   onClose,
-  onFixWithAutomation
+  onFixWithAutomation,
+  onEnableAutonomousMode
 }: Props) {
   const relatedAlerts = relatedAlertsForEdge(topology, edge);
   const relatedIncidents = Object.entries(topology.nodeContext)
@@ -497,22 +468,26 @@ export function TopologyRelationshipDrawer({
     }
 
     if (buttonState === "observe_blocked") {
-      if (evaluation?.policyAllowsModeChange) {
+      if (evaluation?.policyAllowsModeChange && onEnableAutonomousMode) {
         return (
-          <Link
-            href={setupHrefs.automationMode}
+          <button
+            type="button"
             className="primary-button"
+            disabled={acting}
+            onClick={onEnableAutonomousMode}
             data-testid="topology-fix-with-automation"
             data-state={buttonState}
           >
-            {buttonLabel(buttonState)}
-          </Link>
+            {acting ? "Updating mode…" : buttonLabel(buttonState)}
+          </button>
         );
       }
       return (
         <p className="topology-observe-blocked-note" data-testid="topology-observe-blocked-note" role="status">
-          Observe mode blocks execution. Organisation or project policy does not allow enabling autonomous
-          repairs — contact an administrator to update auto-run policy.
+          {AUTONOMOUS_MODE_LABELS[evaluation?.automationMode ?? "MONITOR_ONLY"]} blocks execution.
+          {evaluation?.policyAllowsModeChange
+            ? " Organisation or project policy does not allow escalating autonomous repairs — contact an administrator."
+            : " Organisation or project policy does not allow enabling autonomous repairs — contact an administrator to update auto-run policy."}
         </p>
       );
     }
@@ -714,7 +689,7 @@ export function TopologyRelationshipDrawer({
           <>
             <div className="topology-automation-mode-row">
               <span className="dashboard-subtle">Mode</span>
-              <AutomationModeBadge mode={evaluation.automationMode} />
+              <AutonomousModeBadge mode={evaluation.automationMode} />
             </div>
             <p data-testid="topology-automation-reason">{evaluation.reason}</p>
 
@@ -962,11 +937,8 @@ export const evaluateRelationshipAutomation = (input: {
   /** Active remediating/verifying run for endpoints of this edge. */
   activeRun?: { id: string; incidentId: string; status: string } | null;
 }): RelationshipAutomationEvaluation => {
-  const modeRaw = (input.projectAutomationMode || "OBSERVE").toUpperCase();
-  const automationMode =
-    modeRaw === "AUTONOMOUS" || modeRaw === "APPROVAL" || modeRaw === "OBSERVE"
-      ? (modeRaw as RelationshipAutomationEvaluation["automationMode"])
-      : "OBSERVE";
+  const modeRaw = normalizeProjectAutonomousMode(input.projectAutomationMode);
+  const automationMode = modeRaw;
 
   const hasRemediationCapability = input.hasRemediationCapability ?? false;
   const hasConnectedRemediator = input.hasConnectedRemediator ?? hasRemediationCapability;
@@ -1084,26 +1056,58 @@ export const evaluateRelationshipAutomation = (input: {
     });
   }
 
-  if (automationMode === "OBSERVE") {
+  if (automationMode === "DISABLED") {
+    return withBlockers({
+      buttonState: "no_automated_fix",
+      automationMode,
+      reason: "Autonomous remediation is disabled for this application.",
+      proposedAction: null,
+      requiredScope: null,
+      riskLevel: null,
+      riskExplanation: null,
+      verificationMethod: null,
+      rollbackMethod: null
+    });
+  }
+
+  if (automationMode === "MONITOR_ONLY") {
     return withBlockers({
       buttonState: "observe_blocked",
       automationMode,
       reason:
-        "Observe mode: OpsWatch diagnosed a repair candidate but will not execute. Switch the application to Approval or Autonomous to request or run approved repairs.",
+        "Monitor-only mode: OpsWatch diagnosed a repair candidate but will not execute. Enable Auto-Heal or a higher mode to run repairs.",
       ...proposed
     });
   }
 
-  if (automationMode === "APPROVAL") {
+  if (automationMode === "RECOMMEND") {
     return withBlockers({
       buttonState: "approval_required",
       automationMode,
-      reason: "Approval mode: an administrator must approve before OpsWatch runs this repair.",
+      reason: "Recommend mode: OpsWatch can plan fixes but an administrator must approve before execution.",
       ...proposed
     });
   }
 
-  // AUTONOMOUS — only previously approved low-risk actions execute without a new approval.
+  if (automationMode === "AUTO_HEAL_SAFE") {
+    if (riskLevel !== "LOW") {
+      return withBlockers({
+        buttonState: "approval_required",
+        automationMode,
+        reason:
+          "Auto-heal safe mode only auto-executes allowlisted low-risk actions. This repair requires approval.",
+        ...proposed
+      });
+    }
+    return withBlockers({
+      buttonState: "ready",
+      automationMode,
+      reason: "A supported allowlisted low-risk remediation action is ready to run.",
+      ...proposed
+    });
+  }
+
+  // FULL_AUTONOMOUS — only previously approved low-risk actions execute without a new approval.
   if (riskLevel !== "LOW") {
     return withBlockers({
       buttonState: "approval_required",

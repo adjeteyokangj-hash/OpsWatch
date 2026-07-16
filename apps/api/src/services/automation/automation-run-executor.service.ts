@@ -22,6 +22,7 @@ import {
 } from "./automation-safeguards.service";
 import { findActiveMaintenanceForService } from "../maintenance-window-policy.service";
 import { assertAutonomousRemediationAllowed } from "../entitlements/remediation-governance.service";
+import { projectAllowsAutonomousExecution } from "./project-autonomous-mode.service";
 import { isEntitlementError } from "../entitlements/entitlement.service";
 import {
   completeProjectRecovery,
@@ -901,6 +902,14 @@ export const executeAutonomousRun = async (input: {
   }
 
   const run = await loadRunOrThrow(input.organizationId, input.runId);
+  const projectGate = await projectAllowsAutonomousExecution({
+    organizationId: input.organizationId,
+    projectId: run.projectId,
+    requireFullAutonomous: false
+  });
+  if (!projectGate.allowed) {
+    throw new Error(projectGate.reason);
+  }
   if (run.executionMode !== "AUTONOMOUS") {
     throw new Error("Run is not in autonomous execution mode");
   }
@@ -951,7 +960,7 @@ export const runAutonomousAutomationSweep = async (organizationId?: string): Pro
       status: { in: ["PLANNED", "APPROVAL_PENDING"] },
       ...(organizationId ? { organizationId } : {})
     },
-    select: { id: true, organizationId: true },
+    select: { id: true, organizationId: true, projectId: true },
     take: Number(process.env.AUTOMATION_AUTONOMOUS_SWEEP_LIMIT || 10)
   });
 
@@ -960,6 +969,13 @@ export const runAutonomousAutomationSweep = async (organizationId?: string): Pro
     try {
       await assertAutonomousRemediationAllowed(run.organizationId);
     } catch {
+      continue;
+    }
+    const projectGate = await projectAllowsAutonomousExecution({
+      organizationId: run.organizationId,
+      projectId: run.projectId
+    });
+    if (!projectGate.allowed) {
       continue;
     }
     try {

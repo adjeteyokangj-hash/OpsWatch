@@ -285,7 +285,7 @@ model Project {
   lastSignalAt            DateTime?
   monitoringEnabled       Boolean                   @default(true)
   monitoringStartedAt     DateTime?
-  automationMode          String                    @default("OBSERVE")
+  automationMode          String                    @default("MONITOR_ONLY")
   /// Emergency kill-switch: blocks all remediator-driven repair execution for this project.
   remediationEmergencyDisabled Boolean              @default(false)
   projectOwner            String?

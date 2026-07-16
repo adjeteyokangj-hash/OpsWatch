@@ -7,6 +7,11 @@ import { resolveLatestApprovedVersion } from "./playbook-governance.service";
 import { checkAutomationRateLimits, isPlaybookAutonomousEligible } from "./automation-safeguards.service";
 import { executeAutonomousRun } from "./automation-run-executor.service";
 import { clampAutomationExecutionMode } from "../entitlements/remediation-governance.service";
+import {
+  projectAllowsAutonomousExecution,
+  resolveProjectAutonomousModeState
+} from "./project-autonomous-mode.service";
+import { toAutomationRunExecutionMode } from "@opswatch/shared";
 
 const nobleServiceId = (key: string): string => `svc-ne-${key}`;
 
@@ -87,11 +92,20 @@ export const planAutomationForIncident = async (input: {
   const incident = await prisma.incident.findFirst({
     where: { id: input.incidentId, Project: { organizationId: input.organizationId } },
     include: {
-      Project: { select: { id: true, name: true } },
+      Project: { select: { id: true, name: true, automationMode: true } },
       IncidentAlert: { include: { Alert: { select: { title: true, serviceId: true } } } }
     }
   });
   if (!incident) return null;
+
+  const modeState = await resolveProjectAutonomousModeState({
+    organizationId: input.organizationId,
+    projectId: incident.projectId,
+    requestedMode: incident.Project.automationMode
+  });
+  if (!modeState?.capabilities.allowsPlanning) {
+    return null;
+  }
 
   const policy = await prisma.automationPolicy.findUnique({
     where: {
@@ -101,10 +115,17 @@ export const planAutomationForIncident = async (input: {
       }
     }
   });
-  const executionMode = await clampAutomationExecutionMode(
+  const orgExecutionMode = await clampAutomationExecutionMode(
     input.organizationId,
     (policy?.executionMode ?? "OBSERVE") as AutomationPlan["executionMode"]
   );
+  const executionMode = toAutomationRunExecutionMode(modeState.effectiveMode) as AutomationPlan["executionMode"];
+  const clampedExecutionMode =
+    executionMode === "AUTONOMOUS" && orgExecutionMode !== "AUTONOMOUS"
+      ? ("APPROVAL" as AutomationPlan["executionMode"])
+      : executionMode === "APPROVAL" && orgExecutionMode === "OBSERVE"
+        ? ("OBSERVE" as AutomationPlan["executionMode"])
+        : executionMode;
 
   const diagnosis = await buildIncidentDiagnosis(input.organizationId, {
     incidentId: input.incidentId
@@ -161,7 +182,7 @@ export const planAutomationForIncident = async (input: {
     analysisMode: llmSelection.analysisMode === "LLM" ? "LLM" : (diagnosis.analysisMode ?? "CORRELATION"),
     confidence: llmSelection.confidence,
     riskLevel: playbook.riskLevel,
-    executionMode,
+    executionMode: clampedExecutionMode,
     reason: llmSelection.analysisMode === "LLM" ? llmSelection.reason || reason : reason,
     steps
   };
@@ -173,7 +194,7 @@ export const planAutomationForIncident = async (input: {
     supersededByRunId: runId
   });
 
-  const initialStatus = executionMode === "APPROVAL" ? "APPROVAL_PENDING" : "PLANNED";
+  const initialStatus = clampedExecutionMode === "APPROVAL" ? "APPROVAL_PENDING" : "PLANNED";
 
   const run = await prisma.automationRun.create({
     data: {
@@ -182,7 +203,7 @@ export const planAutomationForIncident = async (input: {
       projectId: incident.projectId,
       incidentId: incident.id,
       versionId: version.id,
-      executionMode,
+      executionMode: clampedExecutionMode,
       status: initialStatus,
       planJson: plan as object,
       analysisMode: plan.analysisMode,
@@ -205,12 +226,21 @@ export const planAutomationForIncident = async (input: {
   });
 
   if (
-    executionMode === "AUTONOMOUS" &&
+    clampedExecutionMode === "AUTONOMOUS" &&
     policy?.enabled &&
     isPlaybookAutonomousEligible(
       steps.map((step) => ({ action: step.action, approvalRequired: step.approvalRequired }))
     )
   ) {
+    const projectGate = await projectAllowsAutonomousExecution({
+      organizationId: input.organizationId,
+      projectId: incident.projectId,
+      requireFullAutonomous: modeState.effectiveMode === "FULL_AUTONOMOUS"
+    });
+    if (!projectGate.allowed) {
+      return { ...plan, runId: run.id };
+    }
+
     void executeAutonomousRun({
       organizationId: input.organizationId,
       runId: run.id,

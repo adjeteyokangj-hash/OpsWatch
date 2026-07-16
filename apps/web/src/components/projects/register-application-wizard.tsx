@@ -374,7 +374,7 @@ export function RegisterApplicationWizard({
           environment: form.environment,
           frontendUrl: form.publicUrl.trim() || undefined,
           monitoringEnabled: true,
-          automationMode: "OBSERVE"
+          automationMode: "MONITOR_ONLY"
         })
       });
 

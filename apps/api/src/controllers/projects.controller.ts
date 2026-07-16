@@ -153,7 +153,7 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 				healthSource: "project-create",
 				monitoringEnabled: body.monitoringEnabled !== false,
 				monitoringStartedAt: body.monitoringEnabled === false ? null : now,
-				automationMode: typeof body.automationMode === "string" ? body.automationMode : "OBSERVE",
+				automationMode: typeof body.automationMode === "string" ? body.automationMode : "MONITOR_ONLY",
 				operationalLocationId,
 				apiKey: generateApiKey(),
 				signingSecret: generateSigningSecret(),
