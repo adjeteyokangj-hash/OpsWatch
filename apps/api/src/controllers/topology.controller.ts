@@ -1,6 +1,7 @@
 import { Response } from "express";
 import type { AuthRequest } from "../middleware/auth";
 import { loadProjectTopology } from "../services/topology-loader.service";
+import { getRelationshipIncidentMemorySignals as fetchRelationshipIncidentMemorySignals } from "../services/ai/relationship-incident-memory.service";
 
 const requireOrg = (req: AuthRequest, res: Response): string | null => {
   const orgId = req.user?.organizationId;
@@ -22,4 +23,20 @@ export const getProjectTopology = async (req: AuthRequest, res: Response) => {
   }
 
   res.json(topology);
+};
+
+export const getRelationshipIncidentMemorySignals = async (req: AuthRequest, res: Response): Promise<void> => {
+  const orgId = requireOrg(req, res);
+  if (!orgId) return;
+
+  const projectId = String(req.params.projectId);
+  const edgeId = String(req.params.edgeId);
+
+  const signals = await fetchRelationshipIncidentMemorySignals({
+    organizationId: orgId,
+    projectId,
+    edgeId
+  });
+
+  res.json(signals);
 };

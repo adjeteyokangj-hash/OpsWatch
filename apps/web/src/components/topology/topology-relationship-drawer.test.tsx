@@ -230,18 +230,72 @@ describe("TopologyRelationshipDrawer", () => {
     expect(screen.getByTestId("topology-automation-confidence")).not.toHaveTextContent(/96%/);
   });
 
-  it("shows real confidence when incident memory score is provided", () => {
+  it("shows computed confidence and incident-memory evidence when learning data is provided", () => {
+    const predictedAt = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
     const evaluation = evaluateRelationshipAutomation({
       edge,
       topology,
       projectAutomationMode: "APPROVAL",
       hasRemediationCapability: true,
-      incidentMemory: { confidenceScore: 0.82, occurrenceCount: 3 }
+      incidentMemory: {
+        occurrenceCount: 3,
+        frequencyPer30Days: 2.5,
+        averagePatternSimilarity: 0.82,
+        mttrMs: 2 * 60 * 60 * 1000,
+        predictedNextOccurrenceAt: predictedAt,
+        previousFixCount: 4,
+        successRate: 0.75,
+        matches: [
+          {
+            incidentId: "inc-a",
+            title: "Example incident A",
+            similarity: 0.9,
+            resolvedAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+            resolutionTimeMs: 1000,
+            lastFixSuccess: true
+          },
+          {
+            incidentId: "inc-b",
+            title: "Example incident B",
+            similarity: 0.72,
+            resolvedAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
+            resolutionTimeMs: 2000,
+            lastFixSuccess: false
+          }
+        ]
+      }
     });
     renderDrawer(evaluation);
 
-    expect(screen.getByTestId("topology-automation-confidence")).toHaveTextContent("82%");
+    expect(screen.getByTestId("topology-automation-confidence")).toHaveTextContent("61%");
     expect(screen.getByTestId("topology-evidence-summary")).toHaveTextContent(/3 prior occurrences/i);
+    expect(screen.getByText(/Pattern similarity proxy/i)).toHaveTextContent("82%");
+    expect(screen.getByText(/Frequency:/i)).toHaveTextContent("2.5/30d");
+    expect(screen.getByText(/Recovery time \\(MTTR\\):/i)).toHaveTextContent(/min/i);
+    expect(screen.getByText(/Predicted next occurrence/i)).toBeInTheDocument();
+    expect(screen.getByText(/Prior fix attempts:/i)).toHaveTextContent("4");
+    expect(screen.getByText(/success rate:/i)).toHaveTextContent("75%");
+    expect(screen.getByText("Example incident A")).toBeInTheDocument();
+    expect(screen.getByText("Example incident B")).toBeInTheDocument();
+  });
+
+  it("shows partial evidence without faking unavailable incident-memory signals", () => {
+    const evaluation = evaluateRelationshipAutomation({
+      edge,
+      topology,
+      projectAutomationMode: "APPROVAL",
+      hasRemediationCapability: true,
+      incidentMemory: { occurrenceCount: 2, matches: [] }
+    });
+
+    renderDrawer(evaluation);
+
+    expect(screen.getByTestId("topology-automation-confidence")).toHaveTextContent("20%");
+    expect(screen.getByTestId("topology-evidence-summary")).toHaveTextContent(/2 prior occurrence/i);
+    expect(screen.queryByText(/Pattern similarity proxy/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Frequency:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Recovery time \\(MTTR\\):/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Predicted next occurrence/i)).not.toBeInTheDocument();
   });
 
   it("shows risk explanation for high-risk critical edges", () => {
@@ -347,6 +401,20 @@ describe("buildExecutionBlockers", () => {
 describe("resolveAutomationConfidence", () => {
   it("returns unavailable label without incident memory", () => {
     expect(resolveAutomationConfidence(null).label).toMatch(/Not available/i);
+  });
+
+  it("computes a stable score from incident memory signals", () => {
+    const predictedAt = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
+    const { score } = resolveAutomationConfidence({
+      occurrenceCount: 3,
+      frequencyPer30Days: 2.5,
+      averagePatternSimilarity: 0.82,
+      mttrMs: 2 * 60 * 60 * 1000,
+      predictedNextOccurrenceAt: predictedAt,
+      previousFixCount: 4,
+      successRate: 0.75
+    });
+    expect(score).toBe(61);
   });
 });
 

@@ -39,11 +39,33 @@ export type RelationshipAutomationEvidence = {
   relationshipHealth: string;
   lastFailure: string | null;
   incidentMemoryOccurrences: number | null;
+  incidentMemoryFrequencyPer30Days: number | null;
+  incidentMemoryAveragePatternSimilarity: number | null;
+  incidentMemoryMttrMs: number | null;
+  incidentMemoryPredictedNextOccurrenceAt: string | null;
+  incidentMemoryPreviousFixCount: number | null;
+  incidentMemorySuccessRate: number | null;
+  incidentMemoryMatches: RelationshipIncidentMemoryMatch[];
 };
 
-export type RelationshipIncidentMemory = {
-  confidenceScore?: number | null;
+export type RelationshipIncidentMemoryMatch = {
+  incidentId: string;
+  title: string;
+  similarity?: number | null;
+  resolvedAt?: string | null;
+  resolutionTimeMs?: number | null;
+  lastFixSuccess?: boolean | null;
+};
+
+export type RelationshipIncidentMemorySignals = {
   occurrenceCount?: number | null;
+  frequencyPer30Days?: number | null;
+  averagePatternSimilarity?: number | null;
+  mttrMs?: number | null;
+  predictedNextOccurrenceAt?: string | null;
+  previousFixCount?: number | null;
+  successRate?: number | null;
+  matches?: RelationshipIncidentMemoryMatch[];
 };
 
 export type RelationshipAutomationEvaluation = {
@@ -111,23 +133,117 @@ export const riskExplanationForAction = (
 };
 
 export const resolveAutomationConfidence = (
-  incidentMemory?: RelationshipIncidentMemory | null
+  incidentMemory?: RelationshipIncidentMemorySignals | null
 ): { score: number | null; label: string } => {
-  const raw = incidentMemory?.confidenceScore;
-  if (typeof raw === "number" && Number.isFinite(raw)) {
-    const percent = raw <= 1 ? Math.round(raw * 100) : Math.round(raw);
-    return { score: percent, label: `${percent}%` };
+  if (!incidentMemory) {
+    return { score: null, label: "Not available (insufficient learning data)" };
   }
-  return {
-    score: null,
-    label: "Not available (insufficient learning data)"
-  };
+
+  const occurrenceCount = incidentMemory.occurrenceCount ?? null;
+  const frequencyPer30Days = incidentMemory.frequencyPer30Days ?? null;
+  const averagePatternSimilarity = incidentMemory.averagePatternSimilarity ?? null;
+  const mttrMs = incidentMemory.mttrMs ?? null;
+  const predictedNextOccurrenceAt = incidentMemory.predictedNextOccurrenceAt ?? null;
+  const previousFixCount = incidentMemory.previousFixCount ?? null;
+  const successRate = incidentMemory.successRate ?? null;
+
+  const hasAnySignal =
+    occurrenceCount != null ||
+    frequencyPer30Days != null ||
+    averagePatternSimilarity != null ||
+    mttrMs != null ||
+    predictedNextOccurrenceAt != null ||
+    previousFixCount != null ||
+    successRate != null;
+
+  if (!hasAnySignal) {
+    return { score: null, label: "Not available (insufficient learning data)" };
+  }
+
+  const nowMs = Date.now();
+  const predictedFactor = (() => {
+    if (!predictedNextOccurrenceAt) return null;
+    const dt = new Date(predictedNextOccurrenceAt);
+    const t = dt.getTime();
+    if (!Number.isFinite(t) || t <= 0) return null;
+    const daysUntil = (t - nowMs) / (24 * 60 * 60 * 1000);
+    if (daysUntil >= 0 && daysUntil <= 14) return 1;
+    if (daysUntil > 14 && daysUntil <= 30) return 0.6;
+    if (daysUntil < 0) return 0.1;
+    return 0.3;
+  })();
+
+  const occurrenceFactor = (() => {
+    if (occurrenceCount == null) return null;
+    if (!Number.isFinite(occurrenceCount) || occurrenceCount < 0) return null;
+    // Saturates at 10 occurrences.
+    return Math.max(0, Math.min(1, occurrenceCount / 10));
+  })();
+
+  const frequencyFactor = (() => {
+    if (frequencyPer30Days == null) return null;
+    if (!Number.isFinite(frequencyPer30Days) || frequencyPer30Days < 0) return null;
+    // Saturates at 5 occurrences per 30 days.
+    return Math.max(0, Math.min(1, frequencyPer30Days / 5));
+  })();
+
+  const similarityFactor = (() => {
+    if (averagePatternSimilarity == null) return null;
+    if (!Number.isFinite(averagePatternSimilarity) || averagePatternSimilarity < 0) return null;
+    // Clamp similarity to [0,1] since it may be a proxy from embeddings.
+    return Math.max(0, Math.min(1, averagePatternSimilarity));
+  })();
+
+  const mttrFactor = (() => {
+    if (mttrMs == null) return null;
+    if (!Number.isFinite(mttrMs) || mttrMs < 0) return null;
+    // Prefer shorter, stable recovery windows. Threshold is intentionally conservative.
+    const sixHoursMs = 6 * 60 * 60 * 1000;
+    const factor = 1 - Math.min(mttrMs / sixHoursMs, 1);
+    return Math.max(0, Math.min(1, factor));
+  })();
+
+  const previousFixFactor = (() => {
+    if (previousFixCount == null) return null;
+    if (!Number.isFinite(previousFixCount) || previousFixCount < 0) return null;
+    // Saturates at 8 prior fix attempts.
+    return Math.max(0, Math.min(1, previousFixCount / 8));
+  })();
+
+  const successFactor = (() => {
+    if (successRate == null) return null;
+    if (!Number.isFinite(successRate) || successRate < 0) return null;
+    // successRate is expected as a proxy in [0,1].
+    return Math.max(0, Math.min(1, successRate));
+  })();
+
+  // Weighted composite using only available signals.
+  const weights: Array<{ factor: number | null; weight: number }> = [
+    { factor: occurrenceFactor, weight: 22 },
+    { factor: frequencyFactor, weight: 14 },
+    { factor: similarityFactor, weight: 20 },
+    { factor: mttrFactor, weight: 16 },
+    { factor: predictedFactor, weight: 6 },
+    { factor: previousFixFactor, weight: 10 },
+    { factor: successFactor, weight: 12 }
+  ];
+
+  const available = weights.filter((w) => w.factor != null);
+  if (available.length === 0) {
+    return { score: null, label: "Not available (insufficient learning data)" };
+  }
+
+  const numerator = available.reduce((sum, w) => sum + w.weight * (w.factor ?? 0), 0);
+  const denom = available.reduce((sum, w) => sum + w.weight, 0);
+  const score = Math.round((numerator / denom) * 100);
+  const label = `${score}%`;
+  return { score, label };
 };
 
 export const buildRelationshipEvidence = (
   edge: SelectedTopologyEdge,
   topology: ProjectTopologyResponse,
-  incidentMemory?: RelationshipIncidentMemory | null
+  incidentMemory?: RelationshipIncidentMemorySignals | null
 ): RelationshipAutomationEvidence => {
   const alerts = relatedAlertsForEdge(topology, edge);
   const sourceCtx = topology.nodeContext[edge.sourceId];
@@ -151,21 +267,60 @@ export const buildRelationshipEvidence = (
   const occurrenceCount =
     typeof incidentMemory?.occurrenceCount === "number" && incidentMemory.occurrenceCount > 0
       ? incidentMemory.occurrenceCount
-      : null;
+      : incidentMemory?.occurrenceCount ?? null;
 
-  const hasRichSignals =
+  const frequencyPer30Days =
+    typeof incidentMemory?.frequencyPer30Days === "number" && incidentMemory.frequencyPer30Days > 0
+      ? incidentMemory.frequencyPer30Days
+      : incidentMemory?.frequencyPer30Days ?? null;
+
+  const averagePatternSimilarity =
+    typeof incidentMemory?.averagePatternSimilarity === "number" && incidentMemory.averagePatternSimilarity > 0
+      ? incidentMemory.averagePatternSimilarity
+      : incidentMemory?.averagePatternSimilarity ?? null;
+
+  const mttrMs = typeof incidentMemory?.mttrMs === "number" && incidentMemory.mttrMs > 0 ? incidentMemory.mttrMs : incidentMemory?.mttrMs ?? null;
+
+  const predictedNextOccurrenceAt = incidentMemory?.predictedNextOccurrenceAt ?? null;
+
+  const previousFixCount =
+    typeof incidentMemory?.previousFixCount === "number" && incidentMemory.previousFixCount > 0
+      ? incidentMemory.previousFixCount
+      : incidentMemory?.previousFixCount ?? null;
+
+  const successRate =
+    typeof incidentMemory?.successRate === "number" && incidentMemory.successRate >= 0 ? incidentMemory.successRate : incidentMemory?.successRate ?? null;
+
+  const incidentMemoryMatches = (Array.isArray(incidentMemory?.matches) ? incidentMemory?.matches : []).slice(0, 3);
+
+  const hasIncidentMemorySignals =
+    occurrenceCount != null ||
+    frequencyPer30Days != null ||
+    averagePatternSimilarity != null ||
+    mttrMs != null ||
+    predictedNextOccurrenceAt != null ||
+    previousFixCount != null ||
+    successRate != null ||
+    (Array.isArray(incidentMemory?.matches) ? incidentMemory?.matches.length > 0 : false);
+
+  const hasMonitoringSignals =
     alerts.length > 0 ||
     failedCheckEndpoints.length > 0 ||
-    occurrenceCount != null ||
     edge.status === "CRITICAL" ||
     edge.status === "DEGRADED";
 
+  const hasRichSignals = hasIncidentMemorySignals || hasMonitoringSignals;
+
   const summary =
     occurrenceCount != null
-      ? `${occurrenceCount} prior occurrence${occurrenceCount === 1 ? "" : "s"} recorded in incident memory.`
-      : hasRichSignals
-        ? "Monitoring signals from linked endpoints and relationship health."
-        : "Limited evidence — monitoring signals only";
+      ? `${occurrenceCount} prior occurrence${occurrenceCount === 1 ? "" : "s"} matched via incident memory (avg similarity ${
+          averagePatternSimilarity != null ? `${Math.round(averagePatternSimilarity * 100)}%` : "—"
+        }).`
+      : hasIncidentMemorySignals
+        ? "Incident memory signals available — confidence computed from partial learning evidence."
+        : hasRichSignals
+          ? "Monitoring signals from linked endpoints and relationship health."
+          : "Limited evidence — monitoring signals only";
 
   return {
     summary,
@@ -174,7 +329,14 @@ export const buildRelationshipEvidence = (
     openAlertCount: alerts.length,
     relationshipHealth: edge.writtenHealth,
     lastFailure: lastFailure == null ? null : String(lastFailure),
-    incidentMemoryOccurrences: occurrenceCount
+    incidentMemoryOccurrences: occurrenceCount,
+    incidentMemoryFrequencyPer30Days: frequencyPer30Days,
+    incidentMemoryAveragePatternSimilarity: averagePatternSimilarity,
+    incidentMemoryMttrMs: mttrMs,
+    incidentMemoryPredictedNextOccurrenceAt: predictedNextOccurrenceAt,
+    incidentMemoryPreviousFixCount: previousFixCount,
+    incidentMemorySuccessRate: successRate,
+    incidentMemoryMatches
   };
 };
 
@@ -595,6 +757,73 @@ export function TopologyRelationshipDrawer({
                     </strong>
                   </li>
                 ) : null}
+                {evidence.incidentMemoryAveragePatternSimilarity != null ? (
+                  <li>
+                    Pattern similarity proxy:{" "}
+                    <strong>{Math.round(evidence.incidentMemoryAveragePatternSimilarity * 100)}%</strong>
+                  </li>
+                ) : null}
+                {evidence.incidentMemoryFrequencyPer30Days != null ? (
+                  <li>
+                    Frequency:{" "}
+                    <strong>{evidence.incidentMemoryFrequencyPer30Days.toFixed(1)}/30d</strong>
+                  </li>
+                ) : null}
+                {evidence.incidentMemoryMttrMs != null ? (
+                  <li>
+                    Recovery time (MTTR):{" "}
+                    <strong>{Math.round(evidence.incidentMemoryMttrMs / 60_000)} min</strong>
+                  </li>
+                ) : null}
+                {evidence.incidentMemoryPredictedNextOccurrenceAt ? (
+                  <li>
+                    Predicted next occurrence:{" "}
+                    <strong>
+                      {new Date(evidence.incidentMemoryPredictedNextOccurrenceAt).toLocaleDateString()}
+                    </strong>
+                  </li>
+                ) : null}
+                {evidence.incidentMemoryPreviousFixCount != null ? (
+                  <li>
+                    Prior fix attempts:{" "}
+                    <strong>{evidence.incidentMemoryPreviousFixCount}</strong>
+                    {evidence.incidentMemorySuccessRate != null ? (
+                      <>
+                        {" "}
+                        (success rate:{" "}
+                        <strong>{Math.round(evidence.incidentMemorySuccessRate * 100)}%</strong>)
+                      </>
+                    ) : null}
+                  </li>
+                ) : null}
+                {evidence.incidentMemoryMatches.length > 0 ? (
+                  <li>
+                    Incident memory examples:
+                    <ul>
+                      {evidence.incidentMemoryMatches.map((m) => (
+                        <li key={m.incidentId}>
+                          <Link href={`/incidents/${m.incidentId}`}>{m.title}</Link>
+                          {" — "}
+                          similarity: <strong>{Math.round((m.similarity ?? 0) * 100)}%</strong>
+                          {m.resolvedAt ? (
+                            <>
+                              {" "}
+                              · resolved{" "}
+                              <strong>{new Date(m.resolvedAt).toLocaleDateString()}</strong>
+                            </>
+                          ) : null}
+                          {m.lastFixSuccess != null ? (
+                            <>
+                              {" "}
+                              · last fix:{" "}
+                              <strong>{m.lastFixSuccess ? "success" : "failure"}</strong>
+                            </>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ) : null}
               </ul>
             </section>
 
@@ -729,7 +958,7 @@ export const evaluateRelationshipAutomation = (input: {
   hasConnectedRemediator?: boolean;
   remediatorEmergencyDisabled?: boolean;
   policyAllowsModeChange?: boolean;
-  incidentMemory?: RelationshipIncidentMemory | null;
+  incidentMemory?: RelationshipIncidentMemorySignals | null;
   /** Active remediating/verifying run for endpoints of this edge. */
   activeRun?: { id: string; incidentId: string; status: string } | null;
 }): RelationshipAutomationEvaluation => {

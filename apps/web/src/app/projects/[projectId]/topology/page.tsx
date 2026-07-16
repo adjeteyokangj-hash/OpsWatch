@@ -32,6 +32,7 @@ import {
   TopologyRelationshipDrawer,
   evaluateRelationshipAutomation
 } from "../../../../components/topology/topology-relationship-drawer";
+import type { RelationshipIncidentMemorySignals } from "../../../../components/topology/topology-relationship-drawer";
 import {
   type ActiveAutomationRunSummary,
   projectHasConnectedRemediator,
@@ -91,6 +92,8 @@ export default function ProjectTopologyPage() {
   const [cardsExpanded, setCardsExpanded] = useState<"none" | "selected" | "all">("selected");
   const [fixActing, setFixActing] = useState(false);
   const [restoredEdgeId, setRestoredEdgeId] = useState<string | null>(null);
+  const [incidentMemorySignals, setIncidentMemorySignals] = useState<RelationshipIncidentMemorySignals | null>(null);
+  const [incidentMemoryLoading, setIncidentMemoryLoading] = useState(false);
 
   const relationshipDiagnostics = useMemo(
     () => (topology ? buildNodeRelationshipDiagnostics(topology) : []),
@@ -144,6 +147,7 @@ export default function ProjectTopologyPage() {
       hasConnectedRemediator,
       remediatorEmergencyDisabled: emergencyDisabled,
       policyAllowsModeChange,
+      incidentMemory: incidentMemorySignals,
       activeRun: activeRunForSelectedEdge
     });
   }, [
@@ -154,8 +158,45 @@ export default function ProjectTopologyPage() {
     hasConnectedRemediator,
     emergencyDisabled,
     policyAllowsModeChange,
-    activeRunForSelectedEdge
+    activeRunForSelectedEdge,
+    incidentMemorySignals
   ]);
+
+  useEffect(() => {
+    if (!projectId || !selectedEdge) {
+      setIncidentMemorySignals(null);
+      return;
+    }
+
+    if (selectedEdge.kind === "hierarchy") {
+      setIncidentMemorySignals(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIncidentMemoryLoading(true);
+    setIncidentMemorySignals(null);
+
+    apiFetch<RelationshipIncidentMemorySignals | null>(
+      `/projects/${projectId}/topology/relationships/${encodeURIComponent(selectedEdge.id)}/incident-memory`
+    )
+      .then((signals) => {
+        if (cancelled) return;
+        setIncidentMemorySignals(signals);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIncidentMemorySignals(null);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIncidentMemoryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, selectedEdge?.id, selectedEdge?.kind]);
 
   useEffect(() => {
     if (!selectedEdge) return;
@@ -569,6 +610,7 @@ export default function ProjectTopologyPage() {
                     topology={topology}
                     projectId={projectId}
                     evaluation={relationshipEvaluation}
+                    evaluating={incidentMemoryLoading}
                     acting={fixActing}
                     onClose={() => setSelectedEdge(null)}
                     onFixWithAutomation={() => {
