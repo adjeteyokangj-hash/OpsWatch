@@ -50,6 +50,16 @@ import { computeLayeredLayout } from "../../../../components/topology/topology-l
 import { classifyVisualLayer } from "../../../../components/topology/topology-visual-layers";
 
 const REFRESH_MS = 15_000;
+const SIDE_STACK_COLLAPSED_KEY = "opswatch.topology-side-collapsed";
+
+function readSideStackCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SIDE_STACK_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 type MaintenanceBanner = {
   id: string;
@@ -94,6 +104,32 @@ export default function ProjectTopologyPage() {
   const [restoredEdgeId, setRestoredEdgeId] = useState<string | null>(null);
   const [incidentMemorySignals, setIncidentMemorySignals] = useState<RelationshipIncidentMemorySignals | null>(null);
   const [incidentMemoryLoading, setIncidentMemoryLoading] = useState(false);
+  const [sideStackCollapsed, setSideStackCollapsed] = useState(false);
+
+  useEffect(() => {
+    setSideStackCollapsed(readSideStackCollapsed());
+  }, []);
+
+  const toggleSideStack = useCallback(() => {
+    setSideStackCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(SIDE_STACK_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        // Ignore storage failures (private mode, quota, etc.).
+      }
+      return next;
+    });
+    // After the column animates, force the map to remeasure and stretch.
+    window.setTimeout(() => setFitToken((value) => value + 1), 220);
+  }, []);
+
+  // Selecting a node or edge needs the drawer visible — expand the stack.
+  useEffect(() => {
+    if (selectedEdge || selectedNodeId) {
+      setSideStackCollapsed(false);
+    }
+  }, [selectedEdge, selectedNodeId]);
 
   const relationshipDiagnostics = useMemo(
     () => (topology ? buildNodeRelationshipDiagnostics(topology) : []),
@@ -581,7 +617,7 @@ export default function ProjectTopologyPage() {
             <TopologyRelationshipSummary topology={topology} diagnostics={relationshipDiagnostics} />
             <TopologyKey />
             <TopologyTimeReplay minutesAgo={replayMinutesAgo} onChange={setReplayMinutesAgo} />
-            <div className="topology-workspace">
+            <div className={`topology-workspace${sideStackCollapsed ? " topology-workspace--side-collapsed" : ""}`}>
               {viewMode === "map" ? (
                 <TopologyCanvas
                   topology={topology}
@@ -619,6 +655,17 @@ export default function ProjectTopologyPage() {
                 />
               )}
               <div className="topology-side-stack">
+                <button
+                  type="button"
+                  className="topology-side-toggle"
+                  aria-expanded={!sideStackCollapsed}
+                  aria-label={sideStackCollapsed ? "Expand side panels" : "Collapse side panels"}
+                  title={sideStackCollapsed ? "Expand side panels" : "Collapse side panels"}
+                  onClick={toggleSideStack}
+                >
+                  <span aria-hidden="true">{sideStackCollapsed ? "«" : "»"}</span>
+                  {sideStackCollapsed ? <span className="topology-side-toggle-label">Panels</span> : null}
+                </button>
                 {selectedEdge ? (
                   <TopologyRelationshipDrawer
                     edge={selectedEdge}

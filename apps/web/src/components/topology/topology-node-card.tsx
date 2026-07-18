@@ -25,6 +25,7 @@ const toneFromStatus = (status: TopologyNode["status"]): string => {
 };
 
 const defaultGlyph = (layer: VisualLayer): string => {
+  if (layer === "APP") return "⌂";
   if (layer === "MODULE") return "▣";
   if (layer === "WORKFLOW") return "↻";
   if (layer === "SERVICE") return "◎";

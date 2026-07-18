@@ -123,11 +123,11 @@ describe("topology-relationship", () => {
 });
 
 describe("APP hierarchy anchors restore module relationships", () => {
-  it("renders hierarchy edges to the APP root even when APP cards are not painted", () => {
+  it("renders hierarchy edges to the APP root and paints the APP master card", () => {
     const topology = nobleLikeTopology();
     const layout = computeLayeredLayout(topology.nodes);
     expect(layout.positions.has("app")).toBe(true);
-    expect(layout.visibleNodeIds.has("app")).toBe(false);
+    expect(layout.visibleNodeIds.has("app")).toBe(true);
 
     const hierarchy = resolveHierarchyDisplayLinks(topology.edges, topology.nodes, layout);
     expect(hierarchy.some((link) => link.childId === "svc-communications" && link.parentId === "app")).toBe(true);

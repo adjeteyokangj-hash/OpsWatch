@@ -74,10 +74,26 @@ const navIcons: Record<string, string> = {
   Stripe: "◈"
 };
 
+const SIDEBAR_COLLAPSED_KEY = "opswatch.sidebar-collapsed";
+
+function readCollapsedPreference(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+
+  useEffect(() => {
+    setCollapsed(readCollapsedPreference());
+  }, []);
 
   useEffect(() => {
     void fetchSessionUser().then(setSessionUser);
@@ -103,8 +119,20 @@ export function Sidebar() {
     return [...adminWithoutSubscription, platformAdminGroup];
   }, [sessionUser?.role, sessionUser?.isPlatformSuperAdmin]);
 
+  const toggleCollapsed = () => {
+    setCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        // Ignore storage failures (private mode, quota, etc.).
+      }
+      return next;
+    });
+  };
+
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${collapsed ? " sidebar--collapsed" : ""}`}>
       <div className="sidebar-brand">
         <div className="sidebar-brand-icon">
           <Image src="/brand/opswatch-icon.png" alt="OpsWatch" width={24} height={24} priority />
@@ -115,6 +143,17 @@ export function Sidebar() {
           </span>
           <span className="sidebar-brand-sub">Command Center</span>
         </div>
+        <button
+          type="button"
+          className="sidebar-collapse-toggle"
+          aria-expanded={!collapsed}
+          aria-controls="primary-navigation"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={toggleCollapsed}
+        >
+          <span aria-hidden="true">{collapsed ? "»" : "«"}</span>
+        </button>
       </div>
       <button
         type="button"
@@ -134,13 +173,14 @@ export function Sidebar() {
               <Link
                 key={`${group.label}-${label}`}
                 href={href}
+                title={label}
                 onClick={() => setOpen(false)}
                 className={pathname.startsWith(href) ? "active" : ""}
               >
                 <span className="nav-icon" aria-hidden="true">
                   {navIcons[label]}
                 </span>
-                <span>{label}</span>
+                <span className="nav-label">{label}</span>
               </Link>
             ))}
           </div>

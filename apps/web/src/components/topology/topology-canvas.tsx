@@ -149,6 +149,8 @@ export const TopologyCanvas = ({
   const [dragging, setDragging] = useState(false);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
   const dragOrigin = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
 
   const overlayFocusIds = useMemo(() => {
@@ -189,10 +191,27 @@ export const TopologyCanvas = ({
     return [...apps, ...nonApp];
   }, [baseNodes, topology.nodes]);
 
-  const layoutKey = `${layoutNodes.map((row) => row.id).sort().join("|")}|${[...collapsedNodeIds].sort().join(",")}|${[...expandedLayers].sort().join(",")}`;
+  const layoutKey = `${layoutNodes.map((row) => row.id).sort().join("|")}|${[...collapsedNodeIds].sort().join(",")}|${[...expandedLayers].sort().join(",")}|${containerWidth}x${containerHeight}`;
 
   const graphLayout = useMemo(() => {
-    const base = computeLayeredLayout(layoutNodes, expandedLayers);
+    // Height-limited fit shrinks the map; widen the layout so lanes still fill the canvas.
+    const natural = computeLayeredLayout(layoutNodes, expandedLayers, LAYOUT.minCanvasWidth);
+    let layoutMinWidth = LAYOUT.minCanvasWidth;
+    if (containerWidth > 0) {
+      const availableWidth = Math.max(
+        120,
+        containerWidth - LAYOUT.chromeSide * 2 - LAYOUT.fitPadding
+      );
+      const availableHeight = Math.max(
+        120,
+        (containerHeight || 720) - LAYOUT.chromeTop - LAYOUT.chromeBottom - LAYOUT.fitPadding
+      );
+      const heightScale = Math.min(1.2, availableHeight / Math.max(1, natural.height));
+      const widthToFill = heightScale > 0 ? availableWidth / Math.max(heightScale, 0.35) : availableWidth;
+      layoutMinWidth = Math.max(LAYOUT.minCanvasWidth, Math.ceil(widthToFill));
+    }
+
+    const base = computeLayeredLayout(layoutNodes, expandedLayers, layoutMinWidth);
     const positions = new Map(base.positions);
 
     if (showCorrelatedIncidents && overlays?.correlatedIncidents?.length) {
@@ -211,7 +230,15 @@ export const TopologyCanvas = ({
     }
 
     return { ...base, positions };
-  }, [layoutNodes, overlays, showChangeEvents, showCorrelatedIncidents, expandedLayers]);
+  }, [
+    layoutNodes,
+    overlays,
+    showChangeEvents,
+    showCorrelatedIncidents,
+    expandedLayers,
+    containerWidth,
+    containerHeight
+  ]);
 
   const nodeById = useMemo(() => new Map(topology.nodes.map((row) => [row.id, row])), [topology.nodes]);
 
@@ -314,33 +341,78 @@ export const TopologyCanvas = ({
       .filter(([id]) => graphLayout.visibleNodeIds.has(id) || id.startsWith("more:"))
       .map(([, position]) => position);
     if (bounds.length === 0) return;
-    const minX = Math.min(...bounds.map((row) => row.x)) - NODE_WIDTH / 2;
-    const maxX = Math.max(...bounds.map((row) => row.x)) + NODE_WIDTH / 2;
-    const minY = Math.min(...bounds.map((row) => row.y)) - NODE_HEIGHT / 2;
-    const maxY = Math.max(...bounds.map((row) => row.y)) + NODE_HEIGHT / 2;
+    // Fit the full lane canvas (not just the node cluster) so bands fill the wrap.
+    const minX = 0;
+    const maxX = Math.max(
+      graphLayout.width,
+      Math.max(...bounds.map((row) => row.x)) + NODE_WIDTH / 2 + LAYOUT.paddingX / 2
+    );
+    const minY = Math.min(0, Math.min(...bounds.map((row) => row.y)) - NODE_HEIGHT / 2);
+    const maxY = Math.max(
+      graphLayout.height,
+      Math.max(...bounds.map((row) => row.y)) + NODE_HEIGHT / 2 + LAYOUT.paddingY / 2
+    );
     const width = Math.max(1, maxX - minX);
     const height = Math.max(1, maxY - minY);
     const availableWidth = Math.max(
       120,
-      container.clientWidth - LAYOUT.chromeSide * 2 - LAYOUT.fitPadding * 2
+      container.clientWidth - LAYOUT.chromeSide * 2 - LAYOUT.fitPadding
     );
     const availableHeight = Math.max(
       120,
-      container.clientHeight - LAYOUT.chromeTop - LAYOUT.chromeBottom - LAYOUT.fitPadding * 2
+      container.clientHeight - LAYOUT.chromeTop - LAYOUT.chromeBottom - LAYOUT.fitPadding
     );
-    const scale = Math.min(availableWidth / width, availableHeight / height, 1.2);
+    const scale = Math.min(availableWidth / width, availableHeight / height, 1.25);
     const nextScale = Math.max(scale, 0.35);
     setReferenceScale(nextScale);
     setViewport({
       scale: nextScale,
-      x: (availableWidth - width * nextScale) / 2 - minX * nextScale + LAYOUT.chromeSide + LAYOUT.fitPadding,
-      y: (availableHeight - height * nextScale) / 2 - minY * nextScale + LAYOUT.chromeTop + LAYOUT.fitPadding
+      x: (availableWidth - width * nextScale) / 2 - minX * nextScale + LAYOUT.chromeSide + LAYOUT.fitPadding / 2,
+      y: (availableHeight - height * nextScale) / 2 - minY * nextScale + LAYOUT.chromeTop + LAYOUT.fitPadding / 2
     });
-  }, [layoutNodes.length, graphLayout.positions, graphLayout.visibleNodeIds]);
+  }, [
+    layoutNodes.length,
+    graphLayout.positions,
+    graphLayout.visibleNodeIds,
+    graphLayout.width,
+    graphLayout.height
+  ]);
 
   useEffect(() => {
     fitToScreen();
   }, [layoutKey, subgraphOnly, fitToken, fitToScreen]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    const syncSize = (width: number, height: number) => {
+      const nextW = Math.round(width);
+      const nextH = Math.round(height);
+      setContainerWidth((current) => (current === nextW ? current : nextW));
+      setContainerHeight((current) => (current === nextH ? current : nextH));
+    };
+
+    syncSize(container.clientWidth, container.clientHeight);
+
+    let frame = 0;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      const width = entry?.contentRect.width ?? container.clientWidth;
+      const height = entry?.contentRect.height ?? container.clientHeight;
+      syncSize(width, height);
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        fitToScreen();
+      });
+    });
+
+    observer.observe(container);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [fitToScreen]);
 
   const zoomBy = (factor: number) => {
     const container = containerRef.current;
@@ -748,7 +820,7 @@ export const TopologyCanvas = ({
             return (
               <g
                 key={node.id}
-                className={`topology-node ${healthClassName(displayStatus)}${selected ? " selected" : ""}${overlays?.affectedNodeIds?.includes(node.id) ? " affected" : ""}${overlays?.incidentNodeIds?.includes(node.id) ? " incident-linked" : ""}${rootCause ? " root-cause" : ""}${dimmed ? " dimmed" : ""}${selected && traceFocus ? " trace-focus" : ""}${isolationLabel ? " topology-node--isolated" : ""}${expanded ? " is-expanded" : " is-collapsed"}`}
+                className={`topology-node ${healthClassName(displayStatus)}${classifyVisualLayer(node) === "APP" ? " topology-node--app" : ""}${selected ? " selected" : ""}${overlays?.affectedNodeIds?.includes(node.id) ? " affected" : ""}${overlays?.incidentNodeIds?.includes(node.id) ? " incident-linked" : ""}${rootCause ? " root-cause" : ""}${dimmed ? " dimmed" : ""}${selected && traceFocus ? " trace-focus" : ""}${isolationLabel ? " topology-node--isolated" : ""}${expanded ? " is-expanded" : " is-collapsed"}`}
                 transform={`translate(${position.x - NODE_WIDTH / 2} ${position.y - cardHeight / 2})`}
                 onClick={(event) => {
                   event.stopPropagation();

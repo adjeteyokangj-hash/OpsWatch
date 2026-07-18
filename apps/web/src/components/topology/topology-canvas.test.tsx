@@ -84,7 +84,8 @@ describe("TopologyCanvas", () => {
     );
 
     expect(screen.getByTestId("topology-canvas")).toBeInTheDocument();
-    expect(screen.queryByTestId("topology-node-app")).not.toBeInTheDocument();
+    // Application master card is painted above the lanes.
+    expect(screen.getByTestId("topology-node-app")).toBeInTheDocument();
     expect(screen.getByTestId("topology-node-redis")).toBeInTheDocument();
     expect(screen.getByLabelText("Redis, Unknown")).toBeInTheDocument();
   });

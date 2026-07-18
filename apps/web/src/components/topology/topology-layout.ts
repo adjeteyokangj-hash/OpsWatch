@@ -10,24 +10,29 @@ import {
 export type NodePosition = { x: number; y: number };
 
 export const LAYOUT = {
-  nodeWidth: 200,
+  nodeWidth: 230,
   nodeHeight: 112,
   gapX: 28,
-  rowHeight: 136,
+  /* Rows are sized for the default collapsed cards (64 world px); the selected
+     expanded card intentionally overlays the band edge. Keeping the world
+     compact keeps the fit scale near 1 so cards render at readable size. */
+  rowHeight: 96,
   nodesPerRow: 4,
   previewCount: 3,
   labelGutter: 136,
   bandStartX: 140,
   paddingX: 160,
-  paddingY: 80,
-  layerGap: 36,
+  paddingY: 40,
+  layerGap: 20,
   minCanvasWidth: 1180,
-  minCanvasHeight: 820,
+  minCanvasHeight: 480,
+  /** Reserved space above the first band for the painted application master card. */
+  appHeaderHeight: 96,
   /** Fixed chrome inside the canvas wrap (legend + zoom) — not scaled by graph zoom. */
   chromeTop: 12,
-  chromeBottom: 72,
+  chromeBottom: 60,
   chromeSide: 16,
-  fitPadding: 36
+  fitPadding: 24
 } as const;
 
 export type LayerBand = {
@@ -60,8 +65,8 @@ const rowWidth = (count: number): number =>
 export const layerExpansionKey = (layer: VisualLayer): string => `layer:${layer}`;
 
 /**
- * Place invisible APP anchors so hierarchy/dependency edges to the application root
- * remain drawable even though APP cards are not painted on the layered map.
+ * Place APP master cards above the first band. These are painted (application
+ * root card with the app name) and also anchor hierarchy/dependency edges.
  */
 export const placeAppAnchors = (
   positions: Map<string, NodePosition>,
@@ -70,9 +75,10 @@ export const placeAppAnchors = (
   firstBandY: number
 ): void => {
   if (appNodes.length === 0) return;
-  const y = Math.max(LAYOUT.paddingY * 0.45, firstBandY - 28);
+  const y = Math.max(LAYOUT.paddingY * 0.9, firstBandY - 56);
+  const spacing = LAYOUT.nodeWidth + 30;
   appNodes.forEach((app, index) => {
-    const offset = (index - (appNodes.length - 1) / 2) * 48;
+    const offset = (index - (appNodes.length - 1) / 2) * spacing;
     positions.set(app.id, {
       x: width / 2 + offset,
       y
@@ -82,7 +88,8 @@ export const placeAppAnchors = (
 
 export const computeLayeredLayout = (
   nodes: TopologyNode[],
-  expandedLayers: Set<string> = new Set()
+  expandedLayers: Set<string> = new Set(),
+  minWidth: number = LAYOUT.minCanvasWidth
 ): LayeredLayout => {
   const positions = new Map<string, NodePosition>();
   const moreNodes: MoreNode[] = [];
@@ -101,9 +108,9 @@ export const computeLayeredLayout = (
     .filter((entry) => entry.layer !== "APP")
     .filter((entry) => entry.nodes.length > 0);
 
-  let maxCanvasWidth: number = LAYOUT.minCanvasWidth;
+  let maxCanvasWidth: number = Math.max(LAYOUT.minCanvasWidth, minWidth);
   const layerBands: LayerBand[] = [];
-  let currentY = LAYOUT.paddingY;
+  let currentY = LAYOUT.paddingY + (appNodes.length > 0 ? LAYOUT.appHeaderHeight : 0);
 
   for (const { layer, nodes: layerNodes } of sortedLayers) {
     const expanded = expandedLayers.has(layerExpansionKey(layer));
@@ -163,6 +170,7 @@ export const computeLayeredLayout = (
 
   const firstBandY = layerBands[0]?.y ?? LAYOUT.paddingY;
   placeAppAnchors(positions, appNodes, maxCanvasWidth, firstBandY);
+  for (const app of appNodes) visibleNodeIds.add(app.id);
 
   return {
     positions,
