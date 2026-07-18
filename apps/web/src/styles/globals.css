@@ -5115,7 +5115,7 @@ button {
 .topology-filter-bar {
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
+  align-items: flex-end;
   gap: 14px;
   padding: 14px 16px;
 }
@@ -5825,7 +5825,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .topology-node-card-availability {

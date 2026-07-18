@@ -196,7 +196,7 @@ export const TopologyCanvas = ({
   const graphLayout = useMemo(() => {
     // Height-limited fit shrinks the map; widen the layout so lanes still fill the canvas.
     const natural = computeLayeredLayout(layoutNodes, expandedLayers, LAYOUT.minCanvasWidth);
-    let layoutMinWidth = LAYOUT.minCanvasWidth;
+    let layoutMinWidth: number = LAYOUT.minCanvasWidth;
     if (containerWidth > 0) {
       const availableWidth = Math.max(
         120,
