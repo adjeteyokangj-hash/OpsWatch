@@ -86,6 +86,44 @@ export const getIncidentById = async (req: AuthRequest, res: Response) => {
 					candidateRootCause: true,
 					observedAt: true
 				}
+			},
+			LogEvidenceLink: {
+				orderBy: { observedAt: "desc" },
+				take: 20,
+				select: {
+					id: true,
+					evidenceKind: true,
+					summary: true,
+					confidence: true,
+					occurrenceGroupId: true,
+					observedAt: true
+				}
+			},
+			SpanEvidenceLink: {
+				orderBy: { observedAt: "desc" },
+				take: 20,
+				select: {
+					id: true,
+					evidenceKind: true,
+					summary: true,
+					confidence: true,
+					traceId: true,
+					spanId: true,
+					observedAt: true
+				}
+			},
+			ApmEvidenceLink: {
+				orderBy: { observedAt: "desc" },
+				take: 20,
+				select: {
+					id: true,
+					evidenceKind: true,
+					summary: true,
+					confidence: true,
+					serviceWindowId: true,
+					dependencyWindowId: true,
+					observedAt: true
+				}
 			}
 		}
 	});

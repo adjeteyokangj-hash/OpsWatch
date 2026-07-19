@@ -46,6 +46,32 @@ type Incident = {
     candidateRootCause: boolean;
     observedAt: string;
   }>;
+  logEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    occurrenceGroupId: string | null;
+    observedAt: string;
+  }>;
+  spanEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    traceId: string | null;
+    spanId: string | null;
+    observedAt: string;
+  }>;
+  apmEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    serviceWindowId: string | null;
+    dependencyWindowId: string | null;
+    observedAt: string;
+  }>;
   correlationGroup?: {
     id: string;
     correlationKey: string;
@@ -648,6 +674,47 @@ export default function IncidentDetailPage() {
                   {row.propagationDirection ? `${row.propagationDirection} · ` : ""}
                   {row.traceId ? `trace ${row.traceId.slice(0, 8)}… · ` : ""}
                   {row.confidence != null ? `confidence ${row.confidence} · ` : ""}
+                  {new Date(row.observedAt).toLocaleString()}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {(incident.logEvidence?.length ||
+        incident.spanEvidence?.length ||
+        incident.apmEvidence?.length) ? (
+        <section className="panel" data-testid="logs-apm-incident-evidence">
+          <h2>Logs / APM evidence</h2>
+          <ul className="dashboard-list">
+            {(incident.logEvidence ?? []).map((row) => (
+              <li key={`log-${row.id}`}>
+                <strong>Log group · {row.evidenceKind}</strong> — {row.summary}
+                <div className="dashboard-subtle">
+                  {row.occurrenceGroupId ? `group ${row.occurrenceGroupId.slice(0, 8)}… · ` : ""}
+                  {new Date(row.observedAt).toLocaleString()}
+                </div>
+              </li>
+            ))}
+            {(incident.spanEvidence ?? []).map((row) => (
+              <li key={`span-${row.id}`}>
+                <strong>Trace · {row.evidenceKind}</strong> — {row.summary}
+                <div className="dashboard-subtle">
+                  {row.traceId ? `trace ${row.traceId.slice(0, 8)}… · ` : ""}
+                  {new Date(row.observedAt).toLocaleString()}
+                </div>
+              </li>
+            ))}
+            {(incident.apmEvidence ?? []).map((row) => (
+              <li key={`apm-${row.id}`}>
+                <strong>APM window · {row.evidenceKind}</strong> — {row.summary}
+                <div className="dashboard-subtle">
+                  {row.dependencyWindowId
+                    ? "likely originating dependency · "
+                    : row.serviceWindowId
+                      ? "service window · "
+                      : ""}
                   {new Date(row.observedAt).toLocaleString()}
                 </div>
               </li>

@@ -32,6 +32,33 @@ type AlertDetail = {
     spanId: string | null;
     observedAt: string;
   }>;
+  logEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    occurrenceGroupId: string | null;
+    logRecordId: string | null;
+    observedAt: string;
+  }>;
+  spanEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    traceId: string | null;
+    spanId: string | null;
+    observedAt: string;
+  }>;
+  apmEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    observedAt: string;
+  }>;
+  operationalEntityId?: string | null;
+  operationalRelationshipId?: string | null;
 };
 
 type AlertAutomationEvaluation = {
@@ -177,6 +204,46 @@ export default function AlertDetailPage() {
                     </li>
                   ))}
                 </ul>
+              </div>
+            ) : null}
+            {(alert.logEvidence?.length || alert.spanEvidence?.length || alert.apmEvidence?.length) ? (
+              <div data-testid="logs-apm-alert-evidence">
+                <h3>Logs / APM evidence</h3>
+                <ul className="dashboard-list">
+                  {(alert.logEvidence ?? []).map((row) => (
+                    <li key={`log-${row.id}`}>
+                      <strong>Log · {row.evidenceKind}</strong> — {row.summary}
+                      <div className="dashboard-subtle">
+                        {row.occurrenceGroupId ? `group ${row.occurrenceGroupId.slice(0, 8)}… · ` : ""}
+                        {new Date(row.observedAt).toLocaleString()}
+                      </div>
+                    </li>
+                  ))}
+                  {(alert.spanEvidence ?? []).map((row) => (
+                    <li key={`span-${row.id}`}>
+                      <strong>Trace · {row.evidenceKind}</strong> — {row.summary}
+                      <div className="dashboard-subtle">
+                        {row.traceId ? `trace ${row.traceId.slice(0, 8)}… · ` : ""}
+                        {row.spanId ? `span ${row.spanId.slice(0, 8)}… · ` : ""}
+                        {new Date(row.observedAt).toLocaleString()}
+                      </div>
+                    </li>
+                  ))}
+                  {(alert.apmEvidence ?? []).map((row) => (
+                    <li key={`apm-${row.id}`}>
+                      <strong>APM · {row.evidenceKind}</strong> — {row.summary}
+                      <div className="dashboard-subtle">{new Date(row.observedAt).toLocaleString()}</div>
+                    </li>
+                  ))}
+                </ul>
+                {(alert.operationalEntityId || alert.operationalRelationshipId) && (
+                  <p className="dashboard-subtle">
+                    Canonical entity: {alert.operationalEntityId ?? "—"}
+                    {alert.operationalRelationshipId
+                      ? ` · relationship ${alert.operationalRelationshipId}`
+                      : ""}
+                  </p>
+                )}
               </div>
             ) : null}
             <p>

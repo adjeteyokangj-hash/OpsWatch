@@ -62,6 +62,37 @@ export type AlertDetailDto = AlertListItemDto & {
     spanId: string | null;
     observedAt: string;
   }>;
+  /** Phase 6 searchable log / APM evidence links (additive). */
+  logEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    occurrenceGroupId: string | null;
+    logRecordId: string | null;
+    observedAt: string;
+  }>;
+  spanEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    traceId: string | null;
+    spanId: string | null;
+    observedAt: string;
+  }>;
+  apmEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    serviceWindowId: string | null;
+    endpointWindowId: string | null;
+    dependencyWindowId: string | null;
+    observedAt: string;
+  }>;
+  operationalEntityId?: string | null;
+  operationalRelationshipId?: string | null;
 };
 
 // ─── Incident DTOs ───────────────────────────────────────────────────────────
@@ -120,6 +151,32 @@ export type IncidentDetailDto = IncidentListItemDto & {
     spanId: string | null;
     propagationDirection: string | null;
     candidateRootCause: boolean;
+    observedAt: string;
+  }>;
+  logEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    occurrenceGroupId: string | null;
+    observedAt: string;
+  }>;
+  spanEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    traceId: string | null;
+    spanId: string | null;
+    observedAt: string;
+  }>;
+  apmEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    serviceWindowId: string | null;
+    dependencyWindowId: string | null;
     observedAt: string;
   }>;
 };

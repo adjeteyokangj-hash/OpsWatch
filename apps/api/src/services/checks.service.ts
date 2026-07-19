@@ -122,6 +122,34 @@ type AlertDetailRecord = Awaited<ReturnType<typeof prisma.alert.findUnique>> & {
     spanId: string | null;
     observedAt: Date;
   }>;
+  LogEvidenceLink?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    occurrenceGroupId: string | null;
+    logRecordId: string | null;
+    observedAt: Date;
+  }>;
+  SpanEvidenceLink?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    traceId: string | null;
+    spanId: string | null;
+    observedAt: Date;
+  }>;
+  ApmEvidenceLink?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    serviceWindowId: string | null;
+    endpointWindowId: string | null;
+    dependencyWindowId: string | null;
+    observedAt: Date;
+  }>;
 };
 
 export const mapAlertDetail = (r: NonNullable<AlertDetailRecord>): AlertDetailDto => ({
@@ -161,7 +189,37 @@ export const mapAlertDetail = (r: NonNullable<AlertDetailRecord>): AlertDetailDt
     traceId: row.traceId,
     spanId: row.spanId,
     observedAt: row.observedAt.toISOString()
-  }))
+  })),
+  logEvidence: (r.LogEvidenceLink ?? []).map((row) => ({
+    id: row.id,
+    evidenceKind: row.evidenceKind,
+    summary: row.summary,
+    confidence: row.confidence,
+    occurrenceGroupId: row.occurrenceGroupId,
+    logRecordId: row.logRecordId,
+    observedAt: row.observedAt.toISOString()
+  })),
+  spanEvidence: (r.SpanEvidenceLink ?? []).map((row) => ({
+    id: row.id,
+    evidenceKind: row.evidenceKind,
+    summary: row.summary,
+    confidence: row.confidence,
+    traceId: row.traceId,
+    spanId: row.spanId,
+    observedAt: row.observedAt.toISOString()
+  })),
+  apmEvidence: (r.ApmEvidenceLink ?? []).map((row) => ({
+    id: row.id,
+    evidenceKind: row.evidenceKind,
+    summary: row.summary,
+    confidence: row.confidence,
+    serviceWindowId: row.serviceWindowId,
+    endpointWindowId: row.endpointWindowId,
+    dependencyWindowId: row.dependencyWindowId,
+    observedAt: row.observedAt.toISOString()
+  })),
+  operationalEntityId: r.operationalEntityId ?? null,
+  operationalRelationshipId: r.operationalRelationshipId ?? null
 });
 
 // ─── Checks service ──────────────────────────────────────────────────────────

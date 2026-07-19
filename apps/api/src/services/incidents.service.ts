@@ -147,6 +147,32 @@ type IncidentDetailRecord = NonNullable<
     candidateRootCause: boolean;
     observedAt: Date;
   }>;
+  LogEvidenceLink?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    occurrenceGroupId: string | null;
+    observedAt: Date;
+  }>;
+  SpanEvidenceLink?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    traceId: string | null;
+    spanId: string | null;
+    observedAt: Date;
+  }>;
+  ApmEvidenceLink?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    serviceWindowId: string | null;
+    dependencyWindowId: string | null;
+    observedAt: Date;
+  }>;
 };
 
 const mapCorrelationGroup = (
@@ -209,6 +235,32 @@ export const mapIncidentDetail = (r: IncidentDetailRecord): IncidentDetailDto =>
       spanId: row.spanId,
       propagationDirection: row.propagationDirection,
       candidateRootCause: row.candidateRootCause,
+      observedAt: row.observedAt.toISOString()
+    })),
+    logEvidence: (r.LogEvidenceLink ?? []).map((row) => ({
+      id: row.id,
+      evidenceKind: row.evidenceKind,
+      summary: row.summary,
+      confidence: row.confidence,
+      occurrenceGroupId: row.occurrenceGroupId,
+      observedAt: row.observedAt.toISOString()
+    })),
+    spanEvidence: (r.SpanEvidenceLink ?? []).map((row) => ({
+      id: row.id,
+      evidenceKind: row.evidenceKind,
+      summary: row.summary,
+      confidence: row.confidence,
+      traceId: row.traceId,
+      spanId: row.spanId,
+      observedAt: row.observedAt.toISOString()
+    })),
+    apmEvidence: (r.ApmEvidenceLink ?? []).map((row) => ({
+      id: row.id,
+      evidenceKind: row.evidenceKind,
+      summary: row.summary,
+      confidence: row.confidence,
+      serviceWindowId: row.serviceWindowId,
+      dependencyWindowId: row.dependencyWindowId,
       observedAt: row.observedAt.toISOString()
     }))
   };
