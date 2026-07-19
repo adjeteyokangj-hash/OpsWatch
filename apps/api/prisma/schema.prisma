@@ -10,7 +10,7 @@ datasource db {
 }
 
 model Alert {
-  id                    String             @id
+  id                    String              @id
   projectId             String
   serviceId             String?
   sourceType            String
@@ -18,23 +18,23 @@ model Alert {
   severity              AlertSeverity
   title                 String
   message               String
-  status                AlertStatus        @default(OPEN)
-  firstSeenAt           DateTime           @default(now())
-  lastSeenAt            DateTime           @default(now())
+  status                AlertStatus         @default(OPEN)
+  firstSeenAt           DateTime            @default(now())
+  lastSeenAt            DateTime            @default(now())
   acknowledgedAt        DateTime?
   resolvedAt            DateTime?
   assignedToUserId      String?
-  category              AlertCategory      @default(AVAILABILITY)
+  category              AlertCategory       @default(AVAILABILITY)
   integrationId         String?
-  maintenanceSuppressed Boolean            @default(false)
+  maintenanceSuppressed Boolean             @default(false)
   maintenanceWindowId   String?
   /// Stable signal grouping key (source + service + title hash). Used for dedupe/flapping.
   fingerprint           String?
   /// How many times this open alert fingerprint has been observed.
-  occurrenceCount       Int                @default(1)
-  User                  User?              @relation(fields: [assignedToUserId], references: [id])
-  Project               Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  Service               Service?           @relation(fields: [serviceId], references: [id])
+  occurrenceCount       Int                 @default(1)
+  User                  User?               @relation(fields: [assignedToUserId], references: [id])
+  Project               Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  Service               Service?            @relation(fields: [serviceId], references: [id])
   IncidentAlert         IncidentAlert[]
   OtelAlertEvidence     OtelAlertEvidence[]
 
@@ -203,73 +203,76 @@ model OnboardingProgress {
 }
 
 model OrgApiKey {
-  id                      String       @id
-  organizationId          String
-  name                    String
-  keyId                   String       @unique
-  secretHash              String
-  scopes                  Json
-  environment             String
-  lastUsedAt              DateTime?
-  expiresAt               DateTime?
-  createdAt               DateTime     @default(now())
-  projectId               String?
-  revokedAt               DateTime?
-  lastUsedRoute           String?
-  lastUsedIp              String?
-  lastUsedUserAgent       String?
-  revokeReason            String?
-  graceExpiresAt          DateTime?
-  rotatedFromKeyId        String?
-  allowCrossEnvironment   Boolean      @default(false)
-  Organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id                    String       @id
+  organizationId        String
+  name                  String
+  keyId                 String       @unique
+  secretHash            String
+  scopes                Json
+  environment           String
+  lastUsedAt            DateTime?
+  expiresAt             DateTime?
+  createdAt             DateTime     @default(now())
+  projectId             String?
+  revokedAt             DateTime?
+  lastUsedRoute         String?
+  lastUsedIp            String?
+  lastUsedUserAgent     String?
+  revokeReason          String?
+  graceExpiresAt        DateTime?
+  rotatedFromKeyId      String?
+  allowCrossEnvironment Boolean      @default(false)
+  Organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, revokedAt])
   @@index([projectId])
 }
 
 model Organization {
-  id                       String                      @id
-  name                     String
-  slug                     String                      @unique
-  plan                     BillingPlan                 @default(FREE)
-  topologyMode             String                      @default("CENTRALISED")
-  isActive                 Boolean                     @default(true)
-  createdAt                DateTime                    @default(now())
-  updatedAt                DateTime
-  OnboardingProgress       OnboardingProgress?
-  OrgApiKey                OrgApiKey[]
-  Project                  Project[]
-  StatusPage               StatusPage[]
-  User                     User[]
-  IncidentGroups           OrganizationIncidentGroup[]
-  MaintenanceWindows       MaintenanceWindow[]
-  Subscription             Subscription?
-  UsageRecord              UsageRecord[]
-  IncidentMemoryEntry      IncidentMemoryEntry[]
-  OperationalObservation   OperationalObservation[]
-  LearningBaseline         LearningBaseline[]
-  OperationalPattern       OperationalPattern[]
-  AiConfidenceRecord       AiConfidenceRecord[]
-  PredictionCandidate      PredictionCandidate[]
-  PredictionAccuracyLog    PredictionAccuracyLog[]
-  OperationsTimelineEvent  OperationsTimelineEvent[]
-  DeploymentRecord         DeploymentRecord[]
-  AiDecisionAudit          AiDecisionAudit[]
-  ApplicationLearningModel ApplicationLearningModel[]
-  RetentionPolicy          RetentionPolicy[]
-  Connection               Connection[]
-  ChangeLedgerEntry        ChangeLedgerEntry[]
-  OperationalLocation      OperationalLocation[]
-  OperationalEntity        OperationalEntity[]
-  OperationalRelationship  OperationalRelationship[]
-  ManagedCredential        ManagedCredential[]
-  AuditLog                 AuditLog[]
-  OtelIngestBatch          OtelIngestBatch[]
-  NormalizedOperationalSignal NormalizedOperationalSignal[]
-  OtelMetricWindow         OtelMetricWindow[]
-  OtelAlertEvidence        OtelAlertEvidence[]
-  OtelIncidentEvidence     OtelIncidentEvidence[]
+  id                                  String                                @id
+  name                                String
+  slug                                String                                @unique
+  plan                                BillingPlan                           @default(FREE)
+  topologyMode                        String                                @default("CENTRALISED")
+  isActive                            Boolean                               @default(true)
+  createdAt                           DateTime                              @default(now())
+  updatedAt                           DateTime
+  OnboardingProgress                  OnboardingProgress?
+  OrgApiKey                           OrgApiKey[]
+  Project                             Project[]
+  StatusPage                          StatusPage[]
+  User                                User[]
+  IncidentGroups                      OrganizationIncidentGroup[]
+  MaintenanceWindows                  MaintenanceWindow[]
+  Subscription                        Subscription?
+  UsageRecord                         UsageRecord[]
+  IncidentMemoryEntry                 IncidentMemoryEntry[]
+  OperationalObservation              OperationalObservation[]
+  LearningBaseline                    LearningBaseline[]
+  OperationalPattern                  OperationalPattern[]
+  AiConfidenceRecord                  AiConfidenceRecord[]
+  PredictionCandidate                 PredictionCandidate[]
+  PredictionAccuracyLog               PredictionAccuracyLog[]
+  OperationsTimelineEvent             OperationsTimelineEvent[]
+  DeploymentRecord                    DeploymentRecord[]
+  AiDecisionAudit                     AiDecisionAudit[]
+  ApplicationLearningModel            ApplicationLearningModel[]
+  RetentionPolicy                     RetentionPolicy[]
+  Connection                          Connection[]
+  ChangeLedgerEntry                   ChangeLedgerEntry[]
+  OperationalLocation                 OperationalLocation[]
+  OperationalEntity                   OperationalEntity[]
+  OperationalRelationship             OperationalRelationship[]
+  ManagedCredential                   ManagedCredential[]
+  AuditLog                            AuditLog[]
+  OtelIngestBatch                     OtelIngestBatch[]
+  NormalizedOperationalSignal         NormalizedOperationalSignal[]
+  OtelMetricWindow                    OtelMetricWindow[]
+  OtelAlertEvidence                   OtelAlertEvidence[]
+  OtelIncidentEvidence                OtelIncidentEvidence[]
+  OperationalEntityIdentity           OperationalEntityIdentity[]
+  LegacyServiceEntityMapping          LegacyServiceEntityMapping[]
+  LegacyDependencyRelationshipMapping LegacyDependencyRelationshipMapping[]
 }
 
 model OrganizationIncidentGroup {
@@ -288,68 +291,71 @@ model OrganizationIncidentGroup {
 }
 
 model Project {
-  id                      String                    @id
-  name                    String
-  slug                    String                    @unique
-  clientName              String
-  description             String?
-  environment             String
-  status                  ProjectStatus             @default(UNKNOWN)
-  healthReason            String?
-  healthSource            String?
-  lastCompletedCheckAt    DateTime?
-  lastSignalAt            DateTime?
-  monitoringEnabled       Boolean                   @default(true)
-  monitoringStartedAt     DateTime?
-  automationMode          String                    @default("MONITOR_ONLY")
+  id                                  String                                @id
+  name                                String
+  slug                                String                                @unique
+  clientName                          String
+  description                         String?
+  environment                         String
+  status                              ProjectStatus                         @default(UNKNOWN)
+  healthReason                        String?
+  healthSource                        String?
+  lastCompletedCheckAt                DateTime?
+  lastSignalAt                        DateTime?
+  monitoringEnabled                   Boolean                               @default(true)
+  monitoringStartedAt                 DateTime?
+  automationMode                      String                                @default("MONITOR_ONLY")
   /// Emergency kill-switch: blocks all remediator-driven repair execution for this project.
-  remediationEmergencyDisabled Boolean              @default(false)
-  projectOwner            String?
-  operationalContact      String?
-  defaultRegion           String?
-  frontendUrl             String?
-  adminUrl                String?
-  backendUrl              String?
-  repoUrl                 String?
-  vercelProjectId         String?
-  renderServiceId         String?
-  apiKey                  String                    @unique
-  signingSecret               String
-  signingCredentialFamilyId   String?
-  signingSecretRotatedAt      DateTime?
-  maintenanceTier             String?
-  isActive                Boolean                   @default(true)
-  createdAt               DateTime                  @default(now())
-  updatedAt               DateTime
-  organizationId          String?
-  Alert                   Alert[]
-  ChangeEvent             ChangeEvent[]
-  Event                   Event[]
-  Heartbeat               Heartbeat[]
-  Incident                Incident[]
-  IncidentTimelineEvent   IncidentTimelineEvent[]
-  NotificationChannel     NotificationChannel[]
-  Organization            Organization?             @relation(fields: [organizationId], references: [id])
-  ProjectIntegration      ProjectIntegration[]
-  ServiceDependency       ServiceDependency[]
-  Service                 Service[]
-  SLODefinition           SLODefinition[]
-  SLOWindow               SLOWindow[]
-  StatusPage              StatusPage[]
-  MaintenanceWindows      MaintenanceWindow[]
-  ProjectBilling          ProjectBilling?
-  Connection              Connection[]
-  ChangeLedgerEntry       ChangeLedgerEntry[]
-  OperationalEntity       OperationalEntity[]
-  OperationalLocation     OperationalLocation?      @relation(fields: [operationalLocationId], references: [id], onDelete: SetNull)
-  operationalLocationId   String?
-  OperationalRelationship OperationalRelationship[]
-  ManagedCredential       ManagedCredential[]
-  OtelIngestBatch         OtelIngestBatch[]
-  NormalizedOperationalSignal NormalizedOperationalSignal[]
-  OtelMetricWindow        OtelMetricWindow[]
-  OtelAlertEvidence       OtelAlertEvidence[]
-  OtelIncidentEvidence    OtelIncidentEvidence[]
+  remediationEmergencyDisabled        Boolean                               @default(false)
+  projectOwner                        String?
+  operationalContact                  String?
+  defaultRegion                       String?
+  frontendUrl                         String?
+  adminUrl                            String?
+  backendUrl                          String?
+  repoUrl                             String?
+  vercelProjectId                     String?
+  renderServiceId                     String?
+  apiKey                              String                                @unique
+  signingSecret                       String
+  signingCredentialFamilyId           String?
+  signingSecretRotatedAt              DateTime?
+  maintenanceTier                     String?
+  isActive                            Boolean                               @default(true)
+  createdAt                           DateTime                              @default(now())
+  updatedAt                           DateTime
+  organizationId                      String?
+  Alert                               Alert[]
+  ChangeEvent                         ChangeEvent[]
+  Event                               Event[]
+  Heartbeat                           Heartbeat[]
+  Incident                            Incident[]
+  IncidentTimelineEvent               IncidentTimelineEvent[]
+  NotificationChannel                 NotificationChannel[]
+  Organization                        Organization?                         @relation(fields: [organizationId], references: [id])
+  ProjectIntegration                  ProjectIntegration[]
+  ServiceDependency                   ServiceDependency[]
+  Service                             Service[]
+  SLODefinition                       SLODefinition[]
+  SLOWindow                           SLOWindow[]
+  StatusPage                          StatusPage[]
+  MaintenanceWindows                  MaintenanceWindow[]
+  ProjectBilling                      ProjectBilling?
+  Connection                          Connection[]
+  ChangeLedgerEntry                   ChangeLedgerEntry[]
+  OperationalEntity                   OperationalEntity[]
+  OperationalLocation                 OperationalLocation?                  @relation(fields: [operationalLocationId], references: [id], onDelete: SetNull)
+  operationalLocationId               String?
+  OperationalRelationship             OperationalRelationship[]
+  ManagedCredential                   ManagedCredential[]
+  OtelIngestBatch                     OtelIngestBatch[]
+  NormalizedOperationalSignal         NormalizedOperationalSignal[]
+  OtelMetricWindow                    OtelMetricWindow[]
+  OtelAlertEvidence                   OtelAlertEvidence[]
+  OtelIncidentEvidence                OtelIncidentEvidence[]
+  OperationalEntityIdentity           OperationalEntityIdentity[]
+  LegacyServiceEntityMapping          LegacyServiceEntityMapping[]
+  LegacyDependencyRelationshipMapping LegacyDependencyRelationshipMapping[]
 
   @@index([organizationId])
   @@index([operationalLocationId])
@@ -359,48 +365,48 @@ model Project {
 /// A generic, organization-scoped operational connection. Secret material is
 /// referenced through secretRef; configurationJson must never contain secrets.
 model Connection {
-  id                   String              @id
-  organizationId       String
-  projectId            String?
-  createdBy            String?
-  name                 String
-  type                 String
-  mode                 String
-  environment          String              @default("production")
-  authMethod           String              @default("NONE")
-  capabilitiesJson     Json?
-  configurationJson    Json?
-  secretRef            String?
-  managedSecretCiphertext String?
-  managedSecretIv         String?
-  managedSecretAuthTag    String?
-  credentialFamilyId      String?
-  health                  String              @default("UNKNOWN")
-  healthReason         String?
-  lastValidatedAt      DateTime?
-  validationStatusCode Int?
-  validationLatencyMs  Int?
-  validationErrorCategory String?
-  lastSuccessAt        DateTime?
-  lastFailureAt        DateTime?
-  lastError            String?
-  requestRatePerMinute Int?
-  errorRatePercent     Float?
-  permissionsJson      Json?
-  installationStatus   String              @default("PENDING")
-  collectorVersion     String?
-  manifestVersion      String              @default("1.0")
-  deactivatedAt        DateTime?
-  linkedServiceId      String?
-  linkedCheckId        String?
-  isActive             Boolean             @default(true)
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime
-  Organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Project              Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  ChangeLedgerEntry    ChangeLedgerEntry[]
-  ManagedCredential    ManagedCredential[]
-  OtelIngestBatch      OtelIngestBatch[]
+  id                          String                        @id
+  organizationId              String
+  projectId                   String?
+  createdBy                   String?
+  name                        String
+  type                        String
+  mode                        String
+  environment                 String                        @default("production")
+  authMethod                  String                        @default("NONE")
+  capabilitiesJson            Json?
+  configurationJson           Json?
+  secretRef                   String?
+  managedSecretCiphertext     String?
+  managedSecretIv             String?
+  managedSecretAuthTag        String?
+  credentialFamilyId          String?
+  health                      String                        @default("UNKNOWN")
+  healthReason                String?
+  lastValidatedAt             DateTime?
+  validationStatusCode        Int?
+  validationLatencyMs         Int?
+  validationErrorCategory     String?
+  lastSuccessAt               DateTime?
+  lastFailureAt               DateTime?
+  lastError                   String?
+  requestRatePerMinute        Int?
+  errorRatePercent            Float?
+  permissionsJson             Json?
+  installationStatus          String                        @default("PENDING")
+  collectorVersion            String?
+  manifestVersion             String                        @default("1.0")
+  deactivatedAt               DateTime?
+  linkedServiceId             String?
+  linkedCheckId               String?
+  isActive                    Boolean                       @default(true)
+  createdAt                   DateTime                      @default(now())
+  updatedAt                   DateTime
+  Organization                Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project                     Project?                      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  ChangeLedgerEntry           ChangeLedgerEntry[]
+  ManagedCredential           ManagedCredential[]
+  OtelIngestBatch             OtelIngestBatch[]
   NormalizedOperationalSignal NormalizedOperationalSignal[]
 
   @@unique([organizationId, projectId, name])
@@ -440,55 +446,69 @@ model OperationalLocation {
 /// Flexible graph node. entityType intentionally remains a string so product
 /// capabilities are not constrained by a brittle platform enum.
 model OperationalEntity {
-  id                    String                    @id
-  organizationId        String
-  projectId             String?
-  operationalLocationId String?
-  legacyServiceId       String?                   @unique
-  entityType            String
-  name                  String
-  externalId            String?
-  criticality           String                    @default("MEDIUM")
-  health                String                    @default("UNKNOWN")
-  healthOverride        String?
-  healthReason          String?
-  healthConfidence      Float?
-  provenance            String                    @default("DECLARED")
-  discoverySource       String?
-  discoveredAt          DateTime?
-  lastSeenAt            DateTime?
+  id                         String                                @id
+  organizationId             String
+  projectId                  String?
+  /// Empty string represents organization-scoped/shared entities in unique identities.
+  projectScopeKey            String                                @default("")
+  environment                String                                @default("unknown")
+  operationalLocationId      String?
+  legacyServiceId            String?                               @unique
+  entityType                 String
+  name                       String
+  externalId                 String?
+  /// Canonical, normalized logical identity controlled by graph-identity.service.
+  stableIdentityKey          String?
+  criticality                String                                @default("MEDIUM")
+  health                     String                                @default("UNKNOWN")
+  healthOverride             String?
+  healthReason               String?
+  healthConfidence           Float?
+  provenance                 String                                @default("DECLARED")
+  discoverySource            String?
+  discoveredAt               DateTime?
+  lastSeenAt                 DateTime?
   /// Phase 3 OTEL freshness / discovery (additive)
-  firstSeenAt           DateTime?
-  freshUntil            DateTime?
-  staleAt               DateTime?
-  inactiveAt            DateTime?
-  signalCount           Int                       @default(0)
-  lastSignalKind        String?
-  discoveryState        String                    @default("ACTIVE")
-  tagsJson              Json?
-  metadataJson          Json?
-  lifecycle             String                    @default("ACTIVE")
+  firstSeenAt                DateTime?
+  freshUntil                 DateTime?
+  staleAt                    DateTime?
+  inactiveAt                 DateTime?
+  signalCount                Int                                   @default(0)
+  lastSignalKind             String?
+  discoveryState             String                                @default("ACTIVE")
+  confirmationState          String                                @default("CONFIRMED")
+  manuallyManaged            Boolean                               @default(false)
+  sharedScope                String                                @default("PROJECT")
+  isTestSeed                 Boolean                               @default(false)
+  tagsJson                   Json?
+  metadataJson               Json?
+  lifecycle                  String                                @default("ACTIVE")
   /// Phase 7 ownership / routing on graph entities
-  ownerUserId           String?
-  ownerTeam             String?
-  runbookUrl            String?
-  escalationContact     String?
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime
-  Organization          Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Project               Project?                  @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  OperationalLocation   OperationalLocation?      @relation(fields: [operationalLocationId], references: [id], onDelete: SetNull)
-  LegacyService         Service?                  @relation(fields: [legacyServiceId], references: [id], onDelete: SetNull)
-  OwnerUser             User?                     @relation("OperationalEntityOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
-  OutgoingRelationships OperationalRelationship[] @relation("OperationalRelationshipSource")
-  IncomingRelationships OperationalRelationship[] @relation("OperationalRelationshipTarget")
-  SourceSignals         NormalizedOperationalSignal[] @relation("NormalizedSignalSourceEntity")
-  TargetSignals         NormalizedOperationalSignal[] @relation("NormalizedSignalTargetEntity")
-  OtelAlertEvidence     OtelAlertEvidence[]
-  OtelIncidentEvidence  OtelIncidentEvidence[]
+  ownerUserId                String?
+  ownerTeam                  String?
+  runbookUrl                 String?
+  escalationContact          String?
+  createdAt                  DateTime                              @default(now())
+  updatedAt                  DateTime
+  Organization               Organization                          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project                    Project?                              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  OperationalLocation        OperationalLocation?                  @relation(fields: [operationalLocationId], references: [id], onDelete: SetNull)
+  LegacyService              Service?                              @relation(fields: [legacyServiceId], references: [id], onDelete: SetNull)
+  OwnerUser                  User?                                 @relation("OperationalEntityOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  OutgoingRelationships      OperationalRelationship[]             @relation("OperationalRelationshipSource")
+  IncomingRelationships      OperationalRelationship[]             @relation("OperationalRelationshipTarget")
+  SourceSignals              NormalizedOperationalSignal[]         @relation("NormalizedSignalSourceEntity")
+  TargetSignals              NormalizedOperationalSignal[]         @relation("NormalizedSignalTargetEntity")
+  OtelAlertEvidence          OtelAlertEvidence[]
+  OtelIncidentEvidence       OtelIncidentEvidence[]
+  SourceIdentities           OperationalEntityIdentity[]
+  LegacyMappings             LegacyServiceEntityMapping[]
+  LegacyRelationshipMappings LegacyDependencyRelationshipMapping[]
 
   @@unique([organizationId, entityType, externalId])
+  @@unique([organizationId, projectScopeKey, environment, entityType, stableIdentityKey])
   @@index([organizationId, projectId, entityType])
+  @@index([organizationId, projectScopeKey, environment, entityType])
   @@index([organizationId, operationalLocationId, health])
   @@index([organizationId, provenance, lifecycle])
   @@index([organizationId, ownerUserId])
@@ -499,46 +519,133 @@ model OperationalEntity {
 /// Flexible graph edge. LEARNED relationships must be created as pending and
 /// explicitly approved before they become active topology.
 model OperationalRelationship {
-  id               String            @id
-  organizationId   String
-  projectId        String?
-  sourceEntityId   String
-  targetEntityId   String
-  relationshipType String
-  provenance       String            @default("DECLARED")
-  approvalStatus   String            @default("APPROVED")
-  requiresApproval Boolean           @default(false)
+  id                         String                                @id
+  organizationId             String
+  projectId                  String?
+  projectScopeKey            String                                @default("")
+  environment                String                                @default("unknown")
+  sourceEntityId             String
+  targetEntityId             String
+  relationshipType           String
+  stableIdentityKey          String?
+  provenance                 String                                @default("DECLARED")
+  approvalStatus             String                                @default("APPROVED")
+  requiresApproval           Boolean                               @default(false)
   /// REQUIRED | OPTIONAL | REDUNDANT | DEGRADED | BUSINESS_CRITICAL
-  impactRole       String            @default("REQUIRED")
-  observationCount Int               @default(0)
-  criticality      String            @default("MEDIUM")
-  confidence       Float?
-  evidenceJson     Json?
-  discoveredAt     DateTime?
-  lastObservedAt   DateTime?
-  lifecycle        String            @default("ACTIVE")
+  impactRole                 String                                @default("REQUIRED")
+  observationCount           Int                                   @default(0)
+  criticality                String                                @default("MEDIUM")
+  confidence                 Float?
+  evidenceJson               Json?
+  discoveredAt               DateTime?
+  firstSeenAt                DateTime?
+  lastObservedAt             DateTime?
+  lifecycle                  String                                @default("ACTIVE")
   /// Phase 3 OTEL relationship freshness / health (additive)
-  discoveryState   String            @default("CANDIDATE")
-  freshUntil       DateTime?
-  staleAt          DateTime?
-  inactiveAt       DateTime?
-  latencyP95Ms     Float?
-  errorRate        Float?
-  health           String            @default("UNKNOWN")
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime
-  Organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  Source           OperationalEntity @relation("OperationalRelationshipSource", fields: [sourceEntityId], references: [id], onDelete: Cascade)
-  Target           OperationalEntity @relation("OperationalRelationshipTarget", fields: [targetEntityId], references: [id], onDelete: Cascade)
-  OtelAlertEvidence    OtelAlertEvidence[]
-  OtelIncidentEvidence OtelIncidentEvidence[]
+  discoveryState             String                                @default("CANDIDATE")
+  freshUntil                 DateTime?
+  staleAt                    DateTime?
+  inactiveAt                 DateTime?
+  latencyP95Ms               Float?
+  errorRate                  Float?
+  health                     String                                @default("UNKNOWN")
+  confirmationState          String                                @default("CONFIRMED")
+  manuallyManaged            Boolean                               @default(false)
+  automationCapabilitiesJson Json?
+  metadataJson               Json?
+  createdAt                  DateTime                              @default(now())
+  updatedAt                  DateTime
+  Organization               Organization                          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project                    Project?                              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Source                     OperationalEntity                     @relation("OperationalRelationshipSource", fields: [sourceEntityId], references: [id], onDelete: Cascade)
+  Target                     OperationalEntity                     @relation("OperationalRelationshipTarget", fields: [targetEntityId], references: [id], onDelete: Cascade)
+  OtelAlertEvidence          OtelAlertEvidence[]
+  OtelIncidentEvidence       OtelIncidentEvidence[]
+  LegacyMappings             LegacyDependencyRelationshipMapping[]
 
   @@unique([organizationId, sourceEntityId, targetEntityId, relationshipType])
+  @@unique([organizationId, projectScopeKey, environment, stableIdentityKey])
   @@index([organizationId, projectId, approvalStatus])
+  @@index([organizationId, projectScopeKey, environment, relationshipType])
   @@index([sourceEntityId, lifecycle])
   @@index([targetEntityId, lifecycle])
   @@index([organizationId, discoveryState, lastObservedAt])
+}
+
+/// Source-specific aliases are resolved to one canonical entity. The scope key
+/// avoids nullable-project uniqueness holes and prevents cross-environment merges.
+model OperationalEntityIdentity {
+  id              String            @id
+  organizationId  String
+  projectId       String?
+  projectScopeKey String            @default("")
+  environment     String
+  source          String
+  sourceKey       String
+  entityId        String
+  confidence      Float?
+  confirmed       Boolean           @default(false)
+  firstSeenAt     DateTime          @default(now())
+  lastSeenAt      DateTime          @default(now())
+  metadataJson    Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime
+  Organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project         Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Entity          OperationalEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, projectScopeKey, environment, source, sourceKey])
+  @@index([entityId, source])
+  @@index([organizationId, environment, sourceKey])
+}
+
+/// Explicit legacy Service compatibility context. Code must resolve through
+/// this table rather than assuming OperationalEntity.legacyServiceId is enough.
+model LegacyServiceEntityMapping {
+  id                String            @id
+  organizationId    String
+  projectId         String
+  environment       String
+  legacyServiceId   String
+  entityId          String
+  entityIdentityKey String
+  status            String            @default("ACTIVE")
+  conflictReason    String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime
+  Organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  LegacyService     Service           @relation(fields: [legacyServiceId], references: [id], onDelete: Cascade)
+  Entity            OperationalEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, projectId, environment, legacyServiceId, entityId])
+  @@index([organizationId, projectId, environment, legacyServiceId, status])
+  @@index([entityId, status])
+}
+
+/// Explicit legacy ServiceDependency compatibility context.
+model LegacyDependencyRelationshipMapping {
+  id                        String                  @id
+  organizationId            String
+  projectId                 String
+  environment               String
+  legacyServiceDependencyId String
+  relationshipId            String
+  relationshipIdentityKey   String
+  status                    String                  @default("ACTIVE")
+  conflictReason            String?
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime
+  Organization              Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project                   Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  LegacyDependency          ServiceDependency       @relation(fields: [legacyServiceDependencyId], references: [id], onDelete: Cascade)
+  Relationship              OperationalRelationship @relation(fields: [relationshipId], references: [id], onDelete: Cascade)
+  OperationalEntity         OperationalEntity?      @relation(fields: [operationalEntityId], references: [id])
+  operationalEntityId       String?
+
+  @@unique([organizationId, projectId, environment, legacyServiceDependencyId, relationshipId])
+  @@index([organizationId, projectId, environment, legacyServiceDependencyId, status])
+  @@index([relationshipId, status])
 }
 
 model ProjectIntegration {
@@ -566,41 +673,41 @@ model ProjectIntegration {
 
 /// Versioned, organization-owned credential material with grace/revoke lifecycle.
 model ManagedCredential {
-  id               String              @id
-  organizationId   String
-  projectId        String?
-  connectionId     String?
-  integrationId    String?
-  familyId         String
-  purpose          String
-  credentialType   String
-  environment      String
-  version          Int
-  keyVersion       String
-  ciphertext       String
-  iv               String
-  authTag          String
-  maskedSuffix     String?
-  fingerprint      String?
-  status           String              @default("ACTIVE")
-  activatedAt      DateTime
-  expiresAt        DateTime?
-  graceExpiresAt   DateTime?
-  revokedAt        DateTime?
-  revokeReason     String?
-  createdBy        String?
-  rotatedFromId    String?
-  lastUsedAt       DateTime?
-  lastSuccessAt    DateTime?
-  lastFailureAt    DateTime?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime
-  Organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Project          Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  Connection       Connection?         @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  id                 String              @id
+  organizationId     String
+  projectId          String?
+  connectionId       String?
+  integrationId      String?
+  familyId           String
+  purpose            String
+  credentialType     String
+  environment        String
+  version            Int
+  keyVersion         String
+  ciphertext         String
+  iv                 String
+  authTag            String
+  maskedSuffix       String?
+  fingerprint        String?
+  status             String              @default("ACTIVE")
+  activatedAt        DateTime
+  expiresAt          DateTime?
+  graceExpiresAt     DateTime?
+  revokedAt          DateTime?
+  revokeReason       String?
+  createdBy          String?
+  rotatedFromId      String?
+  lastUsedAt         DateTime?
+  lastSuccessAt      DateTime?
+  lastFailureAt      DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime
+  Organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project            Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Connection         Connection?         @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   ProjectIntegration ProjectIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
-  RotatedFrom      ManagedCredential?  @relation("CredentialRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
-  RotatedTo        ManagedCredential[] @relation("CredentialRotation")
+  RotatedFrom        ManagedCredential?  @relation("CredentialRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
+  RotatedTo          ManagedCredential[] @relation("CredentialRotation")
 
   @@unique([familyId, version])
   @@index([organizationId, purpose, status])
@@ -677,27 +784,27 @@ model RemediationLock {
 
 /// Outbound remediator repair attempt — signed request lifecycle + post-action verification.
 model RemediatorRepairAttempt {
-  id                   String                  @id
-  organizationId       String
-  projectId            String
-  incidentId           String?
-  alertId              String?
-  providerType         IntegrationType
-  remediatorAction     String
-  target               String?
-  reason               String?
-  idempotencyKey       String
-  nonce                String
-  requestTimestamp     DateTime
-  status               RemediatorRepairStatus  @default(REQUESTED)
-  httpStatus           Int?
-  requestPayloadJson   Json?
-  responsePayloadJson  Json?
-  verificationJson     Json?
-  failureReason        String?
-  createdAt            DateTime                @default(now())
-  updatedAt            DateTime
-  completedAt          DateTime?
+  id                  String                 @id
+  organizationId      String
+  projectId           String
+  incidentId          String?
+  alertId             String?
+  providerType        IntegrationType
+  remediatorAction    String
+  target              String?
+  reason              String?
+  idempotencyKey      String
+  nonce               String
+  requestTimestamp    DateTime
+  status              RemediatorRepairStatus @default(REQUESTED)
+  httpStatus          Int?
+  requestPayloadJson  Json?
+  responsePayloadJson Json?
+  verificationJson    Json?
+  failureReason       String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime
+  completedAt         DateTime?
 
   @@unique([organizationId, idempotencyKey])
   @@unique([organizationId, nonce])
@@ -854,33 +961,34 @@ model AutomationOutcome {
 }
 
 model Service {
-  id                        String                     @id
+  id                        String                       @id
   projectId                 String
   name                      String
   type                      ServiceType
-  status                    ProjectStatus              @default(UNKNOWN)
-  criticality               String                     @default("MEDIUM")
+  status                    ProjectStatus                @default(UNKNOWN)
+  criticality               String                       @default("MEDIUM")
   baseUrl                   String?
-  isCritical                Boolean                    @default(false)
+  isCritical                Boolean                      @default(false)
   /// Phase 7 ownership / routing
   ownerUserId               String?
   ownerTeam                 String?
   runbookUrl                String?
   escalationContact         String?
-  createdAt                 DateTime                   @default(now())
+  createdAt                 DateTime                     @default(now())
   updatedAt                 DateTime
   Alert                     Alert[]
   Check                     Check[]
   ChangeEvent               ChangeEvent[]
   Event                     Event[]
-  IncomingDependencies      ServiceDependency[]        @relation("DependencyToService")
-  OutgoingDependencies      ServiceDependency[]        @relation("DependencyFromService")
-  Project                   Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  IncomingDependencies      ServiceDependency[]          @relation("DependencyToService")
+  OutgoingDependencies      ServiceDependency[]          @relation("DependencyFromService")
+  Project                   Project                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   SLODefinition             SLODefinition[]
   MaintenanceWindowServices MaintenanceWindowService[]
   OperationalEntity         OperationalEntity?
+  CanonicalMappings         LegacyServiceEntityMapping[]
   ChangeLedgerEntry         ChangeLedgerEntry[]
-  OwnerUser                 User?                      @relation("ServiceOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  OwnerUser                 User?                        @relation("ServiceOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
 
   @@index([projectId, ownerUserId])
   @@index([projectId, ownerTeam])
@@ -940,24 +1048,25 @@ model ChangeLedgerEntry {
 }
 
 model ServiceDependency {
-  id               String    @id
-  projectId        String
-  fromServiceId    String
-  toServiceId      String
-  dependencyType   String    @default("RUNTIME")
-  criticality      String    @default("HIGH")
-  isActive         Boolean   @default(true)
+  id                String                                @id
+  projectId         String
+  fromServiceId     String
+  toServiceId       String
+  dependencyType    String                                @default("RUNTIME")
+  criticality       String                                @default("HIGH")
+  isActive          Boolean                               @default(true)
   /// Telemetry-backed evidence count; 0 means declared without observed confirmation.
-  evidenceCount    Int       @default(0)
+  evidenceCount     Int                                   @default(0)
   /// 0..1 strength derived from observed co-occurrence / failures; not invented edges.
-  evidenceStrength Float     @default(0)
-  lastObservedAt   DateTime?
-  source           String    @default("MANUAL")
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime
-  FromService      Service   @relation("DependencyFromService", fields: [fromServiceId], references: [id], onDelete: Cascade)
-  Project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  ToService        Service   @relation("DependencyToService", fields: [toServiceId], references: [id], onDelete: Cascade)
+  evidenceStrength  Float                                 @default(0)
+  lastObservedAt    DateTime?
+  source            String                                @default("MANUAL")
+  createdAt         DateTime                              @default(now())
+  updatedAt         DateTime
+  FromService       Service                               @relation("DependencyFromService", fields: [fromServiceId], references: [id], onDelete: Cascade)
+  Project           Project                               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ToService         Service                               @relation("DependencyToService", fields: [toServiceId], references: [id], onDelete: Cascade)
+  CanonicalMappings LegacyDependencyRelationshipMapping[]
 
   @@unique([fromServiceId, toServiceId, dependencyType])
   @@index([projectId, isActive])
@@ -1046,23 +1155,23 @@ model StatusPage {
 }
 
 model User {
-  id             String        @id
+  id             String              @id
   name           String
-  email          String        @unique
+  email          String              @unique
   passwordHash   String
-  role           String        @default("MEMBER")
-  isActive       Boolean       @default(true)
+  role           String              @default("MEMBER")
+  isActive       Boolean             @default(true)
   // isPlatformSuperAdmin added by migration 20260714060000; accessed via platform-super-admin-column.ts
   // so Prisma does not SELECT a missing column before migrate deploy.
-  createdAt      DateTime      @default(now())
+  createdAt      DateTime            @default(now())
   updatedAt      DateTime
   organizationId String?
   Alert          Alert[]
   AuditLog       AuditLog[]
-  Organization   Organization? @relation(fields: [organizationId], references: [id])
+  Organization   Organization?       @relation(fields: [organizationId], references: [id])
   UserSession    UserSession[]
-  OwnedServices  Service[]            @relation("ServiceOwner")
-  OwnedEntities  OperationalEntity[]  @relation("OperationalEntityOwner")
+  OwnedServices  Service[]           @relation("ServiceOwner")
+  OwnedEntities  OperationalEntity[] @relation("OperationalEntityOwner")
 
   @@index([organizationId])
 }
@@ -1529,35 +1638,35 @@ model OperationalObservation {
 
 /// Phase 3: durable OTEL ingest batch with idempotency and retry metadata.
 model OtelIngestBatch {
-  id                 String       @id
-  organizationId     String
-  projectId          String?
-  connectionId       String
-  environment        String
-  protocol           String
-  idempotencyHash    String
-  status             String       @default("PENDING")
-  acceptedCount      Int          @default(0)
-  rejectedCount      Int          @default(0)
-  retryCount         Int          @default(0)
-  maxRetries         Int          @default(5)
-  nextRetryAt        DateTime?
-  deadLetterReason   String?
-  evidenceJson       Json?
-  payloadBytes       Int          @default(0)
-  receivedAt         DateTime     @default(now())
+  id                  String                        @id
+  organizationId      String
+  projectId           String?
+  connectionId        String
+  environment         String
+  protocol            String
+  idempotencyHash     String
+  status              String                        @default("PENDING")
+  acceptedCount       Int                           @default(0)
+  rejectedCount       Int                           @default(0)
+  retryCount          Int                           @default(0)
+  maxRetries          Int                           @default(5)
+  nextRetryAt         DateTime?
+  deadLetterReason    String?
+  evidenceJson        Json?
+  payloadBytes        Int                           @default(0)
+  receivedAt          DateTime                      @default(now())
   processingStartedAt DateTime?
-  processedAt        DateTime?
-  expiresAt          DateTime
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime
-  Organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Project            Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  Connection         Connection   @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  Signals            NormalizedOperationalSignal[]
-  MetricWindows      OtelMetricWindow[]
-  AlertEvidence      OtelAlertEvidence[]
-  IncidentEvidence   OtelIncidentEvidence[]
+  processedAt         DateTime?
+  expiresAt           DateTime
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime
+  Organization        Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project             Project?                      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Connection          Connection                    @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  Signals             NormalizedOperationalSignal[]
+  MetricWindows       OtelMetricWindow[]
+  AlertEvidence       OtelAlertEvidence[]
+  IncidentEvidence    OtelIncidentEvidence[]
 
   @@unique([connectionId, idempotencyHash])
   @@index([organizationId, status, receivedAt])
@@ -1568,50 +1677,50 @@ model OtelIngestBatch {
 
 /// Phase 3: typed normalized operational signal derived from OTEL batches.
 model NormalizedOperationalSignal {
-  id                   String       @id
-  organizationId       String
-  projectId            String?
-  connectionId         String
-  batchId              String
-  signalType           String
-  severity             String?
-  healthImpact         String       @default("UNKNOWN")
-  sourceEntityId       String?
-  targetEntityId       String?
-  serviceName          String?
-  resourceIdentity     String?
-  environment          String?
-  traceId              String?
-  spanId               String?
-  parentSpanId         String?
-  metricName           String?
-  logFingerprint       String?
-  normalizedStatus     String?
-  fingerprint          String
-  observedAt           DateTime
-  firstSeenAt          DateTime     @default(now())
-  lastSeenAt           DateTime     @default(now())
-  occurrenceCount      Int          @default(1)
-  attributesJson       Json?
+  id                     String                 @id
+  organizationId         String
+  projectId              String?
+  connectionId           String
+  batchId                String
+  signalType             String
+  severity               String?
+  healthImpact           String                 @default("UNKNOWN")
+  sourceEntityId         String?
+  targetEntityId         String?
+  serviceName            String?
+  resourceIdentity       String?
+  environment            String?
+  traceId                String?
+  spanId                 String?
+  parentSpanId           String?
+  metricName             String?
+  logFingerprint         String?
+  normalizedStatus       String?
+  fingerprint            String
+  observedAt             DateTime
+  firstSeenAt            DateTime               @default(now())
+  lastSeenAt             DateTime               @default(now())
+  occurrenceCount        Int                    @default(1)
+  attributesJson         Json?
   resourceAttributesJson Json?
-  evidenceBatchId      String?
-  freshUntil           DateTime?
-  staleAt              DateTime?
-  inactiveAt           DateTime?
-  processingState      String       @default("PENDING")
-  processingAttempts   Int          @default(0)
-  processingError      String?
-  processedAt          DateTime?
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime
-  Organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Project              Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  Connection           Connection   @relation(fields: [connectionId], references: [id], onDelete: Cascade)
-  Batch                OtelIngestBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  SourceEntity         OperationalEntity? @relation("NormalizedSignalSourceEntity", fields: [sourceEntityId], references: [id], onDelete: SetNull)
-  TargetEntity         OperationalEntity? @relation("NormalizedSignalTargetEntity", fields: [targetEntityId], references: [id], onDelete: SetNull)
-  AlertEvidence        OtelAlertEvidence[]
-  IncidentEvidence     OtelIncidentEvidence[]
+  evidenceBatchId        String?
+  freshUntil             DateTime?
+  staleAt                DateTime?
+  inactiveAt             DateTime?
+  processingState        String                 @default("PENDING")
+  processingAttempts     Int                    @default(0)
+  processingError        String?
+  processedAt            DateTime?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime
+  Organization           Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project                Project?               @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Connection             Connection             @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  Batch                  OtelIngestBatch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  SourceEntity           OperationalEntity?     @relation("NormalizedSignalSourceEntity", fields: [sourceEntityId], references: [id], onDelete: SetNull)
+  TargetEntity           OperationalEntity?     @relation("NormalizedSignalTargetEntity", fields: [targetEntityId], references: [id], onDelete: SetNull)
+  AlertEvidence          OtelAlertEvidence[]
+  IncidentEvidence       OtelIncidentEvidence[]
 
   @@index([organizationId, processingState, observedAt])
   @@index([batchId, signalType])
@@ -1625,31 +1734,31 @@ model NormalizedOperationalSignal {
 
 /// Bounded metric aggregates used by OTEL policy evaluation.
 model OtelMetricWindow {
-  id               String       @id
-  organizationId   String
-  projectId        String?
-  batchId          String?
-  entityId         String?
-  serviceName      String
-  environment      String?
-  metricCategory   String
-  metricName       String
-  ruleId           String
-  windowStart      DateTime
-  windowEnd        DateTime
-  sampleCount      Int          @default(0)
-  sumValue         Float        @default(0)
-  minValue         Float?
-  maxValue         Float?
-  p95Value         Float?
-  errorCount       Int          @default(0)
-  health           String       @default("UNKNOWN")
-  evidenceJson     Json?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime
-  Organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Project          Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  Batch            OtelIngestBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  id             String           @id
+  organizationId String
+  projectId      String?
+  batchId        String?
+  entityId       String?
+  serviceName    String
+  environment    String?
+  metricCategory String
+  metricName     String
+  ruleId         String
+  windowStart    DateTime
+  windowEnd      DateTime
+  sampleCount    Int              @default(0)
+  sumValue       Float            @default(0)
+  minValue       Float?
+  maxValue       Float?
+  p95Value       Float?
+  errorCount     Int              @default(0)
+  health         String           @default("UNKNOWN")
+  evidenceJson   Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime
+  Organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project        Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Batch          OtelIngestBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, serviceName, environment, ruleId, windowStart])
   @@index([organizationId, health, windowEnd])
@@ -1659,29 +1768,29 @@ model OtelMetricWindow {
 
 /// Relational OTEL evidence attached to alerts (no full payload embed).
 model OtelAlertEvidence {
-  id               String       @id
-  organizationId   String
-  projectId        String?
-  alertId          String
-  batchId          String?
-  signalId         String?
-  entityId         String?
-  relationshipId   String?
-  traceId          String?
-  spanId           String?
-  evidenceKind     String
-  summary          String
-  confidence       Float?
-  metadataJson     Json?
-  observedAt       DateTime     @default(now())
-  createdAt        DateTime     @default(now())
-  Organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Project          Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  Alert            Alert        @relation(fields: [alertId], references: [id], onDelete: Cascade)
-  Batch            OtelIngestBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
-  Signal           NormalizedOperationalSignal? @relation(fields: [signalId], references: [id], onDelete: SetNull)
-  Entity           OperationalEntity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
-  Relationship     OperationalRelationship? @relation(fields: [relationshipId], references: [id], onDelete: SetNull)
+  id             String                       @id
+  organizationId String
+  projectId      String?
+  alertId        String
+  batchId        String?
+  signalId       String?
+  entityId       String?
+  relationshipId String?
+  traceId        String?
+  spanId         String?
+  evidenceKind   String
+  summary        String
+  confidence     Float?
+  metadataJson   Json?
+  observedAt     DateTime                     @default(now())
+  createdAt      DateTime                     @default(now())
+  Organization   Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project        Project?                     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Alert          Alert                        @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  Batch          OtelIngestBatch?             @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  Signal         NormalizedOperationalSignal? @relation(fields: [signalId], references: [id], onDelete: SetNull)
+  Entity         OperationalEntity?           @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  Relationship   OperationalRelationship?     @relation(fields: [relationshipId], references: [id], onDelete: SetNull)
 
   @@index([alertId, observedAt])
   @@index([organizationId, traceId])
@@ -1691,31 +1800,31 @@ model OtelAlertEvidence {
 
 /// Relational OTEL evidence attached to incidents.
 model OtelIncidentEvidence {
-  id               String       @id
-  organizationId   String
-  projectId        String?
-  incidentId       String
-  batchId          String?
-  signalId         String?
-  entityId         String?
-  relationshipId   String?
-  traceId          String?
-  spanId           String?
-  evidenceKind     String
-  summary          String
-  confidence       Float?
+  id                   String                       @id
+  organizationId       String
+  projectId            String?
+  incidentId           String
+  batchId              String?
+  signalId             String?
+  entityId             String?
+  relationshipId       String?
+  traceId              String?
+  spanId               String?
+  evidenceKind         String
+  summary              String
+  confidence           Float?
   propagationDirection String?
-  candidateRootCause Boolean    @default(false)
-  metadataJson     Json?
-  observedAt       DateTime     @default(now())
-  createdAt        DateTime     @default(now())
-  Organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Project          Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  Incident         Incident     @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  Batch            OtelIngestBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
-  Signal           NormalizedOperationalSignal? @relation(fields: [signalId], references: [id], onDelete: SetNull)
-  Entity           OperationalEntity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
-  Relationship     OperationalRelationship? @relation(fields: [relationshipId], references: [id], onDelete: SetNull)
+  candidateRootCause   Boolean                      @default(false)
+  metadataJson         Json?
+  observedAt           DateTime                     @default(now())
+  createdAt            DateTime                     @default(now())
+  Organization         Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project              Project?                     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Incident             Incident                     @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  Batch                OtelIngestBatch?             @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  Signal               NormalizedOperationalSignal? @relation(fields: [signalId], references: [id], onDelete: SetNull)
+  Entity               OperationalEntity?           @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  Relationship         OperationalRelationship?     @relation(fields: [relationshipId], references: [id], onDelete: SetNull)
 
   @@index([incidentId, observedAt])
   @@index([organizationId, traceId])
