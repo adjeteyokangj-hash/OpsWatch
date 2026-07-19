@@ -16,6 +16,24 @@ const upsertCheckAlert = async (input: {
   message: string;
 }): Promise<void> => {
   let alertToDispatchId: string | null = null;
+  const project = await prisma.project.findUnique({
+    where: { id: input.projectId },
+    select: { organizationId: true }
+  });
+  const mappings = project?.organizationId
+    ? await prisma.legacyServiceEntityMapping.findMany({
+        where: {
+          organizationId: project.organizationId,
+          projectId: input.projectId,
+          legacyServiceId: input.serviceId,
+          status: "ACTIVE"
+        },
+        select: { entityId: true }
+      })
+    : [];
+  const entityIds = [...new Set(mappings.map((row) => row.entityId))];
+  const operationalEntityId = entityIds.length === 1 ? entityIds[0]! : null;
+
   const existingAlert = await prisma.alert.findFirst({
     where: {
       projectId: input.projectId,
@@ -34,7 +52,10 @@ const upsertCheckAlert = async (input: {
         severity: input.severity,
         category: input.category,
         message: input.message,
-        lastSeenAt: new Date()
+        lastSeenAt: new Date(),
+        ...(existingAlert.operationalEntityId || !operationalEntityId
+          ? {}
+          : { operationalEntityId })
       }
     });
     if (updatedAlert.severity !== existingAlert.severity) {
@@ -46,6 +67,7 @@ const upsertCheckAlert = async (input: {
         id: randomUUID(),
         projectId: input.projectId,
         serviceId: input.serviceId,
+        operationalEntityId,
         sourceType: "CHECK",
         sourceId: input.checkId,
         severity: input.severity,

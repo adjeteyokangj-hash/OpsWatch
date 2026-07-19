@@ -97,6 +97,15 @@ export type ProjectTopologyResponse = {
     freshSignals: number;
     staleEntities: number;
   };
+  readerDiagnostic?: {
+    reader: "CANONICAL" | "LEGACY";
+    fallbackUsed: boolean;
+    canonicalEntityCount: number;
+    canonicalRelationshipCount: number;
+    legacyFallbackCount: number;
+    unresolvedCanonicalReferences: number;
+    details: string[];
+  };
 };
 
 export const LAYER_ORDER: TopologyNodeType[] = ["APP", "MODULE", "WORKFLOW", "COMPONENT"];

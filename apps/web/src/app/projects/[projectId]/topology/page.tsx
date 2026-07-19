@@ -571,6 +571,48 @@ export default function ProjectTopologyPage() {
           </section>
         ) : null}
 
+        {process.env.NODE_ENV !== "production" && topology?.readerDiagnostic ? (
+          <section
+            className="panel"
+            data-testid="topology-reader-diagnostic"
+            style={{
+              borderLeft: `4px solid ${
+                topology.readerDiagnostic.reader === "CANONICAL" &&
+                !topology.readerDiagnostic.fallbackUsed
+                  ? "#16a34a"
+                  : "#d97706"
+              }`
+            }}
+          >
+            <strong>Topology reader diagnostic (dev only)</strong>
+            <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.25rem" }}>
+              <li data-testid="diag-reader">
+                Topology reader: {topology.readerDiagnostic.reader}
+              </li>
+              <li data-testid="diag-fallback">
+                Fallback used: {topology.readerDiagnostic.fallbackUsed ? "yes" : "no"}
+              </li>
+              <li data-testid="diag-entities">
+                Canonical entity count: {topology.readerDiagnostic.canonicalEntityCount}
+              </li>
+              <li data-testid="diag-relationships">
+                Canonical relationship count: {topology.readerDiagnostic.canonicalRelationshipCount}
+              </li>
+              <li data-testid="diag-legacy-fallback">
+                Legacy fallback count: {topology.readerDiagnostic.legacyFallbackCount}
+              </li>
+              <li data-testid="diag-unresolved">
+                Unresolved canonical references: {topology.readerDiagnostic.unresolvedCanonicalReferences}
+              </li>
+            </ul>
+            {topology.readerDiagnostic.details.length > 0 ? (
+              <p className="dashboard-subtle" data-testid="diag-details" style={{ marginTop: "0.5rem" }}>
+                {topology.readerDiagnostic.details.join(" · ")}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
         {maintenance.length > 0 ? (
           <section className="panel maintenance-banner">
             <strong>Maintenance active</strong>

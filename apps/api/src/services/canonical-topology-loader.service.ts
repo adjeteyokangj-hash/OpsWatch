@@ -224,6 +224,25 @@ export const loadCanonicalProjectTopology = async (input: {
       entityIds.has(relationship.sourceEntityId) &&
       entityIds.has(relationship.targetEntityId)
   );
+
+  let legacyFallbackCount = 0;
+  let unresolvedCanonicalReferences = 0;
+  const resolveAlertEntity = (alert: {
+    operationalEntityId: string | null;
+    serviceId: string | null;
+  }): string | null => {
+    if (alert.operationalEntityId) return alert.operationalEntityId;
+    if (alert.serviceId) {
+      const mapped = mappingByLegacy.get(alert.serviceId);
+      if (mapped) {
+        legacyFallbackCount += 1;
+        return mapped;
+      }
+      unresolvedCanonicalReferences += 1;
+    }
+    return null;
+  };
+
   const topology = buildProjectTopologyResponse({
     project,
     services,
@@ -237,9 +256,7 @@ export const loadCanonicalProjectTopology = async (input: {
     })),
     alerts: alerts.map((alert) => ({
       ...alert,
-      serviceId:
-        alert.operationalEntityId ??
-        (alert.serviceId ? mappingByLegacy.get(alert.serviceId) ?? null : null)
+      serviceId: resolveAlertEntity(alert)
     })),
     incidents: incidents.map((incident) => ({
       id: incident.id,
@@ -249,25 +266,29 @@ export const loadCanonicalProjectTopology = async (input: {
       serviceIds: Array.from(
         new Set([
           ...incident.IncidentAlert.flatMap((reference) => {
-            if (reference.Alert.operationalEntityId) {
-              return [reference.Alert.operationalEntityId];
-            }
-            const legacyId = reference.Alert.serviceId;
-            const entityId = legacyId
-              ? mappingByLegacy.get(legacyId)
-              : undefined;
-            return entityId ? [entityId] : [];
+            const resolved = resolveAlertEntity(reference.Alert);
+            return resolved ? [resolved] : [];
           }),
           ...(incidentEntityIds.get(incident.id) ?? [])
         ])
       )
     })),
-    slos: sloDefinitions.map((definition) => ({
-      serviceId: definition.serviceId
-        ? mappingByLegacy.get(definition.serviceId) ?? null
-        : null,
-      latestWindow: definition.SLOWindow[0] ?? null
-    })),
+    slos: sloDefinitions.map((definition) => {
+      let serviceId: string | null = null;
+      if (definition.serviceId) {
+        const mapped = mappingByLegacy.get(definition.serviceId);
+        if (mapped) {
+          serviceId = mapped;
+          legacyFallbackCount += 1;
+        } else {
+          unresolvedCanonicalReferences += 1;
+        }
+      }
+      return {
+        serviceId,
+        latestWindow: definition.SLOWindow[0] ?? null
+      };
+    }),
     heartbeats
   });
 
@@ -358,5 +379,21 @@ export const loadCanonicalProjectTopology = async (input: {
         entity.discoveryState === "STALE"
     ).length
   };
+  if (process.env.NODE_ENV !== "production") {
+    topology.readerDiagnostic = {
+      reader: "CANONICAL",
+      fallbackUsed: false,
+      canonicalEntityCount: entities.length,
+      canonicalRelationshipCount: visibleRelationships.length,
+      legacyFallbackCount,
+      unresolvedCanonicalReferences,
+      details:
+        legacyFallbackCount > 0
+          ? [
+              `${legacyFallbackCount} reference(s) resolved via legacy service->entity mapping (expected compatibility path)`
+            ]
+          : []
+    };
+  }
   return topology;
 };

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/prisma", () => ({
   prisma: {
@@ -25,9 +25,21 @@ import { loadRecentCheckResultsByCheckIds } from "./check-result-batch.service";
 import { clearTopologyLoaderCache, loadProjectTopology } from "./topology-loader.service";
 
 describe("topology-loader.service", () => {
+  const previousCanonicalFlag = process.env.OPSWATCH_CANONICAL_TOPOLOGY_READ_ENABLED;
+
   beforeEach(() => {
     vi.clearAllMocks();
     clearTopologyLoaderCache();
+    // Legacy-path unit coverage: ignore any local cutover dry-run flag in apps/api/.env.
+    process.env.OPSWATCH_CANONICAL_TOPOLOGY_READ_ENABLED = "false";
+  });
+
+  afterEach(() => {
+    if (previousCanonicalFlag === undefined) {
+      delete process.env.OPSWATCH_CANONICAL_TOPOLOGY_READ_ENABLED;
+    } else {
+      process.env.OPSWATCH_CANONICAL_TOPOLOGY_READ_ENABLED = previousCanonicalFlag;
+    }
   });
 
   it("loads check results in one batched call and caches briefly", async () => {

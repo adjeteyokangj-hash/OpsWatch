@@ -18,6 +18,30 @@ const UNRESOLVED_STATUSES: AlertStatus[] = [
   AlertStatus.VERIFYING
 ];
 
+/**
+ * Resolve the canonical OperationalEntity for a legacy Service so that
+ * newly created alerts carry a direct canonical reference instead of relying
+ * on the reader's legacy-mapping fallback. Returns null when unmapped/ambiguous.
+ */
+const resolveCanonicalEntityId = async (input: {
+  organizationId: string;
+  projectId: string;
+  serviceId?: string;
+}): Promise<string | null> => {
+  if (!input.serviceId) return null;
+  const mappings = await prisma.legacyServiceEntityMapping.findMany({
+    where: {
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      legacyServiceId: input.serviceId,
+      status: "ACTIVE"
+    },
+    select: { entityId: true }
+  });
+  const entityIds = [...new Set(mappings.map((row) => row.entityId))];
+  return entityIds.length === 1 ? entityIds[0]! : null;
+};
+
 export const createAlert = async (input: {
   projectId: string;
   serviceId?: string;
@@ -37,6 +61,12 @@ export const createAlert = async (input: {
   if (!project?.organizationId) {
     return { alertId: null, created: false, suppressed: false };
   }
+
+  const operationalEntityId = await resolveCanonicalEntityId({
+    organizationId: project.organizationId,
+    projectId: input.projectId,
+    serviceId: input.serviceId
+  });
 
   const fingerprint = buildAlertFingerprint({
     projectId: input.projectId,
@@ -58,6 +88,7 @@ export const createAlert = async (input: {
         id: suppressedId,
         projectId: input.projectId,
         serviceId: input.serviceId,
+        operationalEntityId,
         sourceType: input.sourceType,
         sourceId: input.sourceId,
         integrationId: input.integrationId,
@@ -115,7 +146,10 @@ export const createAlert = async (input: {
           : input.message,
         lastSeenAt: now,
         fingerprint: existingAlert.fingerprint ?? fingerprint,
-        occurrenceCount
+        occurrenceCount,
+        ...(existingAlert.operationalEntityId || !operationalEntityId
+          ? {}
+          : { operationalEntityId })
       }
     });
     if (updatedAlert.severity !== existingAlert.severity || flapping.isFlapping) {
@@ -132,6 +166,7 @@ export const createAlert = async (input: {
       id: randomUUID(),
       projectId: input.projectId,
       serviceId: input.serviceId,
+      operationalEntityId,
       sourceType: input.sourceType,
       sourceId: input.sourceId,
       integrationId: input.integrationId,

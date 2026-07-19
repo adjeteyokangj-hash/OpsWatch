@@ -55,6 +55,24 @@ const upsertSslAlert = async (input: {
   title: string;
   message: string;
 }): Promise<void> => {
+  const project = await prisma.project.findUnique({
+    where: { id: input.projectId },
+    select: { organizationId: true }
+  });
+  const mappings = project?.organizationId
+    ? await prisma.legacyServiceEntityMapping.findMany({
+        where: {
+          organizationId: project.organizationId,
+          projectId: input.projectId,
+          legacyServiceId: input.serviceId,
+          status: "ACTIVE"
+        },
+        select: { entityId: true }
+      })
+    : [];
+  const entityIds = [...new Set(mappings.map((row) => row.entityId))];
+  const operationalEntityId = entityIds.length === 1 ? entityIds[0]! : null;
+
   const existing = await prisma.alert.findFirst({
     where: { projectId: input.projectId, serviceId: input.serviceId, sourceType: "CHECK", sourceId: input.checkId, status: "OPEN" }
   });
@@ -62,7 +80,15 @@ const upsertSslAlert = async (input: {
   if (existing) {
     const updated = await prisma.alert.update({
       where: { id: existing.id },
-      data: { severity: input.severity, category: input.category, message: input.message, lastSeenAt: new Date() }
+      data: {
+        severity: input.severity,
+        category: input.category,
+        message: input.message,
+        lastSeenAt: new Date(),
+        ...(existing.operationalEntityId || !operationalEntityId
+          ? {}
+          : { operationalEntityId })
+      }
     });
     if (updated.severity !== existing.severity) {
       await dispatchAlertNotifications(updated.id, "escalated");
@@ -73,6 +99,7 @@ const upsertSslAlert = async (input: {
         id: randomUUID(),
         projectId: input.projectId,
         serviceId: input.serviceId,
+        operationalEntityId,
         sourceType: "CHECK",
         sourceId: input.checkId,
         severity: input.severity,

@@ -395,4 +395,15 @@ export type ProjectTopologyResponse = {
     freshSignals: number;
     staleEntities: number;
   };
+  readerDiagnostic?: TopologyReaderDiagnostic;
+};
+
+export type TopologyReaderDiagnostic = {
+  reader: "CANONICAL" | "LEGACY";
+  fallbackUsed: boolean;
+  canonicalEntityCount: number;
+  canonicalRelationshipCount: number;
+  legacyFallbackCount: number;
+  unresolvedCanonicalReferences: number;
+  details: string[];
 };

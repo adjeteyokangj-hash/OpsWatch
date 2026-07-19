@@ -11,6 +11,8 @@ const {
   connectionFind,
   connectionUpdateMany,
   serviceUpdate,
+  projectFindUnique,
+  mappingFindMany,
   notify
 } = vi.hoisted(() => ({
   checkFindMany: vi.fn(),
@@ -23,6 +25,8 @@ const {
   connectionFind: vi.fn(),
   connectionUpdateMany: vi.fn(),
   serviceUpdate: vi.fn(),
+  projectFindUnique: vi.fn(),
+  mappingFindMany: vi.fn(),
   notify: vi.fn()
 }));
 
@@ -37,7 +41,9 @@ vi.mock("../lib/prisma", () => ({
       update: alertUpdate
     },
     connection: { findFirst: connectionFind, updateMany: connectionUpdateMany },
-    service: { update: serviceUpdate }
+    service: { update: serviceUpdate },
+    project: { findUnique: projectFindUnique },
+    legacyServiceEntityMapping: { findMany: mappingFindMany }
   }
 }));
 
@@ -101,6 +107,8 @@ describe("generated URL HTTP checks", () => {
     });
     connectionUpdateMany.mockResolvedValue({ count: 1 });
     serviceUpdate.mockResolvedValue({});
+    projectFindUnique.mockResolvedValue({ organizationId: "org-1" });
+    mappingFindMany.mockResolvedValue([{ entityId: "oge-public-website" }]);
   });
 
   it("accepts a safe redirect and marks monitoring connected", async () => {
@@ -165,7 +173,8 @@ describe("generated URL HTTP checks", () => {
     expect(alertCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         sourceId: "check-http",
-        category: "AVAILABILITY"
+        category: "AVAILABILITY",
+        operationalEntityId: "oge-public-website"
       })
     }));
     expect(connectionUpdateMany).toHaveBeenCalledWith(expect.objectContaining({

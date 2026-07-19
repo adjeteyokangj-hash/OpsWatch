@@ -99,17 +99,76 @@ export const loadProjectTopology = async (
   });
   if (!project) return null;
   if (canonicalReadEnabled) {
-    const topology = await loadCanonicalProjectTopology({
-      organizationId,
-      project
-    });
-    topologyCache.set(cacheKey, {
-      expiresAt: Date.now() + TOPOLOGY_CACHE_TTL_MS,
-      value: topology
-    });
-    return topology;
+    try {
+      const topology = await loadCanonicalProjectTopology({
+        organizationId,
+        project
+      });
+      topologyCache.set(cacheKey, {
+        expiresAt: Date.now() + TOPOLOGY_CACHE_TTL_MS,
+        value: topology
+      });
+      return topology;
+    } catch (error) {
+      // Explicit, non-silent fallback: surface the failure in logs and diagnostic
+      // rather than degrading to legacy without a trace.
+      console.error(
+        `[topology] canonical read failed for project ${projectId}; falling back to legacy`,
+        error
+      );
+      const fallback = await buildLegacyProjectTopology(
+        organizationId,
+        projectId,
+        project
+      );
+      if (process.env.NODE_ENV !== "production") {
+        fallback.readerDiagnostic = {
+          reader: "LEGACY",
+          fallbackUsed: true,
+          canonicalEntityCount: 0,
+          canonicalRelationshipCount: 0,
+          legacyFallbackCount: fallback.nodes.length,
+          unresolvedCanonicalReferences: 0,
+          details: [
+            `canonical read failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          ]
+        };
+      }
+      // Do not cache a fallback response so the next read retries canonical.
+      return fallback;
+    }
   }
 
+  const topology = await buildLegacyProjectTopology(
+    organizationId,
+    projectId,
+    project
+  );
+  if (process.env.NODE_ENV !== "production") {
+    topology.readerDiagnostic = {
+      reader: "LEGACY",
+      fallbackUsed: false,
+      canonicalEntityCount: 0,
+      canonicalRelationshipCount: 0,
+      legacyFallbackCount: topology.nodes.length,
+      unresolvedCanonicalReferences: 0,
+      details: ["canonical read disabled (OPSWATCH_CANONICAL_TOPOLOGY_READ_ENABLED != true)"]
+    };
+  }
+  topologyCache.set(cacheKey, {
+    expiresAt: Date.now() + TOPOLOGY_CACHE_TTL_MS,
+    value: topology
+  });
+  return topology;
+};
+
+const buildLegacyProjectTopology = async (
+  organizationId: string,
+  projectId: string,
+  project: { id: string; name: string; status: string }
+): Promise<ProjectTopologyResponse> => {
   // Lean parallel reads — no nested relation `take` (serializes as N+1 under connection_limit=1).
   const [services, dependencies, alerts, incidents, sloDefinitions, heartbeats] = await Promise.all([
     prisma.service.findMany({
@@ -336,11 +395,6 @@ export const loadProjectTopology = async (
     freshSignals,
     staleEntities: otelEntities.filter((row) => row.discoveryState === "STALE").length
   };
-
-  topologyCache.set(cacheKey, {
-    expiresAt: Date.now() + TOPOLOGY_CACHE_TTL_MS,
-    value: topology
-  });
 
   return topology;
 };
