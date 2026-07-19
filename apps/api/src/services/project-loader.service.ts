@@ -182,7 +182,16 @@ export const projectInclude = {
   ProjectBilling: true,
   Connection: {
     where: { isActive: true },
-    select: { id: true, name: true }
+    select: {
+      id: true,
+      name: true,
+      health: true,
+      healthReason: true,
+      installationStatus: true,
+      linkedServiceId: true,
+      linkedCheckId: true,
+      configurationJson: true
+    }
   },
   NotificationChannel: {
     where: { isActive: true },

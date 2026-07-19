@@ -19,6 +19,84 @@ import {
 	provisionProjectIngestCredentials,
 	type ProvisionedIngestCredentials
 } from "../services/project-ingest-credentials.service";
+import {
+	normalizeMonitoringUrl,
+	provisionUrlMonitoring
+} from "../services/url-monitoring-provisioning.service";
+
+const buildMonitoringSummary = (row: any) => {
+	const services = row.services ?? row.Service ?? [];
+	const connections = row.connections ?? row.Connection ?? [];
+	const heartbeats = row.heartbeats ?? row.Heartbeat ?? [];
+	const events = row.events ?? row.Event ?? [];
+	const urlConnections = connections.filter((connection: any) =>
+		connection?.name === "Public website" || connection?.name === "Admin endpoint"
+	);
+	const checks = services.flatMap((service: any) =>
+		(service.Check ?? service.checks ?? []).map((check: any) => ({
+			...check,
+			serviceId: service.id,
+			latestResult: (check.CheckResult ?? check.checkResults ?? [])[0] ?? null
+		}))
+	);
+	const checkFor = (role: "PUBLIC" | "ADMIN", type: "HTTP" | "SSL") =>
+		checks.find((check: any) => {
+			const config = check.configJson && typeof check.configJson === "object" ? check.configJson : {};
+			return config.monitoringRole === role && check.type === type && check.isActive;
+		});
+	const publicConnection = urlConnections.find((connection: any) => connection.name === "Public website");
+	const adminConnection = urlConnections.find((connection: any) => connection.name === "Admin endpoint");
+	const publicHttp = checkFor("PUBLIC", "HTTP");
+	const publicSsl = checkFor("PUBLIC", "SSL");
+	const adminHttp = checkFor("ADMIN", "HTTP");
+	const adminSsl = checkFor("ADMIN", "SSL");
+	const generatedChecks = [publicHttp, publicSsl, adminHttp, adminSsl].filter(Boolean);
+	const failedConnection = urlConnections.find((connection: any) =>
+		connection.installationStatus === "ERROR" || connection.health === "DEGRADED"
+	);
+	const firstResultPending = generatedChecks.length > 0 && generatedChecks.every((check: any) => !check.latestResult);
+	const active = generatedChecks.some((check: any) => Boolean(check.latestResult));
+	const setupStatus = failedConnection
+		? "FAILED"
+		: active
+			? "ACTIVE"
+			: urlConnections.length > 0
+				? "SETTING_UP"
+				: "NOT_CONFIGURED";
+
+	return {
+		status: setupStatus,
+		error: failedConnection?.healthReason ?? null,
+		steps: {
+			websiteConnectionCreated: Boolean(publicConnection),
+			httpCheckScheduled: Boolean(publicHttp),
+			sslCheckScheduled: Boolean(publicSsl),
+			firstCheckPending: firstResultPending,
+			monitoringActive: active
+		},
+		depth: {
+			externalMonitoring: {
+				publicUrlConnected: Boolean(publicConnection),
+				httpMonitoringActive: Boolean(publicHttp?.latestResult),
+				sslMonitoringActive: Boolean(publicSsl?.latestResult),
+				adminUrlMonitoring: adminConnection
+					? Boolean(adminHttp?.latestResult || adminSsl?.latestResult)
+						? "ACTIVE"
+						: "PENDING"
+					: "NOT_CONFIGURED"
+			},
+			applicationMonitoring: {
+				heartbeat: heartbeats.length > 0 ? "CONNECTED" : "AWAITING_SETUP",
+				events: events.length > 0 ? "CONNECTED" : "NOT_CONFIGURED"
+			},
+			advancedMonitoring: {
+				logs: "NOT_CONNECTED",
+				traces: "NOT_CONNECTED",
+				infrastructure: "NOT_CONNECTED"
+			}
+		}
+	};
+};
 
 const normalizeProjectRow = (row: any) => {
 	const { signingSecret: _signingSecret, apiKey: _apiKey, ...safeRow } = row;
@@ -32,7 +110,16 @@ const normalizeProjectRow = (row: any) => {
 		integrations: row.integrations ?? row.ProjectIntegration ?? [],
 		notificationChannels: row.notificationChannels ?? row.NotificationChannel ?? [],
 		billing: row.billing ?? row.ProjectBilling ?? null,
-		connections: row.connections ?? row.Connection ?? []
+		connections: (row.connections ?? row.Connection ?? []).map((connection: any) => ({
+			id: connection.id,
+			name: connection.name,
+			health: connection.health,
+			healthReason: connection.healthReason,
+			installationStatus: connection.installationStatus,
+			linkedServiceId: connection.linkedServiceId,
+			linkedCheckId: connection.linkedCheckId
+		})),
+		monitoringSetup: buildMonitoringSummary(row)
 	};
 };
 
@@ -120,6 +207,19 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 	const name = String(body.name || "Untitled Project").trim();
 	const slug = String(body.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""));
 	const now = new Date();
+	let frontendUrl: string | null = null;
+	let adminUrl: string | null = null;
+	try {
+		frontendUrl = body.frontendUrl ? await normalizeMonitoringUrl(String(body.frontendUrl)) : null;
+		adminUrl = body.adminUrl ? await normalizeMonitoringUrl(String(body.adminUrl)) : null;
+		if (frontendUrl && adminUrl && frontendUrl === adminUrl) {
+			res.status(400).json({ error: "Public and admin URLs must be different" });
+			return;
+		}
+	} catch (error) {
+		res.status(400).json({ error: error instanceof Error ? error.message : "Invalid monitoring URL" });
+		return;
+	}
 	const operationalLocationId = body.operationalLocationId ? String(body.operationalLocationId) : null;
 	if (operationalLocationId) {
 		const location = await prisma.operationalLocation.findFirst({
@@ -142,7 +242,8 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 				clientName: String(body.clientName || name),
 				description: body.description ? String(body.description) : null,
 				environment: String(body.environment || "production"),
-				frontendUrl: body.frontendUrl ? String(body.frontendUrl) : null,
+				frontendUrl,
+				adminUrl,
 				backendUrl: body.backendUrl ? String(body.backendUrl) : null,
 				repoUrl: body.repoUrl ? String(body.repoUrl) : null,
 				projectOwner: body.projectOwner ? String(body.projectOwner) : null,
@@ -167,6 +268,38 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 			return;
 		}
 		throw error;
+	}
+
+	try {
+		if (frontendUrl) {
+			await provisionUrlMonitoring({
+				organizationId: orgId,
+				projectId: row.id,
+				projectName: row.name,
+				environment: row.environment,
+				role: "PUBLIC",
+				url: frontendUrl,
+				createdBy: req.user?.id ?? req.user?.sub ?? null
+			});
+		}
+		if (adminUrl) {
+			await provisionUrlMonitoring({
+				organizationId: orgId,
+				projectId: row.id,
+				projectName: row.name,
+				environment: row.environment,
+				role: "ADMIN",
+				url: adminUrl,
+				createdBy: req.user?.id ?? req.user?.sub ?? null
+			});
+		}
+	} catch (error) {
+		await prisma.project.delete({ where: { id: row.id } }).catch(() => undefined);
+		res.status(500).json({
+			error: "Monitoring setup failed; registration was rolled back and can be retried",
+			detail: error instanceof Error ? error.message : "Unknown monitoring setup error"
+		});
+		return;
 	}
 
 	let ingestCredentials: ProvisionedIngestCredentials | { error: string };
@@ -269,6 +402,31 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 	}
 
 	const body = req.body ?? {};
+	let frontendUrl: string | null | undefined;
+	let adminUrl: string | null | undefined;
+	try {
+		frontendUrl =
+			body.frontendUrl === undefined
+				? undefined
+				: body.frontendUrl
+					? await normalizeMonitoringUrl(String(body.frontendUrl))
+					: null;
+		adminUrl =
+			body.adminUrl === undefined
+				? undefined
+				: body.adminUrl
+					? await normalizeMonitoringUrl(String(body.adminUrl))
+					: null;
+		const nextFrontendUrl = frontendUrl === undefined ? undefined : frontendUrl;
+		const nextAdminUrl = adminUrl === undefined ? undefined : adminUrl;
+		if (nextFrontendUrl && nextAdminUrl && nextFrontendUrl === nextAdminUrl) {
+			res.status(400).json({ error: "Public and admin URLs must be different" });
+			return;
+		}
+	} catch (error) {
+		res.status(400).json({ error: error instanceof Error ? error.message : "Invalid monitoring URL" });
+		return;
+	}
 	if (body.operationalLocationId !== undefined && body.operationalLocationId !== null) {
 		const location = await prisma.operationalLocation.findFirst({
 			where: { id: String(body.operationalLocationId), organizationId: orgId },
@@ -287,7 +445,8 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 			...(body.clientName !== undefined ? { clientName: String(body.clientName) } : {}),
 			...(body.description !== undefined ? { description: body.description ? String(body.description) : null } : {}),
 			...(body.environment !== undefined ? { environment: String(body.environment) } : {}),
-			...(body.frontendUrl !== undefined ? { frontendUrl: body.frontendUrl ? String(body.frontendUrl) : null } : {}),
+			...(frontendUrl !== undefined ? { frontendUrl } : {}),
+			...(adminUrl !== undefined ? { adminUrl } : {}),
 			...(body.backendUrl !== undefined ? { backendUrl: body.backendUrl ? String(body.backendUrl) : null } : {}),
 			...(body.repoUrl !== undefined ? { repoUrl: body.repoUrl ? String(body.repoUrl) : null } : {}),
 			...(body.projectOwner !== undefined ? { projectOwner: body.projectOwner ? String(body.projectOwner) : null } : {}),
@@ -301,6 +460,38 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 			updatedAt: new Date()
 		}
 	});
+
+	try {
+		if (frontendUrl) {
+			await provisionUrlMonitoring({
+				organizationId: orgId,
+				projectId: row.id,
+				projectName: row.name,
+				environment: row.environment,
+				role: "PUBLIC",
+				url: frontendUrl,
+				createdBy: req.user?.id ?? req.user?.sub ?? null
+			});
+		}
+		if (adminUrl) {
+			await provisionUrlMonitoring({
+				organizationId: orgId,
+				projectId: row.id,
+				projectName: row.name,
+				environment: row.environment,
+				role: "ADMIN",
+				url: adminUrl,
+				createdBy: req.user?.id ?? req.user?.sub ?? null
+			});
+		}
+	} catch (error) {
+		res.status(500).json({
+			error: "Application saved but monitoring setup failed",
+			detail: error instanceof Error ? error.message : "Unknown monitoring setup error",
+			retryable: true
+		});
+		return;
+	}
 
 	let ingestCredentials: ProvisionedIngestCredentials | { error: string } | undefined;
 	try {

@@ -292,6 +292,7 @@ model Project {
   operationalContact      String?
   defaultRegion           String?
   frontendUrl             String?
+  adminUrl                String?
   backendUrl              String?
   repoUrl                 String?
   vercelProjectId         String?
