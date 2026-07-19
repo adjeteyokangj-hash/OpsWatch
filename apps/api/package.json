@@ -6,7 +6,8 @@
 	"exports": {
 		".": "./dist/index.js",
 		"./app": "./src/app.ts",
-		"./bootstrap": "./src/bootstrap.ts"
+		"./bootstrap": "./src/bootstrap.ts",
+		"./otel-process": "./dist/services/otel/otel-process.service.js"
 	},
 	"scripts": {
 		"dev": "tsx watch src/server.ts",

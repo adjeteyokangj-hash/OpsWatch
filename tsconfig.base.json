@@ -15,7 +15,8 @@
 			"@opswatch/client": ["packages/opswatch-client/src"],
 			"@opswatch/client/*": ["packages/opswatch-client/src/*"],
 			"@opswatch/shared": ["packages/shared/src"],
-			"@opswatch/shared/*": ["packages/shared/src/*"]
+			"@opswatch/shared/*": ["packages/shared/src/*"],
+			"@opswatch/api/otel-process": ["apps/api/src/services/otel/otel-process.service"]
 		}
 	}
 }

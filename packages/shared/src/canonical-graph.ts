@@ -59,6 +59,8 @@ export type CanonicalRelationshipWrite = CanonicalGraphContext & {
   compatibilityRelationshipId?: string;
   evidenceCount?: number;
   incrementEvidence?: boolean;
+  latencyP95Ms?: number | null;
+  errorRate?: number | null;
 };
 
 export class GraphIdentityConflictError extends Error {
@@ -133,12 +135,7 @@ export class CanonicalGraphService {
           select: { organizationId: true, environment: true }
         })
       : null;
-    if (
-      project &&
-      (project.organizationId !== input.organizationId ||
-        (sharedScope === "PROJECT" &&
-          safeEnvironment(project.environment) !== environment))
-    ) {
+    if (project && project.organizationId !== input.organizationId) {
       throw new GraphIdentityConflictError("Entity scope does not match project scope", {
         organizationId: input.organizationId,
         projectId: input.projectId,
@@ -172,7 +169,9 @@ export class CanonicalGraphService {
             select: {
               id: true,
               organizationId: true,
-              projectId: true
+              projectId: true,
+              entityType: true,
+              stableIdentityKey: true
             }
           })
         : null
@@ -209,6 +208,10 @@ export class CanonicalGraphService {
       compatibilityExisting?.id ??
       input.compatibilityEntityId ??
       deterministicEntityId;
+    const effectiveEntityType =
+      compatibilityExisting?.entityType ?? entityType;
+    const effectiveStableIdentityKey =
+      compatibilityExisting?.stableIdentityKey ?? stableIdentityKey;
     const existingAlias = await this.db.operationalEntityIdentity.findUnique({
       where: {
         organizationId_projectScopeKey_environment_source_sourceKey: {
@@ -239,9 +242,9 @@ export class CanonicalGraphService {
             data: {
               projectScopeKey,
               environment,
-              entityType,
+              entityType: effectiveEntityType,
               name: input.name.trim(),
-              stableIdentityKey,
+              stableIdentityKey: effectiveStableIdentityKey,
               legacyServiceId: input.legacyServiceId,
               operationalLocationId: input.operationalLocationId,
               lastSeenAt: observedAt,
@@ -476,6 +479,8 @@ export class CanonicalGraphService {
           criticality: input.criticality,
           impactRole: input.impactRole,
           evidenceJson: input.evidence,
+          latencyP95Ms: input.latencyP95Ms,
+          errorRate: input.errorRate,
           metadataJson: input.metadata,
           automationCapabilitiesJson: input.automationCapabilities,
           discoveryState: input.discoveryState,
@@ -504,6 +509,8 @@ export class CanonicalGraphService {
         impactRole: input.impactRole ?? "REQUIRED",
         confidence: input.confidence ?? null,
         evidenceJson: input.evidence,
+        latencyP95Ms: input.latencyP95Ms ?? null,
+        errorRate: input.errorRate ?? null,
         discoveredAt: observedAt,
         firstSeenAt: observedAt,
         lastObservedAt: observedAt,

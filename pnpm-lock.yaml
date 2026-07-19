@@ -185,6 +185,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@opswatch/api':
+        specifier: workspace:*
+        version: link:../api
       '@opswatch/shared':
         specifier: workspace:*
         version: link:../../packages/shared
