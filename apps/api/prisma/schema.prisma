@@ -336,6 +336,7 @@ model Connection {
   id                   String              @id
   organizationId       String
   projectId            String?
+  createdBy            String?
   name                 String
   type                 String
   mode                 String
@@ -344,8 +345,15 @@ model Connection {
   capabilitiesJson     Json?
   configurationJson    Json?
   secretRef            String?
+  managedSecretCiphertext String?
+  managedSecretIv      String?
+  managedSecretAuthTag String?
   health               String              @default("UNKNOWN")
   healthReason         String?
+  lastValidatedAt      DateTime?
+  validationStatusCode Int?
+  validationLatencyMs  Int?
+  validationErrorCategory String?
   lastSuccessAt        DateTime?
   lastFailureAt        DateTime?
   lastError            String?
@@ -356,6 +364,8 @@ model Connection {
   collectorVersion     String?
   manifestVersion      String              @default("1.0")
   deactivatedAt        DateTime?
+  linkedServiceId      String?
+  linkedCheckId        String?
   isActive             Boolean             @default(true)
   createdAt            DateTime            @default(now())
   updatedAt            DateTime
@@ -367,6 +377,8 @@ model Connection {
   @@index([organizationId, isActive, createdAt])
   @@index([projectId, isActive])
   @@index([organizationId, mode, installationStatus])
+  @@index([linkedServiceId])
+  @@index([linkedCheckId])
 }
 
 /// Optional location hierarchy for centrally managed, distributed, or hybrid organizations.

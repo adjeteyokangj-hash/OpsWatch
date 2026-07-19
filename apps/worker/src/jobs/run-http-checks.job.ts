@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { classifyHttpCheckFailure, formatFailureMessage } from "@opswatch/shared";
 import { prisma } from "../lib/prisma";
 import { logger } from "../lib/logger";
+import { connectionRequestHeaders } from "../lib/connection-auth";
 import { dispatchAlertNotifications } from "../services/notifications/notification.service";
 
 const upsertCheckAlert = async (input: {
@@ -108,7 +109,31 @@ export const runHttpChecksJob = async (): Promise<void> => {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), check.timeoutMs);
-      const response = await fetch(check.Service.baseUrl || "", { signal: controller.signal });
+      const checkConfig = check.configJson && typeof check.configJson === "object"
+        ? check.configJson as Record<string, unknown>
+        : {};
+      let headers: Record<string, string> = {};
+      if (checkConfig.source === "CONNECTION" && typeof checkConfig.connectionId === "string") {
+        const connection = await prisma.connection.findFirst({
+          where: {
+            id: checkConfig.connectionId,
+            linkedCheckId: check.id,
+            isActive: true,
+            Project: { id: check.Service.projectId, organizationId: check.Service.Project.organizationId }
+          },
+          select: {
+            authMethod: true,
+            secretRef: true,
+            managedSecretCiphertext: true,
+            managedSecretIv: true,
+            managedSecretAuthTag: true,
+            configurationJson: true
+          }
+        });
+        if (!connection) throw new Error("Managed connection is inactive or outside the check project");
+        headers = connectionRequestHeaders(connection);
+      }
+      const response = await fetch(check.Service.baseUrl || "", { signal: controller.signal, headers, redirect: "manual" });
       clearTimeout(timeout);
       responseCode = response.status;
 

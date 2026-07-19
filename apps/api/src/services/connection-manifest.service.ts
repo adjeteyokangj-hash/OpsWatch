@@ -13,6 +13,29 @@ export const CONNECTION_MODES = [
 
 export type ConnectionMode = (typeof CONNECTION_MODES)[number];
 
+export const TRUE_NUMERIS_PROFILE = {
+  baseUrl: "https://api.truenumeris.com",
+  healthPath: "/api/v1/health",
+  discoveryPath: "/api/v1/integrations/ping",
+  authMethod: "BEARER",
+  authHeaderName: "Authorization",
+  authPrefix: "Bearer"
+} as const;
+
+export type GuidedConnectionInput = {
+  projectId: string | null;
+  name: string;
+  environment: string;
+  type: string;
+  mode: ConnectionMode;
+  authMethod: string;
+  authSecret?: string;
+  capabilities: string[];
+  configuration: Record<string, unknown>;
+  secretRef?: string | null;
+  startMonitoring: boolean;
+};
+
 export type ConnectionConfigField = {
   key: string;
   label: string;
@@ -48,10 +71,10 @@ const foundationHooks: ConnectionManifest["foundationHooks"] = [
 ];
 
 const manifests: Record<ConnectionMode, ConnectionManifest> = {
-  AGENTLESS: { version: "1.0", displayName: "Generic HTTP/HTTPS monitor", requiredCapabilities: ["health_check"], supportedAuthMethods: ["NONE"], availableCapabilities: ["health_check", "latency"], configurationSchema: endpointFields, foundationHooks },
+  AGENTLESS: { version: "1.1", displayName: "Generic HTTP/HTTPS monitor", requiredCapabilities: ["health_check"], supportedAuthMethods: ["NONE", "API_KEY", "BEARER", "BASIC", "CUSTOM_HEADER"], availableCapabilities: ["health_check", "latency"], configurationSchema: endpointFields, foundationHooks },
   HEARTBEAT: { version: "1.0", displayName: "Heartbeat ingest", requiredCapabilities: ["heartbeat"], supportedAuthMethods: ["HMAC", "API_KEY"], availableCapabilities: ["heartbeat", "deployment_metadata"], configurationSchema: [], foundationHooks },
   WEBHOOK: { version: "1.0", displayName: "Signed webhook event ingest", requiredCapabilities: ["event_ingest"], supportedAuthMethods: ["HMAC"], availableCapabilities: ["event_ingest", "deployment_events"], configurationSchema: [], foundationHooks },
-  API: { version: "1.0", displayName: "Generic REST/API check", requiredCapabilities: ["api_probe"], supportedAuthMethods: ["NONE"], availableCapabilities: ["api_probe", "discovery"], configurationSchema: [...endpointFields, { key: "discoveryPath", label: "Discovery path", type: "string", description: "Optional GET path used for real response-key discovery." }], foundationHooks },
+  API: { version: "1.1", displayName: "Generic REST/API check", requiredCapabilities: ["api_probe"], supportedAuthMethods: ["NONE", "API_KEY", "BEARER", "BASIC", "CUSTOM_HEADER"], availableCapabilities: ["api_probe", "discovery"], configurationSchema: [...endpointFields, { key: "discoveryPath", label: "Discovery path", type: "string", description: "Optional GET path used for real response-key discovery." }], foundationHooks },
   SYNTHETIC: { version: "1.0", displayName: "Synthetic journey contract", requiredCapabilities: ["synthetic_run"], supportedAuthMethods: ["NONE"], availableCapabilities: ["synthetic_run"], configurationSchema: [], foundationHooks },
   OTEL_COLLECTOR: { version: "1.0", displayName: "OpenTelemetry collector contract", requiredCapabilities: ["telemetry_ingest"], supportedAuthMethods: ["API_KEY"], availableCapabilities: ["telemetry_ingest", "traces", "metrics", "logs"], configurationSchema: [{ key: "serviceName", label: "Expected service.name", type: "string", required: true, description: "Must exactly match the Collector resource service.name." }], foundationHooks },
   SDK: { version: "1.0", displayName: "SDK event ingest contract", requiredCapabilities: ["event_ingest"], supportedAuthMethods: ["API_KEY", "HMAC"], availableCapabilities: ["event_ingest", "traces", "deployment_metadata"], configurationSchema: [], foundationHooks },
@@ -90,6 +113,99 @@ export const hasInlineSecret = (value: unknown): boolean => {
   return Object.entries(value as Record<string, unknown>).some(
     ([key, child]) => sensitiveConfigurationKey.test(key) || hasInlineSecret(child)
   );
+};
+
+const readString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim() ? value.trim() : undefined;
+
+const normalizeAuthMethod = (value: unknown): string => {
+  const normalized = String(value ?? "NONE").trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (normalized === "NO_AUTH") return "NONE";
+  if (normalized === "APIKEY") return "API_KEY";
+  if (normalized === "CUSTOM") return "CUSTOM_HEADER";
+  return normalized;
+};
+
+const parseTimeout = (value: unknown): number | undefined => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const coerced = typeof value === "string" && /^\d+$/.test(value.trim()) ? Number(value.trim()) : value;
+  if (!Number.isInteger(coerced) || Number(coerced) < 1 || Number(coerced) > 30_000) {
+    throw new Error("timeoutMs must be an integer between 1 and 30000");
+  }
+  return Number(coerced);
+};
+
+export const parseGuidedConnectionInput = (
+  body: unknown,
+  options: { partial?: boolean } = {}
+): GuidedConnectionInput => {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("request body must be an object");
+  const value = body as Record<string, unknown>;
+  const legacy = value.configuration && typeof value.configuration === "object" && !Array.isArray(value.configuration)
+    ? value.configuration as Record<string, unknown>
+    : {};
+  const connectorType = readString(value.connectorType) ?? readString(value.type) ?? (options.partial ? "" : "API");
+  const normalizedConnectorType = connectorType.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const trueNumeris = normalizedConnectorType === "TRUENUMERIS";
+  const inferredMode = trueNumeris || normalizedConnectorType === "API" ? "API" : "AGENTLESS";
+  const modeValue = (readString(value.mode) ?? inferredMode).toUpperCase();
+  if (!isConnectionMode(modeValue)) throw new Error(`mode must be one of: ${CONNECTION_MODES.join(", ")}`);
+  const baseUrl = readString(value.baseUrl) ?? readString(legacy.baseUrl);
+  const healthPath = readString(value.healthPath) ?? readString(legacy.healthPath);
+  const legacyEndpoint = readString(legacy.endpoint);
+  const effectiveBaseUrl = baseUrl ?? (trueNumeris ? TRUE_NUMERIS_PROFILE.baseUrl : undefined);
+  const effectiveHealthPath = healthPath ?? (trueNumeris ? TRUE_NUMERIS_PROFILE.healthPath : undefined);
+  const endpoint = effectiveBaseUrl
+    ? joinConnectionUrl(effectiveBaseUrl, effectiveHealthPath ?? "")
+    : legacyEndpoint;
+  const timeoutMs = parseTimeout(value.timeoutMs ?? legacy.timeoutMs);
+  const requestMethod = String(value.requestMethod ?? legacy.requestMethod ?? legacy.method ?? "GET").toUpperCase();
+  const authMethod = normalizeAuthMethod(value.authType ?? value.authMethod ?? (trueNumeris ? TRUE_NUMERIS_PROFILE.authMethod : "NONE"));
+  const configuration: Record<string, unknown> = {
+    ...legacy,
+    ...(effectiveBaseUrl ? { baseUrl: effectiveBaseUrl } : {}),
+    ...(effectiveHealthPath ? { healthPath: effectiveHealthPath } : {}),
+    ...(endpoint ? { endpoint } : {}),
+    ...(readString(value.discoveryPath) ?? readString(legacy.discoveryPath) ?? (trueNumeris ? TRUE_NUMERIS_PROFILE.discoveryPath : undefined)
+      ? { discoveryPath: readString(value.discoveryPath) ?? readString(legacy.discoveryPath) ?? TRUE_NUMERIS_PROFILE.discoveryPath }
+      : {}),
+    method: requestMethod,
+    ...(timeoutMs ? { timeoutMs } : {}),
+    ...(readString(value.authHeaderName) ?? readString(legacy.authHeaderName) ?? (trueNumeris ? TRUE_NUMERIS_PROFILE.authHeaderName : undefined)
+      ? { authHeaderName: readString(value.authHeaderName) ?? readString(legacy.authHeaderName) ?? TRUE_NUMERIS_PROFILE.authHeaderName }
+      : {}),
+    ...(readString(value.authPrefix) ?? readString(legacy.authPrefix) ?? (trueNumeris ? TRUE_NUMERIS_PROFILE.authPrefix : undefined)
+      ? { authPrefix: readString(value.authPrefix) ?? readString(legacy.authPrefix) ?? TRUE_NUMERIS_PROFILE.authPrefix }
+      : {})
+  };
+  const defaultCapabilities = modeValue === "API" ? ["api_probe"] : modeValue === "AGENTLESS" ? ["health_check"] : [];
+  return {
+    projectId: readString(value.applicationId) ?? readString(value.projectId) ?? null,
+    name: readString(value.name) ?? "",
+    environment: readString(value.environment) ?? "production",
+    type: connectorType,
+    mode: modeValue,
+    authMethod,
+    ...(readString(value.authSecret) ? { authSecret: readString(value.authSecret) } : {}),
+    capabilities: Array.isArray(value.capabilities)
+      ? value.capabilities.filter((item): item is string => typeof item === "string")
+      : defaultCapabilities,
+    configuration,
+    ...(value.secretRef !== undefined ? { secretRef: readString(value.secretRef) ?? null } : {}),
+    startMonitoring: value.startMonitoring === true
+  };
+};
+
+export const joinConnectionUrl = (baseUrl: string, path: string): string => {
+  const base = new URL(baseUrl);
+  if (!["http:", "https:"].includes(base.protocol)) throw new Error("baseUrl must be an HTTP or HTTPS URL");
+  if (base.username || base.password) throw new Error("baseUrl must not contain credentials");
+  const basePath = base.pathname.replace(/\/+$/, "");
+  const childPath = path.trim().replace(/^\/+/, "");
+  base.pathname = childPath ? `${basePath}/${childPath}`.replace(/\/{2,}/g, "/") : basePath || "/";
+  base.search = "";
+  base.hash = "";
+  return base.toString();
 };
 
 export const validateConnectionInput = (input: {

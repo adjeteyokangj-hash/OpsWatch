@@ -2,13 +2,18 @@ import { Router } from "express";
 import { requireAdmin } from "../middleware/auth";
 import {
   createConnection,
+  deleteConnection,
+  disableConnection,
   discoverConnection,
   getConnectionManifestHandler,
   listConnections,
   negotiateConnectionCapabilities,
   patchConnection,
+  reactivateConnection,
   recordConnectionValidation,
-  testConnection
+  rotateConnectionCredential,
+  testConnection,
+  testUnsavedConnectionHandler
 } from "../controllers/connections.controller";
 import { createChangeLedger, listChangeLedger } from "../controllers/change-ledger.controller";
 import {
@@ -30,8 +35,13 @@ connectionsRouter.get("/connections", listConnections);
 connectionsRouter.post("/connections", createConnection);
 connectionsRouter.patch("/connections/:connectionId", patchConnection);
 connectionsRouter.post("/connections/:connectionId/validation", recordConnectionValidation);
+connectionsRouter.post("/connections/test", testUnsavedConnectionHandler);
 connectionsRouter.post("/connections/:connectionId/test", testConnection);
 connectionsRouter.post("/connections/:connectionId/discover", discoverConnection);
+connectionsRouter.post("/connections/:connectionId/disable", requireAdmin, disableConnection);
+connectionsRouter.post("/connections/:connectionId/reactivate", requireAdmin, reactivateConnection);
+connectionsRouter.post("/connections/:connectionId/rotate-credential", requireAdmin, rotateConnectionCredential);
+connectionsRouter.delete("/connections/:connectionId", requireAdmin, deleteConnection);
 connectionsRouter.get("/connections/manifests/:mode", getConnectionManifestHandler);
 connectionsRouter.post("/connections/negotiate", negotiateConnectionCapabilities);
 connectionsRouter.get("/change-ledger", listChangeLedger);

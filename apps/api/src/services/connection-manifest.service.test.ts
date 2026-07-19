@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   getConnectionManifest,
   hasInlineSecret,
+  joinConnectionUrl,
   negotiateCapabilities,
+  parseGuidedConnectionInput,
   validateConnectionConfiguration,
   validateConnectionInput
 } from "./connection-manifest.service";
@@ -52,5 +54,38 @@ describe("connection manifest", () => {
       endpoint: "https://status.example.test/health",
       method: "POST"
     })).toEqual({ valid: false, error: "configuration.method must be GET or HEAD" });
+  });
+
+  it.each([1, 30_000, "30000"])("accepts timeout boundary %s at the API boundary", (timeoutMs) => {
+    const parsed = parseGuidedConnectionInput({
+      name: "Boundary",
+      connectorType: "API",
+      mode: "API",
+      baseUrl: "https://example.test",
+      healthPath: "/health",
+      timeoutMs
+    });
+    expect(parsed.configuration.timeoutMs).toBe(Number(timeoutMs));
+  });
+
+  it.each([0, 30_001, "thirty seconds"])("rejects invalid timeout %s", (timeoutMs) => {
+    expect(() => parseGuidedConnectionInput({
+      name: "Invalid",
+      connectorType: "API",
+      baseUrl: "https://example.test",
+      timeoutMs
+    })).toThrow(/integer between 1 and 30000/);
+  });
+
+  it("joins paths without duplicate slashes and applies the verified TrueNumeris profile", () => {
+    expect(joinConnectionUrl("https://example.test/api/", "/health")).toBe("https://example.test/api/health");
+    const parsed = parseGuidedConnectionInput({ name: "TrueNumeris", connectorType: "TrueNumeris", authSecret: "server-only" });
+    expect(parsed.configuration).toMatchObject({
+      endpoint: "https://api.truenumeris.com/api/v1/health",
+      discoveryPath: "/api/v1/integrations/ping",
+      authHeaderName: "Authorization",
+      authPrefix: "Bearer"
+    });
+    expect(parsed.authMethod).toBe("BEARER");
   });
 });

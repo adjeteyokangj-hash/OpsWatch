@@ -8267,3 +8267,222 @@ label {
   }
 }
 
+/* ----- Guided Connections wizard ----- */
+.connection-wizard__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.connection-wizard__header h2 {
+  margin: 0 0 6px;
+}
+
+.connection-wizard__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 0.9fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.connection-wizard__form {
+  display: grid;
+  gap: 16px;
+}
+
+.connection-wizard__step {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.connection-wizard__step legend {
+  font-size: 1.05rem;
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+
+.connection-wizard__nav,
+.connection-wizard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.connection-wizard-summary {
+  position: sticky;
+  top: 88px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+}
+
+.connection-wizard-summary h3 {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+}
+
+.connection-wizard-summary__steps {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.connection-wizard-summary__step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.connection-wizard-summary__step span {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.connection-wizard-summary__step--current {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.connection-wizard-summary__step--current span {
+  background: var(--brand-soft);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.connection-wizard-summary__step--done span {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.connection-wizard-summary__facts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.connection-wizard-summary__facts div {
+  display: grid;
+  gap: 2px;
+}
+
+.connection-wizard-summary__facts dt {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.connection-wizard-summary__facts dd {
+  margin: 0;
+  font-size: 0.92rem;
+  word-break: break-word;
+}
+
+.connection-secret-field {
+  display: grid;
+  gap: 8px;
+}
+
+.connection-secret-field__actions,
+.connection-registry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.connection-advanced {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+
+.connection-advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.connection-test-result {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.connection-test-result h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.connection-test-result dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.connection-test-result dt {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+}
+
+.connection-test-result dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+
+.connection-test-result--ok {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.connection-test-result--fail {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.connection-registry-table .connection-rotate-inline {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.connection-related-links__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.project-connections-section {
+  margin-top: 4px;
+}
+
+@media (max-width: 960px) {
+  .connection-wizard__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .connection-wizard-summary {
+    position: static;
+  }
+}
+
