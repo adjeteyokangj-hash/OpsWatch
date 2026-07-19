@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import type { ProjectTopologyResponse } from "../types/dto";
 import { loadRecentCheckResultsByCheckIds } from "./check-result-batch.service";
 import { buildProjectTopologyResponse, type TopologyServiceRecord } from "./topology.service";
+import { loadCanonicalProjectTopology } from "./canonical-topology-loader.service";
 
 const unresolvedIncidentStatuses = ["OPEN", "INVESTIGATING", "MONITORING"] as const;
 const openAlertStatuses = ["OPEN", "ACKNOWLEDGED"] as const;
@@ -84,7 +85,9 @@ export const loadProjectTopology = async (
   organizationId: string,
   projectId: string
 ): Promise<ProjectTopologyResponse | null> => {
-  const cacheKey = `${organizationId}:${projectId}`;
+  const canonicalReadEnabled =
+    process.env.OPSWATCH_CANONICAL_TOPOLOGY_READ_ENABLED === "true";
+  const cacheKey = `${organizationId}:${projectId}:${canonicalReadEnabled ? "canonical" : "legacy"}`;
   const cached = topologyCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value;
@@ -95,6 +98,17 @@ export const loadProjectTopology = async (
     select: { id: true, name: true, status: true }
   });
   if (!project) return null;
+  if (canonicalReadEnabled) {
+    const topology = await loadCanonicalProjectTopology({
+      organizationId,
+      project
+    });
+    topologyCache.set(cacheKey, {
+      expiresAt: Date.now() + TOPOLOGY_CACHE_TTL_MS,
+      value: topology
+    });
+    return topology;
+  }
 
   // Lean parallel reads — no nested relation `take` (serializes as N+1 under connection_limit=1).
   const [services, dependencies, alerts, incidents, sloDefinitions, heartbeats] = await Promise.all([
