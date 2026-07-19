@@ -53,6 +53,15 @@ export type IncidentRefDto = {
 
 export type AlertDetailDto = AlertListItemDto & {
   incidents: IncidentRefDto[];
+  otelEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    traceId: string | null;
+    spanId: string | null;
+    observedAt: string;
+  }>;
 };
 
 // ─── Incident DTOs ───────────────────────────────────────────────────────────
@@ -102,6 +111,17 @@ export type IncidentDetailDto = IncidentListItemDto & {
   resolutionNotes: string | null;
   alerts: AlertRefDto[];
   correlationGroup: OrganizationIncidentGroupDto | null;
+  otelEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    traceId: string | null;
+    spanId: string | null;
+    propagationDirection: string | null;
+    candidateRootCause: boolean;
+    observedAt: string;
+  }>;
 };
 
 export type IncidentTimelineEventDto = {
@@ -293,6 +313,11 @@ export type TopologyEdge = {
   type: TopologyEdgeType;
   critical: boolean;
   status: TopologyHealthStatus;
+  otel?: {
+    source: string;
+    health: string | null;
+    discoveryState: string | null;
+  };
 };
 
 export type TopologySummary = {

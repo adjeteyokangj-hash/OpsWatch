@@ -113,6 +113,15 @@ type AlertDetailRecord = Awaited<ReturnType<typeof prisma.alert.findUnique>> & {
       openedAt: Date;
     };
   }>;
+  OtelAlertEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    traceId: string | null;
+    spanId: string | null;
+    observedAt: Date;
+  }>;
 };
 
 export const mapAlertDetail = (r: NonNullable<AlertDetailRecord>): AlertDetailDto => ({
@@ -143,6 +152,15 @@ export const mapAlertDetail = (r: NonNullable<AlertDetailRecord>): AlertDetailDt
     severity: ref.Incident.severity,
     status: ref.Incident.status,
     openedAt: ref.Incident.openedAt.toISOString()
+  })),
+  otelEvidence: (r.OtelAlertEvidence ?? []).map((row) => ({
+    id: row.id,
+    evidenceKind: row.evidenceKind,
+    summary: row.summary,
+    confidence: row.confidence,
+    traceId: row.traceId,
+    spanId: row.spanId,
+    observedAt: row.observedAt.toISOString()
   }))
 });
 

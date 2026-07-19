@@ -35,6 +35,17 @@ type Incident = {
     lastSeenAt: string;
     service: { id: string; name: string } | null;
   }>;
+  otelEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    traceId: string | null;
+    spanId: string | null;
+    propagationDirection: string | null;
+    candidateRootCause: boolean;
+    observedAt: string;
+  }>;
   correlationGroup?: {
     id: string;
     correlationKey: string;
@@ -624,6 +635,26 @@ export default function IncidentDetailPage() {
           </div>
         )}
       </section>
+
+      {incident.otelEvidence && incident.otelEvidence.length > 0 ? (
+        <section className="panel" data-testid="otel-incident-evidence">
+          <h2>OTEL evidence</h2>
+          <ul className="dashboard-list">
+            {incident.otelEvidence.map((row) => (
+              <li key={row.id}>
+                <strong>{row.evidenceKind}</strong> — {row.summary}
+                <div className="dashboard-subtle">
+                  {row.candidateRootCause ? "candidate root cause · " : ""}
+                  {row.propagationDirection ? `${row.propagationDirection} · ` : ""}
+                  {row.traceId ? `trace ${row.traceId.slice(0, 8)}… · ` : ""}
+                  {row.confidence != null ? `confidence ${row.confidence} · ` : ""}
+                  {new Date(row.observedAt).toLocaleString()}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {/* ── Remediation actions ─────────────────────────────────────── */}
       <section className="panel ai-insight-panel">

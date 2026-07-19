@@ -636,7 +636,9 @@ export function TopologyRelationshipDrawer({
         )}
         <div>
           <dt>Discovery source</dt>
-          <dd>Declared</dd>
+          <dd data-testid="topology-edge-discovery-source">
+            {edge.otel?.source === "OTEL_COLLECTOR" ? "OTEL collector" : "Declared"}
+          </dd>
         </div>
         <div>
           <dt>Discovery confidence</dt>

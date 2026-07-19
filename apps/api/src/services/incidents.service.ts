@@ -136,6 +136,17 @@ type IncidentDetailRecord = NonNullable<
       Project: { id: string; name: string };
     }>;
   } | null;
+  OtelIncidentEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    traceId: string | null;
+    spanId: string | null;
+    propagationDirection: string | null;
+    candidateRootCause: boolean;
+    observedAt: Date;
+  }>;
 };
 
 const mapCorrelationGroup = (
@@ -188,7 +199,18 @@ export const mapIncidentDetail = (r: IncidentDetailRecord): IncidentDetailDto =>
         ? { id: ref.Alert.Service.id, name: ref.Alert.Service.name }
         : null
     })),
-    correlationGroup: r.CorrelationGroup ? mapCorrelationGroup(r.CorrelationGroup) : null
+    correlationGroup: r.CorrelationGroup ? mapCorrelationGroup(r.CorrelationGroup) : null,
+    otelEvidence: (r.OtelIncidentEvidence ?? []).map((row) => ({
+      id: row.id,
+      evidenceKind: row.evidenceKind,
+      summary: row.summary,
+      confidence: row.confidence,
+      traceId: row.traceId,
+      spanId: row.spanId,
+      propagationDirection: row.propagationDirection,
+      candidateRootCause: row.candidateRootCause,
+      observedAt: row.observedAt.toISOString()
+    }))
   };
 };
 

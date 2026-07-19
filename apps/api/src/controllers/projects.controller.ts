@@ -25,6 +25,7 @@ import {
 	reconcileProjectUrlMonitoring,
 	UrlMonitorEntitlementError
 } from "../services/url-monitoring-provisioning.service";
+import { loadProjectOtelStatus } from "../services/otel/otel-project-status.service";
 
 const sendUrlMonitoringError = (res: Response, error: unknown, fallback: string): void => {
 	if (error instanceof UrlMonitorEntitlementError) {
@@ -119,42 +120,90 @@ const buildMonitoringSummary = (row: any) => {
 				heartbeat: heartbeats.length > 0 ? "CONNECTED" : "NOT_CONFIGURED",
 				events: events.length > 0 ? "CONNECTED" : "NOT_CONFIGURED"
 			},
-			advancedMonitoring: (() => {
-				const otelConnections = connections.filter(
-					(connection: any) => connection?.mode === "OTEL_COLLECTOR" && connection?.isActive !== false
-				);
-				const healthyOtel = otelConnections.some(
-					(connection: any) =>
-						connection.health === "HEALTHY" || connection.installationStatus === "ACTIVE"
-				);
-				const connected = otelConnections.length > 0;
-				// Logs/traces are Foundation/Preview — not full explorers.
-				const foundationState = !connected
-					? "NOT_CONNECTED"
-					: healthyOtel
-						? "FOUNDATION_CONNECTED"
-						: "CONNECTION_DEGRADED";
-				return {
-					logs: foundationState,
-					traces: foundationState,
-					infrastructure: "NOT_CONNECTED",
-					otel: {
-						connections: otelConnections.length,
-						ingestionEnabled: process.env.OPSWATCH_OTEL_INGESTION_ENABLED === "true",
-						topologyDiscoveryEnabled:
-							process.env.OPSWATCH_OTEL_TOPOLOGY_DISCOVERY_ENABLED === "true",
-						alertGenerationEnabled:
-							process.env.OPSWATCH_OTEL_ALERT_GENERATION_ENABLED === "true",
-						label: "Foundation/Preview"
-					}
-				};
-			})()
+			advancedMonitoring: {
+				logs: "NOT_CONNECTED",
+				traces: "NOT_CONNECTED",
+				infrastructure: "NOT_CONNECTED",
+				otel: null
+			}
 		}
 	};
 };
 
-const normalizeProjectRow = (row: any) => {
+const normalizeProjectRow = async (row: any) => {
 	const { signingSecret: _signingSecret, apiKey: _apiKey, ...safeRow } = row;
+	const connections = row.connections ?? row.Connection ?? [];
+	const otelConnections = connections.filter(
+		(connection: any) => connection?.mode === "OTEL_COLLECTOR" && connection?.isActive !== false
+	);
+	const organizationId = row.organizationId ?? null;
+	let otelStatus: Awaited<ReturnType<typeof loadProjectOtelStatus>> | null = null;
+	if (organizationId && row.id) {
+		try {
+			otelStatus = await loadProjectOtelStatus(organizationId, row.id, otelConnections);
+		} catch (error) {
+			console.warn("OTEL project status enrichment failed", {
+				projectId: row.id,
+				message: error instanceof Error ? error.message : String(error)
+			});
+		}
+	}
+	const foundationState =
+		otelConnections.length === 0
+			? "NOT_CONNECTED"
+			: otelStatus?.connectionHealth === "HEALTHY"
+				? "FOUNDATION_CONNECTED"
+				: "CONNECTION_DEGRADED";
+
+	const monitoringSetup = buildMonitoringSummary(row) as any;
+	monitoringSetup.depth.advancedMonitoring = {
+		logs: foundationState,
+		traces: foundationState,
+		infrastructure: "NOT_CONNECTED",
+		otel: otelStatus
+			? {
+					connections: otelStatus.connections,
+					connectionHealth: otelStatus.connectionHealth,
+					lastSignalAt: otelStatus.lastSignalAt,
+					signalCounts: otelStatus.signalCounts,
+					discoveredEntities: otelStatus.discoveredEntities,
+					discoveredRelationships: otelStatus.discoveredRelationships,
+					staleEntities: otelStatus.staleEntities,
+					ingestionEnabled: otelStatus.features.ingestion,
+					topologyDiscoveryEnabled: otelStatus.features.topologyDiscovery,
+					alertGenerationEnabled: otelStatus.features.alertGeneration,
+					incidentCorrelationEnabled: otelStatus.features.incidentCorrelation,
+					processingNotes: otelStatus.processingNotes,
+					label: otelStatus.label
+				}
+			: {
+					connections: 0,
+					connectionHealth: null,
+					lastSignalAt: null,
+					signalCounts: {
+						metric: 0,
+						log: 0,
+						trace: 0,
+						span: 0,
+						error: 0,
+						dependency: 0,
+						total: 0
+					},
+					discoveredEntities: 0,
+					discoveredRelationships: 0,
+					staleEntities: 0,
+					ingestionEnabled: process.env.OPSWATCH_OTEL_INGESTION_ENABLED === "true",
+					topologyDiscoveryEnabled:
+						process.env.OPSWATCH_OTEL_TOPOLOGY_DISCOVERY_ENABLED === "true",
+					alertGenerationEnabled:
+						process.env.OPSWATCH_OTEL_ALERT_GENERATION_ENABLED === "true",
+					incidentCorrelationEnabled:
+						process.env.OPSWATCH_OTEL_INCIDENT_CORRELATION_ENABLED === "true",
+					processingNotes: [],
+					label: "Foundation/Preview"
+				}
+	};
+
 	return {
 		...safeRow,
 		signingSecretConfigured: Boolean(row.signingSecret?.trim?.() || row.signingCredentialFamilyId),
@@ -169,16 +218,19 @@ const normalizeProjectRow = (row: any) => {
 		integrations: row.integrations ?? row.ProjectIntegration ?? [],
 		notificationChannels: row.notificationChannels ?? row.NotificationChannel ?? [],
 		billing: row.billing ?? row.ProjectBilling ?? null,
-		connections: (row.connections ?? row.Connection ?? []).map((connection: any) => ({
+		connections: connections.map((connection: any) => ({
 			id: connection.id,
 			name: connection.name,
+			mode: connection.mode,
 			health: connection.health,
 			healthReason: connection.healthReason,
 			installationStatus: connection.installationStatus,
 			linkedServiceId: connection.linkedServiceId,
-			linkedCheckId: connection.linkedCheckId
+			linkedCheckId: connection.linkedCheckId,
+			credentialStatus: connection.credentialStatus ?? connection.credentialDisplayStatus ?? null,
+			lastSuccessAt: connection.lastSuccessAt ?? null
 		})),
-		monitoringSetup: buildMonitoringSummary(row)
+		monitoringSetup
 	};
 };
 
@@ -208,8 +260,8 @@ const loadProjectForResponse = async (projectId: string, orgId: string, fallback
 			where: { id: projectId, organizationId: orgId },
 			include: projectInclude
 		});
-		if (!row) return normalizeProjectRow(fallback);
-		return normalizeProjectRow(await enrichProjectRow(row as any));
+		if (!row) return await normalizeProjectRow(fallback);
+		return await normalizeProjectRow(await enrichProjectRow(row as any));
 	} catch (error) {
 		if (!isPrismaSchemaDriftError(error)) {
 			throw error;
@@ -220,11 +272,11 @@ const loadProjectForResponse = async (projectId: string, orgId: string, fallback
 				where: { id: projectId, organizationId: orgId },
 				include: projectIncludeLite
 			});
-			if (!row) return normalizeProjectRow(fallback);
-			return normalizeProjectRow(await enrichProjectRow(row as any));
+			if (!row) return await normalizeProjectRow(fallback);
+			return await normalizeProjectRow(await enrichProjectRow(row as any));
 		} catch (enrichError) {
 			console.error("PROJECT_ENRICH_ERROR", enrichError instanceof Error ? enrichError.message : enrichError);
-			return normalizeProjectRow(fallback);
+			return await normalizeProjectRow(fallback);
 		}
 	}
 };
@@ -237,13 +289,13 @@ export const listProjects = async (req: AuthRequest, res: Response) => {
 	const enriched = await Promise.all(
 		rows.map(async (row) => {
 			try {
-				return normalizeProjectRow(await enrichProjectRow(row as any));
+				return await normalizeProjectRow(await enrichProjectRow(row as any));
 			} catch (error) {
 				console.error("PROJECT_ENRICH_ERROR", {
 					projectId: row.id,
 					message: error instanceof Error ? error.message : String(error)
 				});
-				return normalizeProjectRow(row as any);
+				return await normalizeProjectRow(row as any);
 			}
 		})
 	);
@@ -441,7 +493,7 @@ export const getProjectById = async (req: AuthRequest, res: Response) => {
 		res.status(404).json({ error: "Project not found" });
 		return;
 	}
-	res.json(normalizeProjectRow(await enrichProjectRow(row as any)));
+	res.json(await normalizeProjectRow(await enrichProjectRow(row as any)));
 };
 
 export const patchProject = async (req: AuthRequest, res: Response) => {
@@ -557,7 +609,7 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 	}
 
 	res.json({
-		...normalizeProjectRow(row),
+		...(await normalizeProjectRow(row)),
 		...(ingestCredentials ? { ingestCredentials } : {})
 	});
 };

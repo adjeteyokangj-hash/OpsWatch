@@ -193,13 +193,15 @@ export const projectInclude = {
     select: {
       id: true,
       name: true,
+      mode: true,
       health: true,
       healthReason: true,
       installationStatus: true,
       linkedServiceId: true,
       linkedCheckId: true,
       configurationJson: true,
-      createdAt: true
+      createdAt: true,
+      lastSuccessAt: true
     }
   },
   NotificationChannel: {

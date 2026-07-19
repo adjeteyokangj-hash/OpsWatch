@@ -113,6 +113,11 @@ export type SelectedTopologyEdge = {
   structureNote?: string;
   /** Endpoint evidence lines (node health / discovery) — not edge traffic health. */
   endpointEvidence?: string[];
+  otel?: {
+    source: string;
+    health: string | null;
+    discoveryState: string | null;
+  };
 };
 
 export type DescribeSelectedEdgeOptions = {
@@ -198,7 +203,8 @@ export const describeSelectedEdge = (
     critical: edge.critical,
     colourMeaning: colourMeaningForEdge(kind, edge.status),
     writtenHealth: kind === "hierarchy" ? HIERARCHY_WRITTEN_HEALTH : healthLabel(edge.status),
-    colourReason: colourReasonForEdge(kind, edge.status)
+    colourReason: colourReasonForEdge(kind, edge.status),
+    ...(edge.otel ? { otel: edge.otel } : {})
   };
 
   if (kind !== "hierarchy") return base;

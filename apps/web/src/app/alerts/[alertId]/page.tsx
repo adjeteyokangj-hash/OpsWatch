@@ -23,6 +23,15 @@ type AlertDetail = {
   lastSeenAt: string;
   acknowledgedAt: string | null;
   resolvedAt: string | null;
+  otelEvidence?: Array<{
+    id: string;
+    evidenceKind: string;
+    summary: string;
+    confidence: number | null;
+    traceId: string | null;
+    spanId: string | null;
+    observedAt: string;
+  }>;
 };
 
 type AlertAutomationEvaluation = {
@@ -153,6 +162,23 @@ export default function AlertDetailPage() {
             <p>
               <strong>Message:</strong> {alert.message}
             </p>
+            {alert.otelEvidence && alert.otelEvidence.length > 0 ? (
+              <div data-testid="otel-alert-evidence">
+                <h3>OTEL evidence</h3>
+                <ul className="dashboard-list">
+                  {alert.otelEvidence.map((row) => (
+                    <li key={row.id}>
+                      <strong>{row.evidenceKind}</strong> — {row.summary}
+                      <div className="dashboard-subtle">
+                        {row.traceId ? `trace ${row.traceId.slice(0, 8)}… · ` : ""}
+                        {row.confidence != null ? `confidence ${row.confidence} · ` : ""}
+                        {new Date(row.observedAt).toLocaleString()}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <p>
               <strong>Acknowledged:</strong>{" "}
               {alert.acknowledgedAt ? new Date(alert.acknowledgedAt).toLocaleString() : "-"}

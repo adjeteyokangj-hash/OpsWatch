@@ -61,7 +61,22 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
     { label: "Child workflows", value: String(childWorkflows) },
     { label: "Child components", value: String(childComponents) },
     { label: "Open alerts", value: String(node.risk.openAlerts) },
-    { label: "SLO state", value: context?.sloStatus ?? "—" }
+    { label: "SLO state", value: context?.sloStatus ?? "—" },
+    ...(context?.otel
+      ? [
+          { label: "OTEL source", value: context.otel.source ?? "OTEL collector" },
+          { label: "OTEL freshness", value: context.otel.freshness },
+          {
+            label: "OTEL last signal",
+            value: formatRelativeTime(context.otel.lastSeenAt)
+          },
+          { label: "OTEL signals", value: String(context.otel.signalCount) },
+          {
+            label: "OTEL discovery",
+            value: context.otel.discoveryState ?? "—"
+          }
+        ]
+      : [])
   ];
 
   const healthRows = [
@@ -138,12 +153,14 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
           {node.status === "UNKNOWN" ? (
             <section className="topology-detail-section topology-unknown-reason" role="status">
               <h3>Why health is unknown</h3>
-              <p>
-                {unknownHealthReason({
-                  monitoringState: context?.monitoringState,
-                  lastCheckAt: context?.lastCheckAt,
-                  openAlerts: node.risk.openAlerts
-                })}
+              <p data-testid="topology-unknown-reason">
+                {context?.otel?.freshness === "STALE"
+                  ? "Health is Unknown because OTEL telemetry for this node is stale — not because recovery was observed."
+                  : unknownHealthReason({
+                      monitoringState: context?.monitoringState,
+                      lastCheckAt: context?.lastCheckAt,
+                      openAlerts: node.risk.openAlerts
+                    })}
               </p>
             </section>
           ) : null}

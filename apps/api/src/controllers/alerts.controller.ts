@@ -54,6 +54,19 @@ export const getAlertById = async (req: AuthRequest, res: Response) => {
 						select: { id: true, title: true, severity: true, status: true, openedAt: true }
 					}
 				}
+			},
+			OtelAlertEvidence: {
+				orderBy: { observedAt: "desc" },
+				take: 20,
+				select: {
+					id: true,
+					evidenceKind: true,
+					summary: true,
+					confidence: true,
+					traceId: true,
+					spanId: true,
+					observedAt: true
+				}
 			}
 		}
 	});

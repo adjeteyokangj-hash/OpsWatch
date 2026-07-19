@@ -28,6 +28,11 @@ export type TopologyEdge = {
   type: "HIERARCHY" | "DEPENDENCY";
   critical: boolean;
   status: TopologyHealthStatus;
+  otel?: {
+    source: string;
+    health: string | null;
+    discoveryState: string | null;
+  };
 };
 
 export type TopologyNodeContext = {

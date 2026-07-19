@@ -80,6 +80,89 @@ export const groupCorrelatedAlerts = (alerts: CorrelationAlert[], edges: Correla
 
 const severityRank = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 } as const;
 
+/** When OTEL incident correlation is enabled after alerts already linked, attach evidence. */
+const backfillOtelIncidentEvidence = async (): Promise<number> => {
+  if (!otelIncidentCorrelationEnabled()) return 0;
+  const incidents = await prisma.incident.findMany({
+    where: {
+      status: { in: ["OPEN", "INVESTIGATING", "MONITORING"] },
+      OtelIncidentEvidence: { none: {} },
+      IncidentAlert: { some: { Alert: { sourceType: "OTEL_POLICY" } } }
+    },
+    select: {
+      id: true,
+      projectId: true,
+      Project: { select: { organizationId: true } },
+      IncidentAlert: {
+        select: {
+          Alert: {
+            select: {
+              id: true,
+              sourceType: true,
+              OtelAlertEvidence: {
+                select: {
+                  signalId: true,
+                  batchId: true,
+                  entityId: true,
+                  relationshipId: true,
+                  observedAt: true,
+                  traceId: true,
+                  spanId: true
+                },
+                orderBy: { observedAt: "asc" },
+                take: 50
+              }
+            }
+          }
+        }
+      }
+    },
+    take: 50
+  });
+  let created = 0;
+  for (const incident of incidents) {
+    const organizationId = incident.Project?.organizationId;
+    if (!organizationId) continue;
+    const otelAlerts = incident.IncidentAlert.filter(
+      (link) => link.Alert.sourceType === "OTEL_POLICY"
+    );
+    const evidenceRows = otelAlerts.flatMap((link) => link.Alert.OtelAlertEvidence);
+    const first = evidenceRows[0];
+    const latest = evidenceRows[evidenceRows.length - 1];
+    if (!first) continue;
+    await prisma.otelIncidentEvidence.create({
+      data: {
+        id: randomUUID(),
+        organizationId,
+        projectId: incident.projectId,
+        incidentId: incident.id,
+        batchId: latest?.batchId ?? first.batchId,
+        signalId: latest?.signalId ?? first.signalId,
+        entityId: latest?.entityId ?? first.entityId,
+        relationshipId: latest?.relationshipId ?? first.relationshipId,
+        traceId: latest?.traceId ?? first.traceId,
+        spanId: latest?.spanId ?? first.spanId,
+        evidenceKind: "otel.incident.correlation",
+        summary: `Correlated ${evidenceRows.length} OTEL evidence row(s) across ${otelAlerts.length} alert(s)`,
+        confidence: Math.min(0.95, 0.4 + evidenceRows.length * 0.05),
+        propagationDirection: "UNKNOWN",
+        candidateRootCause: true,
+        metadataJson: {
+          evidenceCount: evidenceRows.length,
+          alertCount: otelAlerts.length,
+          firstObservedAt: first.observedAt.toISOString(),
+          latestObservedAt: (latest ?? first).observedAt.toISOString(),
+          backfilled: true,
+          traceIds: Array.from(new Set(evidenceRows.map((row) => row.traceId).filter(Boolean)))
+        },
+        observedAt: (latest ?? first).observedAt
+      }
+    });
+    created += 1;
+  }
+  return created;
+};
+
 const createIncidentsForUnlinkedAlerts = async (): Promise<number> => {
   const cutoff = new Date(Date.now() - 30 * 60_000);
   const alerts = await prisma.alert.findMany({
@@ -261,6 +344,7 @@ const ensureTimelineEvent = async (input: {
 
 export const runIncidentCorrelationJob = async (): Promise<void> => {
   const incidentsCreated = await createIncidentsForUnlinkedAlerts();
+  const otelEvidenceBackfilled = await backfillOtelIncidentEvidence();
   const orgGroupsCreated = await correlateOrganizationIncidents();
   const incidents = await prisma.incident.findMany({
     where: { status: { in: ["OPEN", "INVESTIGATING", "MONITORING"] } },
@@ -426,7 +510,9 @@ export const runIncidentCorrelationJob = async (): Promise<void> => {
     }
   }
 
-  logger.info(`Incident correlation created ${incidentsCreated} incidents, linked ${orgGroupsCreated} organization groups, processed ${incidents.length} incidents, and created ${timelineEventsCreated} timeline events`);
+  logger.info(
+    `Incident correlation created ${incidentsCreated} incidents, linked ${orgGroupsCreated} organization groups, backfilled ${otelEvidenceBackfilled} OTEL evidence rows, processed ${incidents.length} incidents, and created ${timelineEventsCreated} timeline events`
+  );
 };
 
 const refsToServiceIds = (values: Array<string | null>): string[] => values.filter((value): value is string => Boolean(value));

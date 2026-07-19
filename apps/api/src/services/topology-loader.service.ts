@@ -285,6 +285,8 @@ export const loadProjectTopology = async (
       sourceEntityId: true,
       targetEntityId: true,
       health: true,
+      discoveryState: true,
+      provenance: true,
       Source: { select: { legacyServiceId: true } },
       Target: { select: { legacyServiceId: true } }
     }
@@ -300,6 +302,11 @@ export const loadProjectTopology = async (
           (row.sourceId === targetId && row.targetId === sourceId))
     );
     if (!topologyEdge) continue;
+    topologyEdge.otel = {
+      source: edge.provenance,
+      health: edge.health,
+      discoveryState: edge.discoveryState
+    };
     if (edge.health === "CRITICAL") topologyEdge.status = "CRITICAL";
     else if (edge.health === "DEGRADED" && topologyEdge.status !== "CRITICAL") {
       topologyEdge.status = "DEGRADED";

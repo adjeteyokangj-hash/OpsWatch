@@ -68,6 +68,29 @@ export function TopologyApplicationPanel({ topology, projectId, project }: Props
         </span>
       }
     >
+      {topology.otelOverlay ? (
+        <section className="topology-detail-section" data-testid="otel-topology-overlay">
+          <h3>OTEL overlay (Foundation/Preview)</h3>
+          <dl className="topology-detail-grid">
+            <div>
+              <dt>Discovered entities</dt>
+              <dd>{topology.otelOverlay.entities}</dd>
+            </div>
+            <div>
+              <dt>Discovered relationships</dt>
+              <dd>{topology.otelOverlay.relationships}</dd>
+            </div>
+            <div>
+              <dt>Fresh signals</dt>
+              <dd>{topology.otelOverlay.freshSignals}</dd>
+            </div>
+            <div>
+              <dt>Stale entities</dt>
+              <dd>{topology.otelOverlay.staleEntities} (Unknown health)</dd>
+            </div>
+          </dl>
+        </section>
+      ) : null}
       <section className="topology-app-card">
         <div className="topology-app-availability">
           <strong>{availability == null ? "—" : `${availability.toFixed(2)}%`}</strong>

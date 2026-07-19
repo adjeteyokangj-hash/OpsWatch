@@ -71,6 +71,21 @@ export const getIncidentById = async (req: AuthRequest, res: Response) => {
 						}
 					}
 				}
+			},
+			OtelIncidentEvidence: {
+				orderBy: { observedAt: "desc" },
+				take: 20,
+				select: {
+					id: true,
+					evidenceKind: true,
+					summary: true,
+					confidence: true,
+					traceId: true,
+					spanId: true,
+					propagationDirection: true,
+					candidateRootCause: true,
+					observedAt: true
+				}
 			}
 		}
 	});
