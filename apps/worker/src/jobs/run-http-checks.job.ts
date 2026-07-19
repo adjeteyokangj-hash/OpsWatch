@@ -3,6 +3,7 @@ import { classifyHttpCheckFailure, formatFailureMessage } from "@opswatch/shared
 import { prisma } from "../lib/prisma";
 import { logger } from "../lib/logger";
 import { connectionRequestHeaders } from "../lib/connection-auth";
+import { resolveSafeOutboundTarget } from "../lib/outbound-url-safety";
 import { dispatchAlertNotifications } from "../services/notifications/notification.service";
 
 const upsertCheckAlert = async (input: {
@@ -105,6 +106,7 @@ export const runHttpChecksJob = async (): Promise<void> => {
     let status: "PASS" | "FAIL" = "PASS";
     let responseCode: number | null = null;
     let message = "OK";
+    let managedConnectionId: string | null = null;
 
     try {
       const controller = new AbortController();
@@ -113,7 +115,10 @@ export const runHttpChecksJob = async (): Promise<void> => {
         ? check.configJson as Record<string, unknown>
         : {};
       let headers: Record<string, string> = {};
-      if (checkConfig.source === "CONNECTION" && typeof checkConfig.connectionId === "string") {
+      if (
+        (checkConfig.source === "CONNECTION" || checkConfig.source === "URL_ONBOARDING") &&
+        typeof checkConfig.connectionId === "string"
+      ) {
         const connection = await prisma.connection.findFirst({
           where: {
             id: checkConfig.connectionId,
@@ -122,6 +127,7 @@ export const runHttpChecksJob = async (): Promise<void> => {
             Project: { id: check.Service.projectId, organizationId: check.Service.Project.organizationId }
           },
           select: {
+            id: true,
             authMethod: true,
             secretRef: true,
             managedSecretCiphertext: true,
@@ -131,14 +137,27 @@ export const runHttpChecksJob = async (): Promise<void> => {
           }
         });
         if (!connection) throw new Error("Managed connection is inactive or outside the check project");
+        managedConnectionId = connection.id;
         headers = connectionRequestHeaders(connection);
       }
-      const response = await fetch(check.Service.baseUrl || "", { signal: controller.signal, headers, redirect: "manual" });
+      const safeTarget = await resolveSafeOutboundTarget(check.Service.baseUrl || "");
+      const response = await fetch(safeTarget.url.toString(), { signal: controller.signal, headers, redirect: "manual" });
       clearTimeout(timeout);
       responseCode = response.status;
 
       if (check.type === "HTTP") {
-        if (check.expectedStatusCode && response.status !== check.expectedStatusCode) {
+        const acceptedStatusMin =
+          typeof checkConfig.acceptedStatusMin === "number" ? checkConfig.acceptedStatusMin : null;
+        const acceptedStatusMax =
+          typeof checkConfig.acceptedStatusMax === "number" ? checkConfig.acceptedStatusMax : null;
+        const outsideAcceptedRange =
+          acceptedStatusMin !== null &&
+          acceptedStatusMax !== null &&
+          (response.status < acceptedStatusMin || response.status > acceptedStatusMax);
+        if (
+          outsideAcceptedRange ||
+          (acceptedStatusMin === null && check.expectedStatusCode && response.status !== check.expectedStatusCode)
+        ) {
           status = "FAIL";
           const classification = classifyHttpCheckFailure({
             checkType: "HTTP",
@@ -216,6 +235,44 @@ export const runHttpChecksJob = async (): Promise<void> => {
       }
     });
 
+    await prisma.service.update({
+      where: { id: check.serviceId },
+      data: { status: status === "PASS" ? "HEALTHY" : "DOWN", updatedAt: new Date() }
+    });
+    if (managedConnectionId) {
+      await prisma.connection.updateMany({
+        where: {
+          id: managedConnectionId,
+          organizationId: check.Service.Project.organizationId ?? undefined,
+          projectId: check.Service.projectId,
+          isActive: true
+        },
+        data: status === "PASS"
+          ? {
+              health: "HEALTHY",
+              healthReason: null,
+              installationStatus: "CONNECTED",
+              lastSuccessAt: new Date(),
+              lastError: null,
+              validationStatusCode: responseCode,
+              validationLatencyMs: responseTimeMs,
+              validationErrorCategory: null,
+              updatedAt: new Date()
+            }
+          : {
+              health: "DEGRADED",
+              healthReason: message,
+              installationStatus: "ERROR",
+              lastFailureAt: new Date(),
+              lastError: message,
+              validationStatusCode: responseCode,
+              validationLatencyMs: responseTimeMs,
+              validationErrorCategory: failureMeta?.failureClass ?? "INVALID_RESPONSE",
+              updatedAt: new Date()
+            }
+      });
+    }
+
     if (status === "FAIL") {
       const recentResults = await prisma.checkResult.findMany({
         where: {
@@ -250,7 +307,15 @@ export const runHttpChecksJob = async (): Promise<void> => {
         });
       }
     } else {
-      await resolveCheckAlerts(check.id);
+      const recentResults = await prisma.checkResult.findMany({
+        where: { checkId: check.id },
+        orderBy: { checkedAt: "desc" },
+        take: Math.max(1, check.recoveryThreshold)
+      });
+      const recovered =
+        recentResults.length >= check.recoveryThreshold &&
+        recentResults.every((result) => result.status === "PASS");
+      if (recovered) await resolveCheckAlerts(check.id);
     }
   }
 

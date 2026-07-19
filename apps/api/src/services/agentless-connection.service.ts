@@ -1,6 +1,9 @@
 import { randomUUID } from "crypto";
-import { isIP } from "net";
 import { lookup } from "dns/promises";
+import {
+  isDisallowedNetworkAddress,
+  parseSafeExternalHttpUrl
+} from "@opswatch/shared";
 import { decryptSecret, type EncryptedSecret } from "../lib/secret-crypto";
 import { prisma } from "../lib/prisma";
 import {
@@ -109,26 +112,11 @@ const recordProbeResult = async (connection: ConnectionRow, result: ProbeResult)
   });
 };
 
-const isPrivateIp = (address: string): boolean => {
-  const normalized = address.replace(/^::ffff:/, "");
-  if (isIP(normalized) === 4) {
-    const [a = -1, b = -1] = normalized.split(".").map(Number);
-    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
-  }
-  const lower = normalized.toLowerCase();
-  return lower === "::1" || lower === "::" || lower.startsWith("fc") ||
-    lower.startsWith("fd") || lower.startsWith("fe8") || lower.startsWith("fe9") ||
-    lower.startsWith("fea") || lower.startsWith("feb");
-};
-
 export const assertSafeConnectionTarget = async (target: string): Promise<void> => {
-  const url = new URL(target);
-  if (!["http:", "https:"].includes(url.protocol)) throw new Error("Only HTTP and HTTPS targets are allowed");
-  if (url.username || url.password) throw new Error("Target URL must not contain credentials");
-  if (process.env.NODE_ENV !== "production") return;
+  const url = parseSafeExternalHttpUrl(target);
+  if (process.env.NODE_ENV === "test" && url.hostname.endsWith(".test")) return;
   const addresses = await lookup(url.hostname, { all: true, verbatim: true });
-  if (!addresses.length || addresses.some(({ address }) => isPrivateIp(address))) {
+  if (!addresses.length || addresses.some(({ address }) => isDisallowedNetworkAddress(address))) {
     throw new Error("Private or unresolved network targets are not allowed");
   }
 };

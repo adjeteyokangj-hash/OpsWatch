@@ -1,17 +1,22 @@
 import { randomUUID } from "crypto";
 import tls from "tls";
-import { URL } from "url";
 import { prisma } from "../lib/prisma";
 import { logger } from "../lib/logger";
+import { resolveSafeOutboundTarget } from "../lib/outbound-url-safety";
 import { dispatchAlertNotifications } from "../services/notifications/notification.service";
 
 const SSL_WARN_DAYS = 30;
 const SSL_CRIT_DAYS = 7;
 
-const getCertExpiryDays = (hostname: string, port: number, timeoutMs: number): Promise<number> => {
+const getCertExpiryDays = (
+  hostname: string,
+  address: string,
+  port: number,
+  timeoutMs: number
+): Promise<number> => {
   return new Promise((resolve, reject) => {
     const socket = tls.connect(
-      { host: hostname, port, servername: hostname, rejectUnauthorized: false },
+      { host: address, port, servername: hostname, rejectUnauthorized: true },
       () => {
         const cert = socket.getPeerCertificate();
         socket.end();
@@ -93,15 +98,21 @@ export const runSslChecksJob = async (): Promise<void> => {
     let daysLeft = 0;
     let status: "PASS" | "WARN" | "FAIL" = "PASS";
     let message = "";
+    const checkConfig = check.configJson && typeof check.configJson === "object"
+      ? check.configJson as Record<string, unknown>
+      : {};
+    const managedConnectionId =
+      (checkConfig.source === "CONNECTION" || checkConfig.source === "URL_ONBOARDING") &&
+      typeof checkConfig.connectionId === "string"
+        ? checkConfig.connectionId
+        : null;
 
     try {
-      const parsed = new URL(targetUrl);
-      if (parsed.protocol !== "https:") {
-        throw new Error(`SSL checks require https:// URLs; received ${parsed.protocol || "unknown protocol"}`);
-      }
+      const safeTarget = await resolveSafeOutboundTarget(targetUrl, { requireHttps: true });
+      const parsed = safeTarget.url;
       const hostname = parsed.hostname;
       const port = parsed.port ? Number(parsed.port) : 443;
-      daysLeft = await getCertExpiryDays(hostname, port, check.timeoutMs);
+      daysLeft = await getCertExpiryDays(hostname, safeTarget.addresses[0]!, port, check.timeoutMs);
 
       if (daysLeft <= 0) {
         status = "FAIL";
@@ -130,6 +141,40 @@ export const runSslChecksJob = async (): Promise<void> => {
       }
     });
 
+    await prisma.service.update({
+      where: { id: check.serviceId },
+      data: { status: status === "PASS" ? "HEALTHY" : status === "WARN" ? "DEGRADED" : "DOWN", updatedAt: new Date() }
+    });
+    if (managedConnectionId) {
+      await prisma.connection.updateMany({
+        where: {
+          id: managedConnectionId,
+          organizationId: check.Service.Project.organizationId ?? undefined,
+          projectId: check.Service.projectId,
+          isActive: true
+        },
+        data: status === "PASS"
+          ? {
+              health: "HEALTHY",
+              healthReason: null,
+              installationStatus: "CONNECTED",
+              lastSuccessAt: new Date(),
+              lastError: null,
+              validationErrorCategory: null,
+              updatedAt: new Date()
+            }
+          : {
+              health: "DEGRADED",
+              healthReason: message,
+              installationStatus: "ERROR",
+              lastFailureAt: new Date(),
+              lastError: message,
+              validationErrorCategory: "TLS_FAILED",
+              updatedAt: new Date()
+            }
+      });
+    }
+
     if (status !== "PASS") {
       const severity = status === "FAIL" ? (daysLeft <= SSL_CRIT_DAYS ? "CRITICAL" : "HIGH") : "MEDIUM";
       await upsertSslAlert({
@@ -138,14 +183,24 @@ export const runSslChecksJob = async (): Promise<void> => {
         checkId: check.id,
         category: "DEPENDENCY_CHANGE",
         severity,
-        title: `${check.name} SSL expiry warning`,
+        title: `${check.name} failing`,
         message
       });
     } else {
-      const openAlerts = await prisma.alert.findMany({
-        where: { sourceType: "CHECK", sourceId: check.id, status: "OPEN" },
-        select: { id: true }
+      const recentResults = await prisma.checkResult.findMany({
+        where: { checkId: check.id },
+        orderBy: { checkedAt: "desc" },
+        take: Math.max(1, check.recoveryThreshold)
       });
+      const recovered =
+        recentResults.length >= check.recoveryThreshold &&
+        recentResults.every((result) => result.status === "PASS");
+      const openAlerts = recovered
+        ? await prisma.alert.findMany({
+            where: { sourceType: "CHECK", sourceId: check.id, status: "OPEN" },
+            select: { id: true }
+          })
+        : [];
 
       for (const openAlert of openAlerts) {
         await prisma.alert.update({
