@@ -503,7 +503,6 @@ model OperationalEntity {
   OtelIncidentEvidence       OtelIncidentEvidence[]
   SourceIdentities           OperationalEntityIdentity[]
   LegacyMappings             LegacyServiceEntityMapping[]
-  LegacyRelationshipMappings LegacyDependencyRelationshipMapping[]
 
   @@unique([organizationId, entityType, externalId])
   @@unique([organizationId, projectScopeKey, environment, entityType, stableIdentityKey])
@@ -640,8 +639,6 @@ model LegacyDependencyRelationshipMapping {
   Project                   Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
   LegacyDependency          ServiceDependency       @relation(fields: [legacyServiceDependencyId], references: [id], onDelete: Cascade)
   Relationship              OperationalRelationship @relation(fields: [relationshipId], references: [id], onDelete: Cascade)
-  OperationalEntity         OperationalEntity?      @relation(fields: [operationalEntityId], references: [id])
-  operationalEntityId       String?
 
   @@unique([organizationId, projectId, environment, legacyServiceDependencyId, relationshipId])
   @@index([organizationId, projectId, environment, legacyServiceDependencyId, status])

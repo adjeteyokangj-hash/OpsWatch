@@ -30,6 +30,10 @@ export type CanonicalEntityWrite = CanonicalGraphContext & {
   confidence?: number | null;
   tags?: Prisma.InputJsonValue;
   metadata?: Prisma.InputJsonValue;
+  compatibilityEntityId?: string;
+  legacyServiceId?: string;
+  evidenceCount?: number;
+  incrementEvidence?: boolean;
 };
 
 export type CanonicalRelationshipWrite = CanonicalGraphContext & {
@@ -52,6 +56,9 @@ export type CanonicalRelationshipWrite = CanonicalGraphContext & {
   evidence?: Prisma.InputJsonValue;
   metadata?: Prisma.InputJsonValue;
   automationCapabilities?: Prisma.InputJsonValue;
+  compatibilityRelationshipId?: string;
+  evidenceCount?: number;
+  incrementEvidence?: boolean;
 };
 
 export class GraphIdentityConflictError extends Error {
@@ -139,13 +146,69 @@ export class CanonicalGraphService {
       });
     }
 
-    const id = deterministicId("oge", [
+    const deterministicEntityId = deterministicId("oge", [
       input.organizationId,
       projectScopeKey,
       environment,
       entityType,
       stableIdentityKey
     ]);
+    const [canonicalExisting, compatibilityExisting] = await Promise.all([
+      this.db.operationalEntity.findUnique({
+        where: {
+          organizationId_projectScopeKey_environment_entityType_stableIdentityKey: {
+            organizationId: input.organizationId,
+            projectScopeKey,
+            environment,
+            entityType,
+            stableIdentityKey
+          }
+        },
+        select: { id: true }
+      }),
+      input.compatibilityEntityId
+        ? this.db.operationalEntity.findUnique({
+            where: { id: input.compatibilityEntityId },
+            select: {
+              id: true,
+              organizationId: true,
+              projectId: true
+            }
+          })
+        : null
+    ]);
+    if (
+      canonicalExisting &&
+      compatibilityExisting &&
+      canonicalExisting.id !== compatibilityExisting.id
+    ) {
+      throw new GraphIdentityConflictError(
+        "Canonical identity and compatibility identity resolve to different entities",
+        {
+          organizationId: input.organizationId,
+          projectId: input.projectId,
+          environment,
+          canonicalEntityId: canonicalExisting.id,
+          compatibilityEntityId: compatibilityExisting.id
+        }
+      );
+    }
+    if (
+      compatibilityExisting &&
+      (compatibilityExisting.organizationId !== input.organizationId ||
+        compatibilityExisting.projectId !== (input.projectId ?? null))
+    ) {
+      throw new GraphIdentityConflictError("Compatibility entity crosses scope", {
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        compatibilityEntityId: compatibilityExisting.id
+      });
+    }
+    const id =
+      canonicalExisting?.id ??
+      compatibilityExisting?.id ??
+      input.compatibilityEntityId ??
+      deterministicEntityId;
     const existingAlias = await this.db.operationalEntityIdentity.findUnique({
       where: {
         organizationId_projectScopeKey_environment_source_sourceKey: {
@@ -169,17 +232,43 @@ export class CanonicalGraphService {
       });
     }
 
-    const entity = await this.db.operationalEntity.upsert({
-      where: {
-        organizationId_projectScopeKey_environment_entityType_stableIdentityKey: {
-          organizationId: input.organizationId,
-          projectScopeKey,
-          environment,
-          entityType,
-          stableIdentityKey
-        }
-      },
-      create: {
+    const entity =
+      canonicalExisting || compatibilityExisting
+        ? await this.db.operationalEntity.update({
+            where: { id },
+            data: {
+              projectScopeKey,
+              environment,
+              entityType,
+              name: input.name.trim(),
+              stableIdentityKey,
+              legacyServiceId: input.legacyServiceId,
+              operationalLocationId: input.operationalLocationId,
+              lastSeenAt: observedAt,
+              freshUntil: input.freshUntil,
+              staleAt: null,
+              inactiveAt: null,
+              signalCount:
+                input.evidenceCount !== undefined
+                  ? input.evidenceCount
+                  : input.incrementEvidence === false
+                    ? undefined
+                    : { increment: 1 },
+              health: input.health,
+              healthReason: input.healthReason,
+              healthConfidence: input.healthConfidence,
+              criticality: input.criticality,
+              confirmationState: input.confirmationState,
+              manuallyManaged: input.manuallyManaged,
+              isTestSeed: input.isTestSeed,
+              tagsJson: input.tags,
+              metadataJson: input.metadata,
+              discoveryState: "ACTIVE",
+              updatedAt: observedAt
+            }
+          })
+        : await this.db.operationalEntity.create({
+            data: {
         id,
         organizationId: input.organizationId,
         projectId: input.projectId ?? null,
@@ -190,6 +279,7 @@ export class CanonicalGraphService {
         name: input.name.trim(),
         externalId: `${source}:${sourceKey}`,
         stableIdentityKey,
+        legacyServiceId: input.legacyServiceId,
         criticality: input.criticality ?? "MEDIUM",
         health: input.health ?? "UNKNOWN",
         healthReason: input.healthReason ?? null,
@@ -200,7 +290,8 @@ export class CanonicalGraphService {
         firstSeenAt: observedAt,
         lastSeenAt: observedAt,
         freshUntil: input.freshUntil ?? null,
-        signalCount: 1,
+        signalCount:
+          input.evidenceCount ?? (input.incrementEvidence === false ? 0 : 1),
         discoveryState: "ACTIVE",
         confirmationState: input.confirmationState ?? "CONFIRMED",
         manuallyManaged: input.manuallyManaged ?? false,
@@ -209,28 +300,8 @@ export class CanonicalGraphService {
         tagsJson: input.tags,
         metadataJson: input.metadata,
         updatedAt: observedAt
-      },
-      update: {
-        name: input.name.trim(),
-        operationalLocationId: input.operationalLocationId,
-        lastSeenAt: observedAt,
-        freshUntil: input.freshUntil,
-        staleAt: null,
-        inactiveAt: null,
-        signalCount: { increment: 1 },
-        health: input.health,
-        healthReason: input.healthReason,
-        healthConfidence: input.healthConfidence,
-        criticality: input.criticality,
-        confirmationState: input.confirmationState,
-        manuallyManaged: input.manuallyManaged,
-        isTestSeed: input.isTestSeed,
-        tagsJson: input.tags,
-        metadataJson: input.metadata,
-        discoveryState: "ACTIVE",
-        updatedAt: observedAt
-      }
-    });
+            }
+          });
 
     await this.db.operationalEntityIdentity.upsert({
       where: {
@@ -319,23 +390,104 @@ export class CanonicalGraphService {
       relationshipType
     });
     const observedAt = input.observedAt ?? new Date();
-    const id = deterministicId("ogr", [
+    const deterministicRelationshipId = deterministicId("ogr", [
       input.organizationId,
       projectScopeKey,
       environment,
       stableIdentityKey
     ]);
+    const [canonicalExisting, compatibilityExisting] = await Promise.all([
+      this.db.operationalRelationship.findUnique({
+        where: {
+          organizationId_projectScopeKey_environment_stableIdentityKey: {
+            organizationId: input.organizationId,
+            projectScopeKey,
+            environment,
+            stableIdentityKey
+          }
+        },
+        select: { id: true }
+      }),
+      input.compatibilityRelationshipId
+        ? this.db.operationalRelationship.findUnique({
+            where: { id: input.compatibilityRelationshipId },
+            select: {
+              id: true,
+              organizationId: true,
+              projectId: true,
+              sourceEntityId: true,
+              targetEntityId: true
+            }
+          })
+        : null
+    ]);
+    if (
+      canonicalExisting &&
+      compatibilityExisting &&
+      canonicalExisting.id !== compatibilityExisting.id
+    ) {
+      throw new GraphIdentityConflictError(
+        "Canonical and compatibility relationship identities differ",
+        {
+          canonicalRelationshipId: canonicalExisting.id,
+          compatibilityRelationshipId: compatibilityExisting.id
+        }
+      );
+    }
+    if (
+      compatibilityExisting &&
+      (compatibilityExisting.organizationId !== input.organizationId ||
+        compatibilityExisting.projectId !== (input.projectId ?? null) ||
+        compatibilityExisting.sourceEntityId !== input.sourceEntityId ||
+        compatibilityExisting.targetEntityId !== input.targetEntityId)
+    ) {
+      throw new GraphIdentityConflictError("Compatibility relationship crosses scope", {
+        compatibilityRelationshipId: compatibilityExisting.id,
+        organizationId: input.organizationId,
+        projectId: input.projectId
+      });
+    }
+    const id =
+      canonicalExisting?.id ??
+      compatibilityExisting?.id ??
+      input.compatibilityRelationshipId ??
+      deterministicRelationshipId;
 
-    return this.db.operationalRelationship.upsert({
-      where: {
-        organizationId_projectScopeKey_environment_stableIdentityKey: {
-          organizationId: input.organizationId,
+    if (canonicalExisting || compatibilityExisting) {
+      return this.db.operationalRelationship.update({
+        where: { id },
+        data: {
           projectScopeKey,
           environment,
-          stableIdentityKey
+          relationshipType,
+          stableIdentityKey,
+          lastObservedAt: observedAt,
+          freshUntil: input.freshUntil,
+          staleAt: null,
+          inactiveAt: null,
+          observationCount:
+            input.evidenceCount !== undefined
+              ? input.evidenceCount
+              : input.incrementEvidence === false
+                ? undefined
+                : { increment: 1 },
+          health: input.health,
+          confidence: input.confidence,
+          criticality: input.criticality,
+          impactRole: input.impactRole,
+          evidenceJson: input.evidence,
+          metadataJson: input.metadata,
+          automationCapabilitiesJson: input.automationCapabilities,
+          discoveryState: input.discoveryState,
+          approvalStatus: input.approvalStatus,
+          confirmationState: input.confirmationState,
+          updatedAt: observedAt
         }
-      },
-      create: {
+      });
+    }
+
+    return this.db.operationalRelationship.create({
+      data: {
         id,
         organizationId: input.organizationId,
         projectId: input.projectId ?? null,
@@ -362,25 +514,8 @@ export class CanonicalGraphService {
         manuallyManaged: input.manuallyManaged ?? false,
         automationCapabilitiesJson: input.automationCapabilities,
         metadataJson: input.metadata,
-        observationCount: 1,
-        updatedAt: observedAt
-      },
-      update: {
-        lastObservedAt: observedAt,
-        freshUntil: input.freshUntil,
-        staleAt: null,
-        inactiveAt: null,
-        observationCount: { increment: 1 },
-        health: input.health,
-        confidence: input.confidence,
-        criticality: input.criticality,
-        impactRole: input.impactRole,
-        evidenceJson: input.evidence,
-        metadataJson: input.metadata,
-        automationCapabilitiesJson: input.automationCapabilities,
-        discoveryState: input.discoveryState,
-        approvalStatus: input.approvalStatus,
-        confirmationState: input.confirmationState,
+        observationCount:
+          input.evidenceCount ?? (input.incrementEvidence === false ? 0 : 1),
         updatedAt: observedAt
       }
     });
@@ -513,6 +648,122 @@ export class CanonicalGraphService {
       });
     }
     return rows[0]?.entityId ?? null;
+  }
+
+  async mapLegacyRelationship(input: CanonicalGraphContext & {
+    legacyServiceDependencyId: string;
+    relationshipId: string;
+  }) {
+    if (!input.projectId) {
+      throw new GraphIdentityConflictError(
+        "Legacy ServiceDependency mapping requires projectId",
+        { legacyServiceDependencyId: input.legacyServiceDependencyId }
+      );
+    }
+    const environment = safeEnvironment(input.environment);
+    const [dependency, relationship, mappings] = await Promise.all([
+      this.db.serviceDependency.findUnique({
+        where: { id: input.legacyServiceDependencyId },
+        select: { projectId: true }
+      }),
+      this.db.operationalRelationship.findUnique({
+        where: { id: input.relationshipId },
+        select: {
+          organizationId: true,
+          projectId: true,
+          environment: true,
+          stableIdentityKey: true
+        }
+      }),
+      this.db.legacyDependencyRelationshipMapping.findMany({
+        where: {
+          organizationId: input.organizationId,
+          projectId: input.projectId,
+          environment,
+          legacyServiceDependencyId: input.legacyServiceDependencyId,
+          status: "ACTIVE"
+        },
+        select: { id: true, relationshipId: true }
+      })
+    ]);
+    if (
+      !dependency ||
+      !relationship ||
+      dependency.projectId !== input.projectId ||
+      relationship.organizationId !== input.organizationId ||
+      relationship.projectId !== input.projectId ||
+      relationship.environment !== environment ||
+      !relationship.stableIdentityKey
+    ) {
+      throw new GraphIdentityConflictError(
+        "Legacy ServiceDependency mapping scope mismatch",
+        {
+          organizationId: input.organizationId,
+          projectId: input.projectId,
+          environment,
+          legacyServiceDependencyId: input.legacyServiceDependencyId,
+          relationshipId: input.relationshipId
+        }
+      );
+    }
+    const conflicting = mappings.filter(
+      (mapping) => mapping.relationshipId !== input.relationshipId
+    );
+    if (conflicting.length > 0) {
+      await this.db.legacyDependencyRelationshipMapping.updateMany({
+        where: { id: { in: conflicting.map((row) => row.id) } },
+        data: {
+          status: "AMBIGUOUS",
+          conflictReason: `Conflicts with canonical relationship ${input.relationshipId}`,
+          updatedAt: new Date()
+        }
+      });
+      throw new GraphIdentityConflictError(
+        "Ambiguous legacy ServiceDependency mapping",
+        {
+          organizationId: input.organizationId,
+          projectId: input.projectId,
+          environment,
+          legacyServiceDependencyId: input.legacyServiceDependencyId,
+          relationshipId: input.relationshipId
+        }
+      );
+    }
+    return this.db.legacyDependencyRelationshipMapping.upsert({
+      where: {
+        organizationId_projectId_environment_legacyServiceDependencyId_relationshipId:
+          {
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            environment,
+            legacyServiceDependencyId: input.legacyServiceDependencyId,
+            relationshipId: input.relationshipId
+          }
+      },
+      create: {
+        id: deterministicId("ogdm", [
+          input.organizationId,
+          input.projectId,
+          environment,
+          input.legacyServiceDependencyId,
+          input.relationshipId
+        ]),
+        organizationId: input.organizationId,
+        projectId: input.projectId,
+        environment,
+        legacyServiceDependencyId: input.legacyServiceDependencyId,
+        relationshipId: input.relationshipId,
+        relationshipIdentityKey: relationship.stableIdentityKey,
+        status: "ACTIVE",
+        updatedAt: new Date()
+      },
+      update: {
+        relationshipIdentityKey: relationship.stableIdentityKey,
+        status: "ACTIVE",
+        conflictReason: null,
+        updatedAt: new Date()
+      }
+    });
   }
 }
 
