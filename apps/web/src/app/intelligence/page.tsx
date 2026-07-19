@@ -9,6 +9,7 @@ import { EmptyState } from "../../components/ui/empty-state";
 import { StatCard } from "../../components/dashboard/stat-card";
 import { StatusBadge } from "../../components/ui/status-badge";
 import { LearningStateBanner } from "../../components/ui/learning-state-banner";
+import { ProductTruthStatus } from "../../components/ui/product-truth-status";
 import { apiFetch } from "../../lib/api";
 
 type IntelligenceSnapshot = {
@@ -150,7 +151,8 @@ export default function IntelligencePage() {
     <Shell>
       <Header title="Intelligence" />
       <p className="dashboard-subtle">
-        Evidence-based learning from real operations. Predictions stay disabled until confidence thresholds are met.
+        Baseline evidence, calculated patterns, recorded diagnosis, and deterministic recommendations are separate
+        from predictions. Predictions are disabled.
       </p>
 
       {loading ? (
@@ -181,29 +183,28 @@ export default function IntelligencePage() {
 
           <PageSection
             title="Prediction readiness"
-            description="Architecture is installed; product emission is gated off by default."
+            description="Feature disabled. Phase 9 learning and prediction has not started."
           >
-            <div className="snapshot-grid">
+            <div className="snapshot-grid" data-testid="predictions-disabled-state">
               <div className="snapshot-item">
-                <span className="snapshot-label">Feature flag</span>
-                <strong>
-                  <StatusBadge
-                    label={data.predictions.enabled ? "OPSWATCH_PREDICTIONS_ENABLED=true" : "Disabled"}
-                    tone={data.predictions.enabled ? "warning" : "muted"}
-                  />
-                </strong>
+                <span className="snapshot-label">Product state</span>
+                <strong><ProductTruthStatus state="Feature disabled" /></strong>
               </div>
               <div className="snapshot-item">
                 <span className="snapshot-label">Status</span>
-                <strong>{data.predictions.status}</strong>
+                <strong>DISABLED</strong>
               </div>
               <div className="snapshot-item snapshot-item-wide">
                 <span className="snapshot-label">Why</span>
                 <strong>{data.predictionReadiness.message}</strong>
               </div>
               <div className="snapshot-item">
-                <span className="snapshot-label">Accuracy logs</span>
-                <strong>{data.counters.predictionAccuracyLogs} (empty until predictions enabled)</strong>
+                <span className="snapshot-label">Live prediction candidates</span>
+                <strong>{data.predictionReadiness.candidatesStored}</strong>
+              </div>
+              <div className="snapshot-item">
+                <span className="snapshot-label">Historical accuracy rows</span>
+                <strong>{data.counters.predictionAccuracyLogs} (not live predictions)</strong>
               </div>
               <div className="snapshot-item">
                 <span className="snapshot-label">Confidence gates</span>
@@ -262,8 +263,8 @@ export default function IntelligencePage() {
             </PageSection>
 
             <PageSection
-              title="Patterns with evidence"
-              description="Only display-eligible patterns are treated as actionable; others remain stored while learning."
+              title="Calculated patterns with evidence"
+              description="Evidence-ranked correlations are not predictions. Only display-eligible rows are shown."
             >
               {displayablePatterns.length === 0 ? (
                 <EmptyState

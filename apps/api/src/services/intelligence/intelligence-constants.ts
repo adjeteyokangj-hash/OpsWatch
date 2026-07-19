@@ -1,11 +1,10 @@
 /**
  * Intelligence foundation constants.
- * Predictions stay OFF unless OPSWATCH_PREDICTIONS_ENABLED=true AND confidence thresholds are met.
+ * Phase 5 keeps prediction product emission disabled. The environment variable
+ * is reserved for a future Phase 9 release gate and is intentionally ignored.
  */
 
-/** Read at call time so tests and runtime toggles see current env. */
-export const isPredictionsEnabled = (): boolean =>
-  process.env.OPSWATCH_PREDICTIONS_ENABLED === "true";
+export const isPredictionsEnabled = (): boolean => false;
 
 /** Patterns / insights must meet this before UI may show them as actionable. */
 export const MIN_DISPLAY_CONFIDENCE = Number(

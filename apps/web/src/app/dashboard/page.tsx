@@ -336,12 +336,7 @@ export default function DashboardPage() {
       {!loading && intelligence ? (
         <LearningStateBanner
           state={intelligence.learningState}
-          message={
-            intelligence.predictions.enabled
-              ? intelligence.predictions.reason
-              : intelligence.emptyReason ??
-                "Predictions disabled. Risk slots stay empty until evidence and confidence thresholds are met."
-          }
+          message={intelligence.emptyReason ?? "Predictions are feature disabled; baseline evidence is not predictive output."}
           action={<Link className="text-link" href="/intelligence">Open Intelligence →</Link>}
         />
       ) : null}
@@ -481,7 +476,7 @@ export default function DashboardPage() {
                 <div className="snapshot-item">
                   <span className="snapshot-label">Predictive risk</span>
                   <strong>
-                    <StatusBadge label="Not ready" tone="muted" title="Predictions disabled until evidence threshold" />
+                    <StatusBadge label="Feature disabled" tone="muted" title="Phase 9 learning and prediction has not started" />
                   </strong>
                 </div>
               </div>

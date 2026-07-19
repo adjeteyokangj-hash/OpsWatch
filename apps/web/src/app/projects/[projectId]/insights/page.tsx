@@ -8,6 +8,7 @@ import { EmptyState } from "../../../../components/ui/empty-state";
 import { LearningStateBanner } from "../../../../components/ui/learning-state-banner";
 import { PageSection } from "../../../../components/ui/page-section";
 import { StatusBadge } from "../../../../components/ui/status-badge";
+import { ProductTruthStatus } from "../../../../components/ui/product-truth-status";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../lib/api";
 
@@ -75,7 +76,7 @@ export default function ProjectInsightsPage() {
     <ProjectWorkspaceShell
       projectId={projectId}
       title="Intelligence"
-      subtitle="Evidence-backed insights only. Predictions stay disabled until confidence thresholds are met."
+      subtitle="Evidence-backed insights only. Predictions are disabled."
       project={project}
       loading={loading}
       error={error}
@@ -94,18 +95,18 @@ export default function ProjectInsightsPage() {
       <section id="predictions">
         <PageSection
           title="Predictions"
-          description="Prediction readiness for this application. Claims stay disabled until confidence thresholds are met."
+          description="Feature disabled until the Phase 9 learning and prediction gate is implemented."
           persistKey={`project:${projectId}:insights:predictions`}
         >
           {dataLoading ? <p>Loading prediction readiness…</p> : null}
           {!dataLoading ? (
-            <EmptyState
-              title={intel?.predictions.enabled ? "Predictions enabled" : "Predictions not ready"}
-              description={
-                intel?.predictions.reason ??
-                "Evidence and confidence gates must be satisfied before predictive output is shown."
-              }
-            />
+            <section data-testid="project-predictions-disabled">
+              <ProductTruthStatus state="Feature disabled" />
+              <EmptyState
+                title="No prediction candidates"
+                description="Baseline evidence and calculated patterns may appear below, but they are not live predictions."
+              />
+            </section>
           ) : null}
         </PageSection>
       </section>

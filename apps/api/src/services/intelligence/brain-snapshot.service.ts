@@ -303,7 +303,6 @@ export const buildIntelligenceSnapshot = async (
     timelineEvents,
     automationRuns,
     auditEntries,
-    predictionCandidates,
     predictionAccuracyLogs,
     recentTimeline,
     patternRows,
@@ -320,7 +319,6 @@ export const buildIntelligenceSnapshot = async (
     prisma.operationsTimelineEvent.count({ where: { organizationId } }),
     prisma.automationRun.count({ where: { organizationId } }),
     prisma.aiDecisionAudit.count({ where: { organizationId } }),
-    prisma.predictionCandidate.count({ where: { organizationId } }),
     prisma.predictionAccuracyLog.count({ where: { organizationId } }),
     prisma.operationsTimelineEvent.findMany({
       where: { organizationId },
@@ -471,10 +469,9 @@ export const buildIntelligenceSnapshot = async (
       resolvedAt: row.resolvedAt?.toISOString() ?? null
     })),
     predictionReadiness: {
-      message: isPredictionsEnabled()
-        ? predictionGate.reason
-        : "Prediction framework installed but disabled. Empty accuracy table until predictions are enabled.",
-      candidatesStored: predictionCandidates,
+      message:
+        "Feature disabled. Phase 9 learning and prediction is not implemented; baseline evidence and calculated patterns are not predictions.",
+      candidatesStored: 0,
       accuracyLogs: predictionAccuracyLogs
     },
     emptyReason:
