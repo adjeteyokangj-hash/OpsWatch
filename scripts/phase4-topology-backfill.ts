@@ -2,6 +2,7 @@ import "dotenv/config";
 import { prisma } from "../apps/api/src/lib/prisma";
 import {
   backfillCanonicalTopology,
+  backfillExistingOperationalIdentities,
   compareLegacyAndCanonicalTopology
 } from "../apps/api/src/services/topology-unification.service";
 
@@ -15,16 +16,26 @@ const main = async () => {
   const apply = process.argv.includes("--apply");
   const before = await compareLegacyAndCanonicalTopology(projectId);
   let backfill = null;
+  let operationalIdentityBackfill = null;
   if (apply) {
+    operationalIdentityBackfill =
+      await backfillExistingOperationalIdentities();
     backfill = await backfillCanonicalTopology({ projectId });
   }
   const after = await compareLegacyAndCanonicalTopology(projectId);
-  const output = { mode: apply ? "apply" : "compare-only", before, backfill, after };
+  const output = {
+    mode: apply ? "apply" : "compare-only",
+    before,
+    operationalIdentityBackfill,
+    backfill,
+    after
+  };
   console.log(JSON.stringify(output, null, 2));
 
   if (
     after.ambiguousMappings.length > 0 ||
     after.duplicates.length > 0 ||
+    (operationalIdentityBackfill?.conflicts.length ?? 0) > 0 ||
     (apply &&
       (after.missingEntities.length > 0 ||
         after.missingRelationships.length > 0))

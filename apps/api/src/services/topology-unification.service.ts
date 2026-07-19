@@ -3,6 +3,7 @@ import {
   canonicalEntityIdentityKey,
   createCanonicalGraphService
 } from "@opswatch/shared";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
 export type TopologyUnificationConflict = {
@@ -402,3 +403,213 @@ export const expectedLegacyServiceIdentity = (service: {
     entityType: service.type,
     stableKey: `legacy-service:${service.id}`
   });
+
+export const backfillExistingOperationalIdentities = async (): Promise<{
+  entities: number;
+  relationships: number;
+  quarantinedRelationships: number;
+  conflicts: TopologyUnificationConflict[];
+}> => {
+  const graph = createCanonicalGraphService(prisma);
+  const conflicts: TopologyUnificationConflict[] = [];
+  const projects = new Map(
+    (
+      await prisma.project.findMany({
+        select: { id: true, environment: true }
+      })
+    ).map((project) => [project.id, project])
+  );
+  const entities = await prisma.operationalEntity.findMany({
+    where: {
+      OR: [
+        { stableIdentityKey: null },
+        { externalId: { startsWith: "otel" } }
+      ]
+    },
+    orderBy: { createdAt: "asc" }
+  });
+  let entityCount = 0;
+  for (const entity of entities) {
+    const externalParts = entity.externalId?.split(":") ?? [];
+    const otelEnvironment =
+      externalParts[0] === "otel"
+        ? externalParts.at(-1)
+        : externalParts[0] === "otel-dep" ||
+            externalParts[0] === "otel-instance"
+          ? externalParts[2]
+          : null;
+    const environment =
+      otelEnvironment ||
+      (entity.environment !== "unknown"
+        ? entity.environment
+        :
+          (entity.projectId
+            ? projects.get(entity.projectId)?.environment
+            : undefined) ||
+          "unknown");
+    if (entity.stableIdentityKey && entity.environment === environment) {
+      continue;
+    }
+    try {
+      await graph.upsertEntity({
+        organizationId: entity.organizationId,
+        projectId: entity.projectId,
+        environment,
+        entityType: entity.entityType,
+        stableKey: entity.externalId ?? entity.id,
+        name: entity.name,
+        source: entity.discoverySource ?? entity.provenance,
+        sourceKey: entity.externalId ?? entity.id,
+        provenance: entity.provenance,
+        operationalLocationId: entity.operationalLocationId,
+        criticality: entity.criticality,
+        health: entity.health,
+        healthReason: entity.healthReason,
+        healthConfidence: entity.healthConfidence,
+        observedAt: entity.lastSeenAt ?? entity.updatedAt,
+        freshUntil: entity.freshUntil,
+        confirmationState: entity.confirmationState,
+        manuallyManaged: entity.manuallyManaged,
+        sharedScope:
+          entity.sharedScope === "ORGANIZATION" ? "ORGANIZATION" : "PROJECT",
+        isTestSeed: entity.isTestSeed,
+        metadata:
+          entity.metadataJson == null
+            ? undefined
+            : (entity.metadataJson as Prisma.InputJsonValue),
+        compatibilityEntityId: entity.id,
+        legacyServiceId: entity.legacyServiceId ?? undefined,
+        evidenceCount: entity.signalCount,
+        incrementEvidence: false
+      });
+      entityCount += 1;
+    } catch (error) {
+      conflicts.push({
+        kind: "OPERATIONAL_ENTITY_IDENTITY",
+        projectId: entity.projectId ?? "",
+        legacyId: entity.id,
+        message: error instanceof Error ? error.message : String(error),
+        ...(error instanceof GraphIdentityConflictError
+          ? { context: error.context }
+          : {})
+      });
+    }
+  }
+
+  const relationships = await prisma.operationalRelationship.findMany({
+    where: { stableIdentityKey: null, lifecycle: "ACTIVE" },
+    include: {
+      Source: {
+        select: {
+          id: true,
+          organizationId: true,
+          projectId: true,
+          environment: true
+        }
+      },
+      Target: {
+        select: {
+          id: true,
+          organizationId: true,
+          projectId: true,
+          environment: true
+        }
+      }
+    },
+    orderBy: { createdAt: "asc" }
+  });
+  let relationshipCount = 0;
+  let quarantinedRelationships = 0;
+  for (const relationship of relationships) {
+    const crossScope =
+      relationship.Source.environment !== relationship.Target.environment ||
+      relationship.Source.id === relationship.Target.id ||
+      relationship.Source.organizationId !== relationship.organizationId ||
+      relationship.Target.organizationId !== relationship.organizationId ||
+      (relationship.projectId != null &&
+        (relationship.Source.projectId !== relationship.projectId ||
+          relationship.Target.projectId !== relationship.projectId));
+    if (crossScope) {
+      await prisma.operationalRelationship.update({
+        where: { id: relationship.id },
+        data: {
+          lifecycle: "INACTIVE",
+          discoveryState: "INACTIVE",
+          confirmationState: "CONFLICT",
+          inactiveAt: new Date(),
+          metadataJson: {
+            quarantineReason: "CROSS_SCOPE_ENDPOINTS",
+            quarantinedBy: "PHASE_4_BACKFILL",
+            sourceProjectId: relationship.Source.projectId,
+            targetProjectId: relationship.Target.projectId,
+            sourceEnvironment: relationship.Source.environment,
+            targetEnvironment: relationship.Target.environment
+          },
+          updatedAt: new Date()
+        }
+      });
+      quarantinedRelationships += 1;
+      continue;
+    }
+    try {
+      await graph.upsertRelationship({
+        organizationId: relationship.organizationId,
+        projectId: relationship.projectId,
+        environment: relationship.Source.environment,
+        sourceEntityId: relationship.sourceEntityId,
+        targetEntityId: relationship.targetEntityId,
+        relationshipType: relationship.relationshipType,
+        source: relationship.provenance,
+        provenance: relationship.provenance,
+        observedAt:
+          relationship.lastObservedAt ??
+          relationship.discoveredAt ??
+          relationship.updatedAt,
+        freshUntil: relationship.freshUntil,
+        health: relationship.health,
+        confidence: relationship.confidence,
+        criticality: relationship.criticality,
+        impactRole: relationship.impactRole,
+        confirmationState: relationship.confirmationState,
+        manuallyManaged: relationship.manuallyManaged,
+        approvalStatus: relationship.approvalStatus,
+        requiresApproval: relationship.requiresApproval,
+        discoveryState: relationship.discoveryState,
+        evidence:
+          relationship.evidenceJson == null
+            ? undefined
+            : (relationship.evidenceJson as Prisma.InputJsonValue),
+        metadata:
+          relationship.metadataJson == null
+            ? undefined
+            : (relationship.metadataJson as Prisma.InputJsonValue),
+        automationCapabilities:
+          relationship.automationCapabilitiesJson == null
+            ? undefined
+            : (relationship.automationCapabilitiesJson as Prisma.InputJsonValue),
+        compatibilityRelationshipId: relationship.id,
+        evidenceCount: relationship.observationCount,
+        incrementEvidence: false,
+        latencyP95Ms: relationship.latencyP95Ms,
+        errorRate: relationship.errorRate
+      });
+      relationshipCount += 1;
+    } catch (error) {
+      conflicts.push({
+        kind: "OPERATIONAL_RELATIONSHIP_IDENTITY",
+        projectId: relationship.projectId ?? "",
+        legacyId: relationship.id,
+        message: error instanceof Error ? error.message : String(error),
+        ...(error instanceof GraphIdentityConflictError
+          ? { context: error.context }
+          : {})
+      });
+    }
+  }
+  return {
+    entities: entityCount,
+    relationships: relationshipCount,
+    quarantinedRelationships,
+    conflicts
+  };
+};
