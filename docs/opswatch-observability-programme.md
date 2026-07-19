@@ -25,6 +25,7 @@ Work must progress through these phases in order:
    - Put webhook and OpenTelemetry secrets in managed encrypted storage.
    - Enforce API-key expiry and prove rotation and revocation.
    - Stop returning plaintext project signing secrets.
+   - Inventory baseline: `docs/credential-security-inventory.md`.
 3. **OpenTelemetry into alerts, incidents, and topology**
    - Normalize OTEL signals into the operational spine.
    - Add correlation, retention, freshness, and topology effects.
