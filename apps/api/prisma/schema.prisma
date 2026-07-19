@@ -13,6 +13,8 @@ model Alert {
   id                    String              @id
   projectId             String
   serviceId             String?
+  operationalEntityId   String?
+  operationalRelationshipId String?
   sourceType            String
   sourceId              String?
   severity              AlertSeverity
@@ -39,6 +41,8 @@ model Alert {
   OtelAlertEvidence     OtelAlertEvidence[]
 
   @@index([projectId, fingerprint, status])
+  @@index([operationalEntityId, status])
+  @@index([operationalRelationshipId, status])
 }
 
 model AuditLog {
@@ -146,6 +150,8 @@ model Incident {
   acknowledgedAt        DateTime?
   resolvedAt            DateTime?
   rootCause             String?
+  rootCauseEntityId     String?
+  rootCauseRelationshipId String?
   resolutionNotes       String?
   /// Fingerprint for reopen/cooldown matching across alert groups.
   fingerprint           String?
@@ -167,6 +173,24 @@ model Incident {
   @@index([correlationGroupId])
   @@index([projectId, fingerprint])
   @@index([mergedIntoIncidentId])
+  @@index([rootCauseEntityId])
+  @@index([rootCauseRelationshipId])
+}
+
+model IncidentTopologyReference {
+  id             String   @id
+  incidentId     String
+  entityId       String?
+  relationshipId String?
+  role           String   @default("AFFECTED")
+  source         String
+  confidence     Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime
+
+  @@index([incidentId, role])
+  @@index([entityId])
+  @@index([relationshipId])
 }
 
 model IncidentAlert {
@@ -750,6 +774,8 @@ model RemediationLog {
   executedAt          DateTime?
   projectId           String?
   serviceId           String?
+  operationalEntityId String?
+  operationalRelationshipId String?
   impactTier          String?
   predictedLabel      String?
   predictedScore      Int?
@@ -763,6 +789,8 @@ model RemediationLog {
   @@index([organizationId, createdAt])
   @@index([organizationId, executionMode, createdAt])
   @@index([incidentId, status, createdAt])
+  @@index([operationalEntityId, createdAt])
+  @@index([operationalRelationshipId, createdAt])
 }
 
 model RemediationLock {
@@ -889,6 +917,8 @@ model AutomationRun {
   verificationStatus String?
   verifiedAt         DateTime?
   affectedServiceIds Json?
+  affectedEntityIds  Json?
+  affectedRelationshipIds Json?
   createdBy          String?
   approvedBy         String?
   approvedAt         DateTime?
@@ -914,6 +944,8 @@ model AutomationRunStep {
   stepOrder        Int
   action           String
   targetServiceId  String?
+  targetEntityId   String?
+  targetRelationshipId String?
   approvalRequired Boolean       @default(false)
   status           String        @default("PENDING")
   remediationLogId String?
@@ -921,6 +953,8 @@ model AutomationRunStep {
   Run              AutomationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@unique([runId, stepOrder])
+  @@index([targetEntityId])
+  @@index([targetRelationshipId])
 }
 
 model AutomationApproval {

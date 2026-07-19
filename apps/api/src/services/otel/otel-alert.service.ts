@@ -50,8 +50,16 @@ export const applyOtelPolicyAlert = async (input: {
   });
 
   if (result.alertId) {
-    await prisma.otelAlertEvidence.create({
-      data: {
+    await prisma.$transaction([
+      prisma.alert.update({
+        where: { id: result.alertId },
+        data: {
+          operationalEntityId: input.entityId ?? undefined,
+          operationalRelationshipId: input.relationshipId ?? undefined
+        }
+      }),
+      prisma.otelAlertEvidence.create({
+        data: {
         id: randomUUID(),
         organizationId: input.organizationId,
         projectId: input.projectId,
@@ -71,8 +79,9 @@ export const applyOtelPolicyAlert = async (input: {
           signalType: input.draft.signalType
         } as Prisma.InputJsonValue,
         observedAt: input.draft.observedAt
-      }
-    });
+        }
+      })
+    ]);
   }
 
   return { alertId: result.alertId, decision };

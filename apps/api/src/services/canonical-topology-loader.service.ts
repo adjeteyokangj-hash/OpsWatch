@@ -107,7 +107,8 @@ export const loadCanonicalProjectTopology = async (input: {
         title: true,
         severity: true,
         status: true,
-        serviceId: true
+        serviceId: true,
+        operationalEntityId: true
       }
     }),
     prisma.incident.findMany({
@@ -121,7 +122,11 @@ export const loadCanonicalProjectTopology = async (input: {
         severity: true,
         status: true,
         IncidentAlert: {
-          select: { Alert: { select: { serviceId: true } } }
+          select: {
+            Alert: {
+              select: { serviceId: true, operationalEntityId: true }
+            }
+          }
         }
       }
     }),
@@ -161,6 +166,21 @@ export const loadCanonicalProjectTopology = async (input: {
   const mappingByLegacy = new Map(
     mappings.map((mapping) => [mapping.legacyServiceId, mapping.entityId])
   );
+  const incidentTopologyReferences =
+    incidents.length > 0
+      ? await prisma.incidentTopologyReference.findMany({
+          where: { incidentId: { in: incidents.map((incident) => incident.id) } },
+          select: { incidentId: true, entityId: true }
+        })
+      : [];
+  const incidentEntityIds = new Map<string, string[]>();
+  for (const reference of incidentTopologyReferences) {
+    if (!reference.entityId) continue;
+    incidentEntityIds.set(reference.incidentId, [
+      ...(incidentEntityIds.get(reference.incidentId) ?? []),
+      reference.entityId
+    ]);
+  }
   const mappingsByEntity = new Map<
     string,
     (typeof mappings)[number][]
@@ -212,9 +232,9 @@ export const loadCanonicalProjectTopology = async (input: {
     })),
     alerts: alerts.map((alert) => ({
       ...alert,
-      serviceId: alert.serviceId
-        ? mappingByLegacy.get(alert.serviceId) ?? null
-        : null
+      serviceId:
+        alert.operationalEntityId ??
+        (alert.serviceId ? mappingByLegacy.get(alert.serviceId) ?? null : null)
     })),
     incidents: incidents.map((incident) => ({
       id: incident.id,
@@ -222,15 +242,19 @@ export const loadCanonicalProjectTopology = async (input: {
       severity: incident.severity,
       status: incident.status,
       serviceIds: Array.from(
-        new Set(
-          incident.IncidentAlert.flatMap((reference) => {
+        new Set([
+          ...incident.IncidentAlert.flatMap((reference) => {
+            if (reference.Alert.operationalEntityId) {
+              return [reference.Alert.operationalEntityId];
+            }
             const legacyId = reference.Alert.serviceId;
             const entityId = legacyId
               ? mappingByLegacy.get(legacyId)
               : undefined;
             return entityId ? [entityId] : [];
-          })
-        )
+          }),
+          ...(incidentEntityIds.get(incident.id) ?? [])
+        ])
       )
     })),
     slos: sloDefinitions.map((definition) => ({
