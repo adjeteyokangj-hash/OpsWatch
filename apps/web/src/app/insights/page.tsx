@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
 import { StatCard } from "../../components/dashboard/stat-card";
+import { ProductTruthStatus } from "../../components/ui/product-truth-status";
 import { apiFetch } from "../../lib/api";
 
 type CoverageItem = {
@@ -23,8 +24,11 @@ type CriticalPathStep = {
 };
 
 type SyntheticJourney = {
+  id: string;
   name: string;
   mode: string;
+  status: "DRAFT";
+  executionEnabled: false;
   recommendation: string;
 };
 
@@ -502,7 +506,7 @@ export default function InsightsPage() {
               <div className="section-head">
                 <div>
                   <h2>Critical paths</h2>
-                  <p>Monitor business journeys, not only isolated endpoints.</p>
+                  <p>Calculated signal coverage across business paths; this is not synthetic execution.</p>
                 </div>
               </div>
               <div className="journey-flow">
@@ -524,19 +528,27 @@ export default function InsightsPage() {
               <div className="section-head">
                 <div>
                   <h2>Synthetic templates</h2>
-                  <p>Journey definitions ready to turn into browser checks.</p>
+                  <p>Draft — execution not yet enabled.</p>
                 </div>
+                <ProductTruthStatus
+                  state="Draft"
+                  detail="Definitions can be stored, but no scheduled executor or run evidence exists."
+                />
               </div>
+              <p className="dashboard-subtle" data-testid="synthetic-draft-truth">
+                Draft journeys are not active monitoring. Ordered execution, assertions, timeout/retry,
+                screenshots, run history, alerts, incidents, and recovery are not available.
+              </p>
               {selectedProject.syntheticJourneys.length === 0 ? (
-                <p>All standard synthetic journey templates have at least one signal.</p>
+                <p>No synthetic journey drafts have been saved for this application.</p>
               ) : (
                 <div className="insight-list">
                   {selectedProject.syntheticJourneys.map((journey) => (
-                    <article key={`${journey.mode}:${journey.name}`} className="insight-row">
-                      <span className="result-pill unknown">{journey.mode}</span>
+                    <article key={journey.id} className="insight-row">
+                      <ProductTruthStatus state="Draft" />
                       <div>
                         <strong>{journey.name}</strong>
-                        <p>{journey.recommendation}</p>
+                        <p>{journey.mode} definition · {journey.recommendation}</p>
                       </div>
                     </article>
                   ))}

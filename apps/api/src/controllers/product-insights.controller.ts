@@ -365,7 +365,7 @@ const buildRecommendations = (
       expectedOutcome: "Create a draft synthetic journey template for this critical path.",
       mostImportantWarning: path.key === "payment"
         ? "Payment flows can affect real provider traffic if test-mode boundaries are unclear."
-        : "Confirm credentials and target data are safe before turning the draft into an active journey.",
+        : "Execution is not enabled. This action stores a draft definition only.",
       previewItems: ["Synthetic journey draft", "Journey template event", `Coverage target update for ${path.key}`],
     }));
   }
@@ -412,12 +412,19 @@ const loadProjectsForInsights = async (orgId: string) => {
     },
     orderBy: { createdAt: "desc" },
   });
+  const journeys = rows.length > 0
+    ? await (prisma as any).syntheticJourney.findMany({
+        where: { projectId: { in: rows.map((project: any) => project.id) } },
+        orderBy: { createdAt: "desc" },
+      })
+    : [];
   return rows.map((project: any) => ({
     ...project,
     integrations: project.ProjectIntegration,
     events: project.Event,
     heartbeats: project.Heartbeat,
     alerts: project.Alert,
+    syntheticJourneyDrafts: journeys.filter((journey: any) => journey.projectId === project.id),
     services: project.Service.map((service: any) => ({
       ...service,
       checks: service.Check.map((check: any) => ({ ...check, results: check.CheckResult })),
@@ -439,7 +446,7 @@ const buildProjectInsight = (project: any) => {
   const credibleAlerts = project.alerts.filter((alert: any) => isCredibleOperationalAlert(alert));
   const coverage = [
     coverageItem("public_site", "Public site monitored", serviceTypes.has("FRONTEND") && validHttpChecks.length > 0, "HTTP check", "Add an HTTP or keyword check for the main public URL."),
-    coverageItem("admin_flow", "Admin flow monitored", checks.some((check: any) => check.name.toUpperCase().includes("ADMIN")), "Synthetic journey", "Add a synthetic login/dashboard journey for the admin path."),
+    coverageItem("admin_flow", "Admin flow monitored", false, null, "Synthetic journeys are Draft — execution not yet enabled."),
     coverageItem("payment_flow", "Payment flow monitored", meaningfulEvents.some((event: any) => event.type === "PAYMENT_FAILED"), "Payment event signal", "Add a test-mode payment journey and ingest PAYMENT_FAILED events."),
     coverageItem("webhook_health", "Webhook health monitored", integrations.has("WEBHOOK") || meaningfulEvents.some((event: any) => event.type === "WEBHOOK_FAILED"), "Webhook integration", "Add webhook delivery monitoring and signature failure events."),
     coverageItem("ssl", "SSL monitored", validSslChecks.length > 0, "SSL check", "Add SSL expiry checks only for public https:// origins."),
@@ -484,10 +491,13 @@ const buildProjectInsight = (project: any) => {
     coverage,
     coverageScore: Math.round((coverage.filter((item) => item.covered).length / coverage.length) * 100),
     criticalPaths,
-    syntheticJourneys: criticalPaths.filter((step) => !step.covered).map((step) => ({
-      name: step.label,
-      mode: step.key === "payment" ? "checkout-test-mode" : "browser",
-      recommendation: step.recommendedCheck,
+    syntheticJourneys: project.syntheticJourneyDrafts.map((journey: any) => ({
+      id: journey.id,
+      name: journey.name,
+      mode: journey.type,
+      status: "DRAFT",
+      executionEnabled: false,
+      recommendation: "Draft only. Scheduled execution, assertions, screenshots, history, and alert/recovery handling are not enabled.",
     })),
     connectionProfiles,
     rootCause: rootCauseHypothesis(project),
