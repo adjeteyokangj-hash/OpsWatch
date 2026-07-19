@@ -27,8 +27,22 @@ const isAlertUnderIncidentSuppression = async (input: {
   });
 };
 
-type CorrelationAlert = { id: string; projectId: string; serviceId: string | null; severity: "INFO" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"; title: string; firstSeenAt: Date };
+type CorrelationAlert = {
+  id: string;
+  projectId: string;
+  serviceId: string | null;
+  severity: "INFO" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  title: string;
+  firstSeenAt: Date;
+  sourceType?: string | null;
+  fingerprint?: string | null;
+  traceIds?: string[];
+  environment?: string | null;
+};
 type CorrelationEdge = { fromServiceId: string; toServiceId: string };
+
+const otelIncidentCorrelationEnabled = (): boolean =>
+  process.env.OPSWATCH_OTEL_INCIDENT_CORRELATION_ENABLED === "true";
 
 export const groupCorrelatedAlerts = (alerts: CorrelationAlert[], edges: CorrelationEdge[]): CorrelationAlert[][] => {
   const neighbors = new Map<string, Set<string>>();
@@ -43,9 +57,19 @@ export const groupCorrelatedAlerts = (alerts: CorrelationAlert[], edges: Correla
     while (queue.length) { const current = queue.shift()!; if (found.has(current)) continue; found.add(current); queue.push(...(neighbors.get(current) ?? [])); }
     return found;
   };
+  const sharesOtelSignal = (a: CorrelationAlert, b: CorrelationAlert): boolean => {
+    if (!otelIncidentCorrelationEnabled()) return false;
+    if (a.fingerprint && b.fingerprint && a.fingerprint === b.fingerprint) return true;
+    if (a.environment && b.environment && a.environment === b.environment && a.sourceType === "OTEL_POLICY" && b.sourceType === "OTEL_POLICY") {
+      if (a.traceIds?.some((traceId) => b.traceIds?.includes(traceId))) return true;
+    }
+    if (a.traceIds?.some((traceId) => b.traceIds?.includes(traceId))) return true;
+    return false;
+  };
   const groups: CorrelationAlert[][] = [];
   for (const alert of alerts) {
     const match = groups.find(group => group.some(existing => existing.projectId === alert.projectId && (
+      sharesOtelSignal(existing, alert) ||
       (!existing.serviceId && !alert.serviceId) ||
       (existing.serviceId && alert.serviceId && component(existing.serviceId).has(alert.serviceId))
     )));
@@ -60,11 +84,36 @@ const createIncidentsForUnlinkedAlerts = async (): Promise<number> => {
   const cutoff = new Date(Date.now() - 30 * 60_000);
   const alerts = await prisma.alert.findMany({
     where: { status: { in: ["OPEN", "ACKNOWLEDGED"] }, firstSeenAt: { gte: cutoff }, IncidentAlert: { none: {} } },
-    select: { id: true, projectId: true, serviceId: true, severity: true, title: true, firstSeenAt: true }, orderBy: { firstSeenAt: "asc" }
+    select: {
+      id: true,
+      projectId: true,
+      serviceId: true,
+      severity: true,
+      title: true,
+      firstSeenAt: true,
+      sourceType: true,
+      fingerprint: true,
+      OtelAlertEvidence: { select: { traceId: true, entityId: true }, take: 10 }
+    },
+    orderBy: { firstSeenAt: "asc" }
   });
   let created = 0;
   for (const projectId of new Set(alerts.map(row => row.projectId))) {
-    const projectAlerts = alerts.filter(row => row.projectId === projectId);
+    const projectAlerts: CorrelationAlert[] = alerts
+      .filter(row => row.projectId === projectId)
+      .map((row) => ({
+        id: row.id,
+        projectId: row.projectId,
+        serviceId: row.serviceId,
+        severity: row.severity,
+        title: row.title,
+        firstSeenAt: row.firstSeenAt,
+        sourceType: row.sourceType,
+        fingerprint: row.fingerprint,
+        traceIds: row.OtelAlertEvidence.map((evidence) => evidence.traceId).filter(
+          (value): value is string => Boolean(value)
+        )
+      }));
     const edges = await prisma.serviceDependency.findMany({
       where: { projectId, isActive: true, dependencyType: "RUNTIME" },
       select: { fromServiceId: true, toServiceId: true }
@@ -97,6 +146,53 @@ const createIncidentsForUnlinkedAlerts = async (): Promise<number> => {
           IncidentAlert: { create: group.map(alert => ({ alertId: alert.id })) }
         }
       });
+
+      if (otelIncidentCorrelationEnabled() && project?.organizationId) {
+        const otelAlertIds = group
+          .filter((alert) => alert.sourceType === "OTEL_POLICY")
+          .map((alert) => alert.id);
+        if (otelAlertIds.length > 0) {
+          const evidenceRows = await prisma.otelAlertEvidence.findMany({
+            where: { alertId: { in: otelAlertIds } },
+            orderBy: { observedAt: "asc" },
+            take: 50
+          });
+          const first = evidenceRows[0];
+          const latest = evidenceRows[evidenceRows.length - 1];
+          if (first) {
+            await prisma.otelIncidentEvidence.create({
+              data: {
+                id: randomUUID(),
+                organizationId: project.organizationId,
+                projectId,
+                incidentId,
+                batchId: latest?.batchId ?? first.batchId,
+                signalId: latest?.signalId ?? first.signalId,
+                entityId: latest?.entityId ?? first.entityId,
+                relationshipId: latest?.relationshipId ?? first.relationshipId,
+                traceId: latest?.traceId ?? first.traceId,
+                spanId: latest?.spanId ?? first.spanId,
+                evidenceKind: "otel.incident.correlation",
+                summary: `Correlated ${evidenceRows.length} OTEL evidence row(s) across ${otelAlertIds.length} alert(s)`,
+                confidence: Math.min(0.95, 0.4 + evidenceRows.length * 0.05),
+                propagationDirection: "UNKNOWN",
+                candidateRootCause: true,
+                metadataJson: {
+                  evidenceCount: evidenceRows.length,
+                  alertCount: otelAlertIds.length,
+                  firstObservedAt: first.observedAt.toISOString(),
+                  latestObservedAt: (latest ?? first).observedAt.toISOString(),
+                  traceIds: Array.from(
+                    new Set(evidenceRows.map((row) => row.traceId).filter(Boolean))
+                  )
+                },
+                observedAt: (latest ?? first).observedAt
+              }
+            });
+          }
+        }
+      }
+
       created += 1;
     }
   }

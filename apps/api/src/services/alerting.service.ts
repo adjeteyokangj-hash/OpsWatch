@@ -5,6 +5,19 @@ import { dispatchAlertNotifications } from "./notifications/notification.service
 import { findActiveMaintenanceForService } from "./maintenance-window-policy.service";
 import { assessFlapping, buildAlertFingerprint } from "./alert-correlation.service";
 
+export type CreateAlertResult = {
+  alertId: string | null;
+  created: boolean;
+  suppressed: boolean;
+};
+
+const UNRESOLVED_STATUSES: AlertStatus[] = [
+  AlertStatus.OPEN,
+  AlertStatus.ACKNOWLEDGED,
+  AlertStatus.REMEDIATING,
+  AlertStatus.VERIFYING
+];
+
 export const createAlert = async (input: {
   projectId: string;
   serviceId?: string;
@@ -16,13 +29,13 @@ export const createAlert = async (input: {
   title: string;
   message: string;
   dedupeBySourceId?: boolean;
-}): Promise<void> => {
+}): Promise<CreateAlertResult> => {
   const project = await prisma.project.findUnique({
     where: { id: input.projectId },
     select: { organizationId: true }
   });
   if (!project?.organizationId) {
-    return;
+    return { alertId: null, created: false, suppressed: false };
   }
 
   const fingerprint = buildAlertFingerprint({
@@ -60,7 +73,7 @@ export const createAlert = async (input: {
         resolvedAt: new Date()
       }
     });
-    return;
+    return { alertId: suppressedId, created: true, suppressed: true };
   }
 
   let alertToDispatchId: string | null = null;
@@ -69,7 +82,7 @@ export const createAlert = async (input: {
   const existingAlert = await prisma.alert.findFirst({
     where: {
       projectId: input.projectId,
-      status: AlertStatus.OPEN,
+      status: { in: UNRESOLVED_STATUSES },
       OR: [
         { fingerprint },
         {
@@ -108,30 +121,31 @@ export const createAlert = async (input: {
     if (updatedAlert.severity !== existingAlert.severity || flapping.isFlapping) {
       alertToDispatchId = updatedAlert.id;
     }
-  } else {
-    const createdAlert = await prisma.alert.create({
-      data: {
-        id: randomUUID(),
-        projectId: input.projectId,
-        serviceId: input.serviceId,
-        sourceType: input.sourceType,
-        sourceId: input.sourceId,
-        integrationId: input.integrationId,
-        severity: input.severity,
-        category: input.category,
-        title: input.title,
-        message: input.message,
-        status: AlertStatus.OPEN,
-        fingerprint,
-        occurrenceCount: 1
-      }
-    });
-    alertToDispatchId = createdAlert.id;
+    if (alertToDispatchId) {
+      await dispatchAlertNotifications(alertToDispatchId, "triggered");
+    }
+    return { alertId: updatedAlert.id, created: false, suppressed: false };
   }
 
-  if (alertToDispatchId) {
-    await dispatchAlertNotifications(alertToDispatchId, "triggered");
-  }
+  const createdAlert = await prisma.alert.create({
+    data: {
+      id: randomUUID(),
+      projectId: input.projectId,
+      serviceId: input.serviceId,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      integrationId: input.integrationId,
+      severity: input.severity,
+      category: input.category,
+      title: input.title,
+      message: input.message,
+      status: AlertStatus.OPEN,
+      fingerprint,
+      occurrenceCount: 1
+    }
+  });
+  await dispatchAlertNotifications(createdAlert.id, "triggered");
+  return { alertId: createdAlert.id, created: true, suppressed: false };
 };
 
 export const resolveAlertsBySourceType = async (
@@ -143,7 +157,7 @@ export const resolveAlertsBySourceType = async (
     where: {
       projectId,
       sourceType,
-      status: AlertStatus.OPEN,
+      status: { in: UNRESOLVED_STATUSES },
       ...(title ? { title } : {})
     },
     data: {
@@ -152,4 +166,25 @@ export const resolveAlertsBySourceType = async (
       lastSeenAt: new Date()
     }
   });
+};
+
+export const resolveAlertsBySourceId = async (
+  projectId: string,
+  sourceType: string,
+  sourceId: string
+): Promise<number> => {
+  const result = await prisma.alert.updateMany({
+    where: {
+      projectId,
+      sourceType,
+      sourceId,
+      status: { in: UNRESOLVED_STATUSES }
+    },
+    data: {
+      status: AlertStatus.RESOLVED,
+      resolvedAt: new Date(),
+      lastSeenAt: new Date()
+    }
+  });
+  return result.count;
 };
