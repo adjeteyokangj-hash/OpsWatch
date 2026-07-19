@@ -470,28 +470,34 @@ export const resolveSigningSecretsForProject = async (
       : [];
   }
 
+  const secrets: ResolvedCredentialSecret[] = [];
   if (project.signingCredentialFamilyId) {
     const managed = await resolveActiveSecrets({
       organizationId: project.organizationId,
       familyId: project.signingCredentialFamilyId,
       projectId: project.id,
-      environment: project.environment
+      environment: project.environment,
+      allowCrossEnvironment: true
     });
-    if (managed.length > 0) {
-      return managed;
+    secrets.push(...managed);
+  }
+
+  // Temporary Phase 2 compatibility: keep legacy plaintext usable until cleared.
+  if (project.signingSecret?.trim()) {
+    const legacy = project.signingSecret.trim();
+    if (!secrets.some((row) => row.plaintext === legacy)) {
+      secrets.push({
+        id: `legacy:${project.id}`,
+        version: 0,
+        status: secrets.length > 0 ? "GRACE" : "ACTIVE",
+        plaintext: legacy,
+        fingerprint: fingerprintSecret(legacy)
+      });
     }
   }
 
-  if (project.signingSecret?.trim()) {
-    return [
-      {
-        id: `legacy:${project.id}`,
-        version: 0,
-        status: "ACTIVE",
-        plaintext: project.signingSecret.trim(),
-        fingerprint: fingerprintSecret(project.signingSecret.trim())
-      }
-    ];
+  if (secrets.length > 0) {
+    return secrets;
   }
 
   return [];

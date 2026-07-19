@@ -197,23 +197,7 @@ export const createConnection = async (req: AuthRequest, res: Response) => {
   }
 
   const connectionId = randomUUID();
-  let credentialFamilyId: string | null = null;
-  let legacyEncrypted: { ciphertext: string; iv: string; authTag: string } | null = null;
-  if (parsed.authSecret) {
-    const managed = await upsertConnectionCredential({
-      organizationId: orgId,
-      connectionId,
-      projectId,
-      environment: parsed.environment,
-      authMethod: parsed.authMethod,
-      plaintext: parsed.authSecret,
-      actorUserId: req.user?.id ?? req.user?.sub ?? null
-    });
-    credentialFamilyId = managed.familyId;
-    legacyEncrypted = managed.legacyEncrypted;
-  }
-
-  const row = await prisma.connection.create({
+  let row = await prisma.connection.create({
     data: {
       id: connectionId,
       organizationId: orgId,
@@ -227,12 +211,6 @@ export const createConnection = async (req: AuthRequest, res: Response) => {
       capabilitiesJson: parsed.capabilities,
       configurationJson: configuration as Prisma.InputJsonValue,
       secretRef: parsed.secretRef ?? null,
-      ...(credentialFamilyId ? { credentialFamilyId } : {}),
-      ...(legacyEncrypted ? {
-        managedSecretCiphertext: legacyEncrypted.ciphertext,
-        managedSecretIv: legacyEncrypted.iv,
-        managedSecretAuthTag: legacyEncrypted.authTag
-      } : {}),
       health: "UNKNOWN",
       installationStatus: "DRAFT",
       manifestVersion: getConnectionManifest(parsed.mode).version,
@@ -240,6 +218,29 @@ export const createConnection = async (req: AuthRequest, res: Response) => {
     },
     include: { Project: { select: { id: true, name: true } } }
   });
+
+  if (parsed.authSecret) {
+    const managed = await upsertConnectionCredential({
+      organizationId: orgId,
+      connectionId: row.id,
+      projectId,
+      environment: parsed.environment,
+      authMethod: parsed.authMethod,
+      plaintext: parsed.authSecret,
+      actorUserId: req.user?.id ?? req.user?.sub ?? null
+    });
+    row = await prisma.connection.update({
+      where: { id: row.id },
+      data: {
+        credentialFamilyId: managed.familyId,
+        managedSecretCiphertext: managed.legacyEncrypted.ciphertext,
+        managedSecretIv: managed.legacyEncrypted.iv,
+        managedSecretAuthTag: managed.legacyEncrypted.authTag,
+        updatedAt: new Date()
+      },
+      include: { Project: { select: { id: true, name: true } } }
+    });
+  }
   await prisma.auditLog.create({
     data: {
       id: randomUUID(),

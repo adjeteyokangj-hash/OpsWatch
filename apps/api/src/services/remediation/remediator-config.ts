@@ -160,7 +160,6 @@ export const resolveRemediatorSecretAsync = async (input: {
       organizationId: input.organizationId,
       familyId: input.credentialFamilyId,
       projectId: input.projectId,
-      integrationId: input.integrationId ?? null,
       environment: input.environment ?? null
     });
     if (managed.length > 0) return managed[0]?.plaintext ?? null;

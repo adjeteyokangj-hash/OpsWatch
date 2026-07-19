@@ -77,14 +77,14 @@ test.describe("credential security: connections", () => {
       const created = (await connectionRes.json()) as { id: string };
 
       await gotoAuthed(page, "/connections");
-      await assertPageReady(page);
+      await assertPageReady(page, "Connections", /Connections/i);
       await expect(page.getByTestId(`connection-row-${created.id}`)).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId(`connection-credential-mask-${created.id}`)).toHaveText("Configured");
       await expect(page.locator(`text=${tempSecret}`)).toHaveCount(0);
 
       await savePhase2Screenshot(page, "connections-configured-masked");
       await page.reload();
-      await assertPageReady(page);
+      await assertPageReady(page, "Connections", /Connections/i);
       await expect(page.locator(`text=${tempSecret}`)).toHaveCount(0);
       await expect(page.getByTestId(`connection-credential-mask-${created.id}`)).toHaveText("Configured");
 

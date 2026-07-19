@@ -22,30 +22,49 @@ export type ConnectionCredentialDisplayStatus =
   | "Rotation pending"
   | "Connection failed";
 
-export type ConnectionSecretSource = Pick<
-  Connection,
-  | "organizationId"
-  | "credentialFamilyId"
-  | "secretRef"
-  | "managedSecretCiphertext"
-  | "managedSecretIv"
-  | "managedSecretAuthTag"
->;
+export type ConnectionSecretSource = {
+  organizationId: string;
+  credentialFamilyId?: string | null;
+  secretRef?: string | null;
+  managedSecretCiphertext?: string | null;
+  managedSecretIv?: string | null;
+  managedSecretAuthTag?: string | null;
+};
 
 export type ConnectionCredentialDto = {
   secretConfigured: boolean;
   hasSecretReference: boolean;
   credentialType: string | null;
-  environment: string | null;
-  createdAt: string | null;
-  expiresAt: string | null;
-  lastUsedAt: string | null;
+  credentialEnvironment: string | null;
+  credentialCreatedAt: string | null;
+  credentialExpiresAt: string | null;
+  credentialLastUsedAt: string | null;
   lastTestedAt: string | null;
-  lastSuccessAt: string | null;
-  lastFailureAt: string | null;
-  status: ConnectionCredentialDisplayStatus | null;
-  version: number | null;
+  credentialStatus: string | null;
+  credentialVersion: number | null;
   keyVersion: string | null;
+};
+
+const toLifecycleStatusCode = (
+  display: ConnectionCredentialDisplayStatus | null
+): string | null => {
+  if (!display) return null;
+  switch (display) {
+    case "Active":
+      return "ACTIVE";
+    case "Expiring soon":
+      return "EXPIRING_SOON";
+    case "Expired":
+      return "EXPIRED";
+    case "Revoked":
+      return "REVOKED";
+    case "Rotation pending":
+      return "ROTATION_PENDING";
+    case "Connection failed":
+      return "CONNECTION_FAILED";
+    default:
+      return null;
+  }
 };
 
 const EXPIRING_SOON_MS = 14 * 24 * 60 * 60 * 1000;
@@ -130,15 +149,13 @@ export const toConnectionCredentialDto = (
     secretConfigured,
     hasSecretReference: Boolean(row.secretRef),
     credentialType: metadata?.type ?? (row.authMethod ? connectionCredentialType(row.authMethod) : null),
-    environment: metadata?.environment ?? row.environment ?? null,
-    createdAt: metadata?.createdAt?.toISOString() ?? null,
-    expiresAt: metadata?.expiresAt?.toISOString() ?? null,
-    lastUsedAt: metadata?.lastUsedAt?.toISOString() ?? null,
+    credentialEnvironment: metadata?.environment ?? row.environment ?? null,
+    credentialCreatedAt: metadata?.createdAt?.toISOString() ?? null,
+    credentialExpiresAt: metadata?.expiresAt?.toISOString() ?? null,
+    credentialLastUsedAt: metadata?.lastUsedAt?.toISOString() ?? null,
     lastTestedAt: lastTestedAt?.toISOString() ?? null,
-    lastSuccessAt: metadata?.lastSuccessAt?.toISOString() ?? null,
-    lastFailureAt: metadata?.lastFailureAt?.toISOString() ?? null,
-    status: computeCredentialDisplayStatus(metadata, row),
-    version: metadata?.version ?? null,
+    credentialStatus: toLifecycleStatusCode(computeCredentialDisplayStatus(metadata, row)),
+    credentialVersion: metadata?.version ?? null,
     keyVersion: metadata?.keyVersion ?? null
   };
 };
@@ -258,7 +275,7 @@ export const resolveConnectionSecrets = async (
     ];
   }
 
-  const fromRef = resolveConnectionSecretReference(connection.secretRef);
+  const fromRef = resolveConnectionSecretReference(connection.secretRef ?? null);
   if (fromRef) {
     return [
       {

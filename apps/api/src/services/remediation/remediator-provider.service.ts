@@ -138,7 +138,7 @@ export const loadRemediatorIntegration = async (
       Project: { select: { organizationId: true, environment: true } }
     }
   });
-  if (!row || !row.Project.organizationId) return null;
+  if (!row?.Project?.organizationId) return null;
   return {
     id: row.id,
     type: row.type,

@@ -462,7 +462,7 @@ settingsRouter.post("/settings/integrations/:projectId/:type/validate", async (r
     }
   });
 
-  if (!row) {
+  if (!row?.Project?.organizationId) {
     res.status(404).json({ error: "Integration config not found" });
     return;
   }

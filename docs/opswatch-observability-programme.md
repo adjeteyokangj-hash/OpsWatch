@@ -86,6 +86,16 @@ For every phase, record:
 Phase 2 must not begin until Phase 1 passes its complete runtime acceptance
 criteria.
 
+### Phase 2 local completion notes
+
+- Inventory: `docs/credential-security-inventory.md`
+- Managed credential store, inbound hardening, external secret routing, and
+  credential UI landed in local commits after `8cfb715`.
+- Legacy fields retained for compatibility: `Project.signingSecret`,
+  `Project.apiKey`, Connection ciphertext/`secretRef`, remediator JSON enc.
+- Phase 3 (OTEL into alerts/incidents/topology) must not begin until Phase 2
+  acceptance is confirmed.
+
 ## Tracked technical debt
 
 - During Phase 4 topology/connection-model unification, replace

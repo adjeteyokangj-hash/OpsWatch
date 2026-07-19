@@ -35,7 +35,7 @@ test.describe("credential security: org API keys", () => {
       expect((await sessionCookies(page)).session).toBeTruthy();
 
       await gotoAuthed(page, "/org");
-      await assertPageReady(page);
+      await assertPageReady(page, "Organization", /Organization|API keys|Org/i);
 
       const keyName = `PW Phase2 ${Date.now().toString(36)}`;
       await page.getByRole("button", { name: "+ Create API Key" }).click();
@@ -52,8 +52,8 @@ test.describe("credential security: org API keys", () => {
       await page.getByRole("button", { name: "Close" }).click();
       await expect(createdInput).not.toBeVisible();
 
-      const prefix = fullKey.split(".")[0].slice(0, 12);
-      await expect(page.getByTestId(/api-key-prefix-/)).toContainText(prefix.slice(0, 8));
+      const keyId = fullKey.split(".")[0]!;
+      await expect(page.getByText(keyId.slice(0, 12), { exact: false }).first()).toBeVisible();
       await expect(page.locator(`input[value="${fullKey}"]`)).toHaveCount(0);
 
       const rotateButton = page.getByTestId(/api-key-rotate-/).first();

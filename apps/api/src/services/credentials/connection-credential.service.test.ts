@@ -128,7 +128,8 @@ describe("connection-credential.service", () => {
 
     expect(dto.secretConfigured).toBe(true);
     expect(dto.hasSecretReference).toBe(true);
-    expect(dto.version).toBe(2);
+    expect(dto.credentialVersion).toBe(2);
+    expect(dto.credentialStatus).toBe("ACTIVE");
     expect(JSON.stringify(dto)).not.toContain("cipher");
     expect(JSON.stringify(dto)).not.toContain("env://SHOULD_NOT_LEAK");
   });

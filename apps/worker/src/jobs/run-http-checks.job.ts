@@ -170,6 +170,7 @@ export const runHttpChecksJob = async (
             Project: { id: check.Service.projectId, organizationId: check.Service.Project.organizationId }
           },
           select: {
+            id: true,
             organizationId: true,
             authMethod: true,
             credentialFamilyId: true,

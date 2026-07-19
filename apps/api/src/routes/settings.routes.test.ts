@@ -48,6 +48,15 @@ vi.mock("../lib/prisma", () => ({
   }
 }));
 
+vi.mock("../services/integration-validation.service", () => ({
+  buildSavedIntegrationDetails: vi.fn(() => ({})),
+  validateIntegrationConnectivity: vi.fn(async () => ({
+    status: "VALID",
+    message: "ok",
+    details: { account: null }
+  }))
+}));
+
 import { settingsRouter } from "./settings.routes";
 
 const orgUser = { id: "u1", role: "ADMIN", organizationId: "org-1" };
@@ -94,7 +103,11 @@ describe("settings.routes tenant isolation", () => {
       id: "int-1",
       type: "WEBHOOK",
       enabled: true,
-      configJson: {}
+      configJson: {},
+      secretRef: null,
+      credentialFamilyId: null,
+      projectId: "proj-1",
+      Project: { organizationId: "org-1", environment: "production" }
     });
     mockIntegrationUpdate.mockResolvedValue({ id: "int-1" });
   });

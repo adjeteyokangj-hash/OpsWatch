@@ -68,6 +68,9 @@ const baseIntegration = (overrides: Record<string, unknown> = {}) => ({
   enabled: true,
   validationStatus: "VALID" as const,
   secretRef: null,
+  credentialFamilyId: null,
+  projectId,
+  Project: { organizationId: orgId, environment: "production" },
   configJson: {
     WORKER_RESTART_WEBHOOK_URL: "https://remediator.test/hook",
     REMEDIATOR_CAPABILITIES: [
@@ -90,7 +93,10 @@ const baseIntegration = (overrides: Record<string, unknown> = {}) => ({
     ],
     _remediatorSecretEnc: encryptSecret("shared-secret"),
     ...((overrides.configJson as object) ?? {})
-  }
+  },
+  Project:
+    (overrides.Project as { organizationId: string; environment: string } | undefined) ??
+    { organizationId: orgId, environment: "production" }
 });
 
 describe("remediator allowlist + signing", () => {

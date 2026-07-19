@@ -120,6 +120,19 @@ describe("connection validation", () => {
       createdAt: new Date(),
       updatedAt: new Date()
     }));
+    update.mockImplementation(async ({ data, where }) => ({
+      id: where.id,
+      organizationId: "org-a",
+      name: "TrueNumeris",
+      type: "API",
+      mode: "API",
+      environment: "production",
+      authMethod: "BEARER",
+      ...data,
+      Project: { id: "project-a", name: "Project A" },
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }));
     const status = vi.fn().mockReturnThis();
     const json = vi.fn();
     await createConnection({
@@ -136,11 +149,13 @@ describe("connection validation", () => {
       organizationId: "org-a",
       plaintext: "plaintext-api-key"
     }));
-    const persisted = create.mock.calls[0][0].data;
-    expect(JSON.stringify(persisted)).not.toContain("plaintext-api-key");
+    const created = create.mock.calls[0][0].data;
+    expect(JSON.stringify(created)).not.toContain("plaintext-api-key");
+    expect(created.credentialFamilyId).toBeUndefined();
+    const persisted = update.mock.calls[0][0].data;
     expect(persisted.credentialFamilyId).toBe("family-a");
     expect(persisted.managedSecretCiphertext).toBe("cipher");
-    expect(json.mock.calls[0][0]).toMatchObject({ secretConfigured: true, version: 1 });
+    expect(json.mock.calls[0][0]).toMatchObject({ secretConfigured: true, credentialVersion: 1 });
     expect(JSON.stringify(json.mock.calls[0][0])).not.toContain("plaintext-api-key");
     delete process.env.OPSWATCH_SECRETS_ENCRYPTION_KEY;
   });
