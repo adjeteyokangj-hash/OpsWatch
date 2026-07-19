@@ -13,15 +13,19 @@ describe.runIf(enabled)("URL-only onboarding registration to worker", () => {
   let runHttpChecksJob: typeof import("../../../worker/src/jobs/run-http-checks.job").runHttpChecksJob;
   let runSslChecksJob: typeof import("../../../worker/src/jobs/run-ssl-checks.job").runSslChecksJob;
   let enrichProjectRow: typeof import("./project-loader.service").enrichProjectRow;
+  let reconcileProjectUrlMonitoring:
+    typeof import("./url-monitoring-provisioning.service").reconcileProjectUrlMonitoring;
   const organizationId = randomUUID();
   const otherOrganizationId = randomUUID();
   const otherProjectId = randomUUID();
   let projectId = "";
+  const concurrentProjectId = randomUUID();
 
   beforeAll(async () => {
     ({ prisma } = await import("../lib/prisma"));
     ({ createProject, getProjectById, patchProject } = await import("../controllers/projects.controller"));
     ({ enrichProjectRow } = await import("./project-loader.service"));
+    ({ reconcileProjectUrlMonitoring } = await import("./url-monitoring-provisioning.service"));
     ({ runHttpChecksJob } = await import("../../../worker/src/jobs/run-http-checks.job"));
     ({ runSslChecksJob } = await import("../../../worker/src/jobs/run-ssl-checks.job"));
     await prisma.organization.create({
@@ -59,6 +63,7 @@ describe.runIf(enabled)("URL-only onboarding registration to worker", () => {
     vi.unstubAllGlobals();
     if (!prisma) return;
     if (projectId) await prisma.project.deleteMany({ where: { id: projectId } });
+    await prisma.project.deleteMany({ where: { id: concurrentProjectId } });
     await prisma.project.deleteMany({ where: { id: otherProjectId } });
     await prisma.organization.deleteMany({ where: { id: { in: [organizationId, otherOrganizationId] } } });
     await prisma.$disconnect();
@@ -174,6 +179,7 @@ describe.runIf(enabled)("URL-only onboarding registration to worker", () => {
     });
     const enriched = await enrichProjectRow(project as any);
     expect(enriched.status).toBe("HEALTHY");
+    expect(enriched.healthReason).toMatch(/Public website.*passed/i);
     expect(enriched.lastCompletedCheckAt).toBeTruthy();
     expect(enriched.Heartbeat).toHaveLength(0);
 
@@ -220,5 +226,42 @@ describe.runIf(enabled)("URL-only onboarding registration to worker", () => {
     expect(serialized).not.toContain("\"apiKey\"");
     expect(serialized).not.toContain("\"signingSecret\"");
     expect(serialized).not.toContain("managedSecretCiphertext");
+    expect(safeGet.result().body.monitoringSetup.depth.applicationMonitoring.heartbeat).toBe("NOT_CONFIGURED");
+    expect(safeGet.result().body.healthReason).toMatch(/Public website.*passed/i);
   });
+
+  it("serializes concurrent duplicate provisioning without consuming extra monitors", async () => {
+    await prisma.project.create({
+      data: {
+        id: concurrentProjectId,
+        name: "TEST ONLY — concurrent URL provisioning",
+        slug: `test-url-concurrent-${concurrentProjectId}`,
+        clientName: "TEST ONLY",
+        environment: "testing",
+        apiKey: randomUUID(),
+        signingSecret: randomUUID(),
+        organizationId,
+        updatedAt: new Date()
+      }
+    });
+    const input = {
+      organizationId,
+      projectId: concurrentProjectId,
+      projectName: "TEST ONLY — concurrent URL provisioning",
+      environment: "testing",
+      publicUrl: "https://example.net/"
+    };
+
+    await Promise.all([
+      reconcileProjectUrlMonitoring(input),
+      reconcileProjectUrlMonitoring(input)
+    ]);
+
+    expect(await prisma.connection.count({
+      where: { projectId: concurrentProjectId, isActive: true }
+    })).toBe(1);
+    expect(await prisma.check.count({
+      where: { Service: { projectId: concurrentProjectId }, isActive: true }
+    })).toBe(2);
+  }, 30_000);
 });

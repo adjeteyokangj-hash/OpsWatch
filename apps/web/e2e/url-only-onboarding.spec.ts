@@ -74,7 +74,7 @@ test.describe("URL-only onboarding", () => {
         };
         monitoringStatus = String(project.monitoringSetup?.status ?? "");
         expect(project.heartbeats ?? []).toHaveLength(0);
-        expect(project.monitoringSetup?.depth?.applicationMonitoring?.heartbeat).toBe("AWAITING_SETUP");
+        expect(project.monitoringSetup?.depth?.applicationMonitoring?.heartbeat).toBe("NOT_CONFIGURED");
         if (monitoringStatus === "ACTIVE") break;
         await page.waitForTimeout(2_000);
       }
@@ -83,7 +83,7 @@ test.describe("URL-only onboarding", () => {
       await gotoAuthed(page, `/projects/${projectId}`, new RegExp(`/projects/${projectId}`));
       await expect(page.getByTestId("monitoring-depth-summary")).toBeVisible({ timeout: 45_000 });
       await expect(page.getByText("Not connected", { exact: true }).first()).toBeVisible();
-      await expect(page.getByText(/Awaiting setup|Heartbeat/i).first()).toBeVisible();
+      await expect(page.getByText("Application · Heartbeat", { exact: true })).toBeVisible();
       await expect(page.locator("body")).not.toContainText(/unexpected application error/i);
 
       await mkdir(path.dirname(evidencePath), { recursive: true });

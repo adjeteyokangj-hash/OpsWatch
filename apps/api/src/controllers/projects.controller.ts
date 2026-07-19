@@ -20,10 +20,28 @@ import {
 	type ProvisionedIngestCredentials
 } from "../services/project-ingest-credentials.service";
 import {
-	deactivateUrlMonitoring,
 	normalizeMonitoringUrl,
-	provisionUrlMonitoring
+	reconcileProjectUrlMonitoring,
+	UrlMonitorEntitlementError
 } from "../services/url-monitoring-provisioning.service";
+
+const sendUrlMonitoringError = (res: Response, error: unknown, fallback: string): void => {
+	if (error instanceof UrlMonitorEntitlementError) {
+		res.status(422).json({
+			error: error.message,
+			monitorsRequired: error.monitorsRequired,
+			monitorsAvailable: error.monitorsAvailable,
+			urlMonitoring: error.urlMonitoring,
+			retryable: true
+		});
+		return;
+	}
+	res.status(500).json({
+		error: fallback,
+		detail: error instanceof Error ? error.message : "Unknown monitoring setup error",
+		retryable: true
+	});
+};
 
 const buildMonitoringSummary = (row: any) => {
 	const services = row.services ?? row.Service ?? [];
@@ -97,7 +115,7 @@ const buildMonitoringSummary = (row: any) => {
 					: "NOT_CONFIGURED"
 			},
 			applicationMonitoring: {
-				heartbeat: heartbeats.length > 0 ? "CONNECTED" : "AWAITING_SETUP",
+				heartbeat: heartbeats.length > 0 ? "CONNECTED" : "NOT_CONFIGURED",
 				events: events.length > 0 ? "CONNECTED" : "NOT_CONFIGURED"
 			},
 			advancedMonitoring: {
@@ -282,34 +300,20 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 	}
 
 	try {
-		if (frontendUrl) {
-			await provisionUrlMonitoring({
+		if (frontendUrl || adminUrl) {
+			await reconcileProjectUrlMonitoring({
 				organizationId: orgId,
 				projectId: row.id,
 				projectName: row.name,
 				environment: row.environment,
-				role: "PUBLIC",
-				url: frontendUrl,
-				createdBy: req.user?.id ?? req.user?.sub ?? null
-			});
-		}
-		if (adminUrl) {
-			await provisionUrlMonitoring({
-				organizationId: orgId,
-				projectId: row.id,
-				projectName: row.name,
-				environment: row.environment,
-				role: "ADMIN",
-				url: adminUrl,
+				...(frontendUrl ? { publicUrl: frontendUrl } : {}),
+				...(adminUrl ? { adminUrl } : {}),
 				createdBy: req.user?.id ?? req.user?.sub ?? null
 			});
 		}
 	} catch (error) {
 		await prisma.project.delete({ where: { id: row.id } }).catch(() => undefined);
-		res.status(500).json({
-			error: "Monitoring setup failed; registration was rolled back and can be retried",
-			detail: error instanceof Error ? error.message : "Unknown monitoring setup error"
-		});
+		sendUrlMonitoringError(res, error, "Monitoring setup failed; registration was rolled back and can be retried");
 		return;
 	}
 
@@ -448,7 +452,7 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 			return;
 		}
 	}
-	const row = await prisma.project.update({
+	let row = await prisma.project.update({
 		where: { id: req.params.projectId },
 		data: {
 			...(body.name !== undefined ? { name: String(body.name) } : {}),
@@ -456,8 +460,6 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 			...(body.clientName !== undefined ? { clientName: String(body.clientName) } : {}),
 			...(body.description !== undefined ? { description: body.description ? String(body.description) : null } : {}),
 			...(body.environment !== undefined ? { environment: String(body.environment) } : {}),
-			...(frontendUrl !== undefined ? { frontendUrl } : {}),
-			...(adminUrl !== undefined ? { adminUrl } : {}),
 			...(body.backendUrl !== undefined ? { backendUrl: body.backendUrl ? String(body.backendUrl) : null } : {}),
 			...(body.repoUrl !== undefined ? { repoUrl: body.repoUrl ? String(body.repoUrl) : null } : {}),
 			...(body.projectOwner !== undefined ? { projectOwner: body.projectOwner ? String(body.projectOwner) : null } : {}),
@@ -473,46 +475,22 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 	});
 
 	try {
-		if (frontendUrl) {
-			await provisionUrlMonitoring({
+		if (frontendUrl !== undefined || adminUrl !== undefined) {
+			await reconcileProjectUrlMonitoring({
 				organizationId: orgId,
 				projectId: row.id,
 				projectName: row.name,
 				environment: row.environment,
-				role: "PUBLIC",
-				url: frontendUrl,
+				publicUrl: frontendUrl,
+				adminUrl,
 				createdBy: req.user?.id ?? req.user?.sub ?? null
 			});
-		} else if (frontendUrl === null) {
-			await deactivateUrlMonitoring({
-				organizationId: orgId,
-				projectId: row.id,
-				role: "PUBLIC"
-			});
-		}
-		if (adminUrl) {
-			await provisionUrlMonitoring({
-				organizationId: orgId,
-				projectId: row.id,
-				projectName: row.name,
-				environment: row.environment,
-				role: "ADMIN",
-				url: adminUrl,
-				createdBy: req.user?.id ?? req.user?.sub ?? null
-			});
-		} else if (adminUrl === null) {
-			await deactivateUrlMonitoring({
-				organizationId: orgId,
-				projectId: row.id,
-				role: "ADMIN"
+			row = await prisma.project.findUniqueOrThrow({
+				where: { id: row.id }
 			});
 		}
 	} catch (error) {
-		res.status(500).json({
-			error: "Application saved but monitoring setup failed",
-			detail: error instanceof Error ? error.message : "Unknown monitoring setup error",
-			retryable: true
-		});
+		sendUrlMonitoringError(res, error, "Application saved but monitoring setup failed");
 		return;
 	}
 

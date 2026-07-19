@@ -32,27 +32,75 @@ vi.mock("./agentless-connection.service", () => ({
   assertSafeConnectionTarget: vi.fn().mockResolvedValue(undefined)
 }));
 
-import { provisionUrlMonitoring } from "./url-monitoring-provisioning.service";
+vi.mock("./entitlements/entitlement.service", () => ({
+  getOrganizationEntitlements: vi.fn().mockResolvedValue({}),
+  getMonitorEntitlementCapacityInTransaction: vi.fn()
+}));
 
+import {
+  getMonitorEntitlementCapacityInTransaction
+} from "./entitlements/entitlement.service";
+import {
+  provisionUrlMonitoring,
+  reconcileProjectUrlMonitoring,
+  UrlMonitorEntitlementError
+} from "./url-monitoring-provisioning.service";
+
+const checkFindMany = vi.fn();
+const checkCount = vi.fn();
+const checkUpdateMany = vi.fn();
+const serviceUpdateMany = vi.fn();
+const projectFind = vi.fn();
+const projectUpdate = vi.fn();
 const tx = {
+  $queryRaw: vi.fn().mockResolvedValue([{ id: "org-1" }]),
+  project: { findFirst: projectFind, update: projectUpdate },
   connection: { findFirst: connectionFind, create: connectionCreate, update: connectionUpdate },
-  service: { findFirst: serviceFind, create: serviceCreate, update: serviceUpdate },
-  check: { findFirst: checkFind, create: checkCreate, update: checkUpdate }
+  service: {
+    findFirst: serviceFind,
+    create: serviceCreate,
+    update: serviceUpdate,
+    updateMany: serviceUpdateMany
+  },
+  check: {
+    findFirst: checkFind,
+    findMany: checkFindMany,
+    count: checkCount,
+    create: checkCreate,
+    update: checkUpdate,
+    updateMany: checkUpdateMany
+  }
 };
 
 describe("URL monitoring provisioning", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     transaction.mockImplementation(async (callback: (client: typeof tx) => unknown) => callback(tx));
-    connectionFind.mockResolvedValue(null);
-    connectionCreate.mockResolvedValue({
-      id: "connection-public",
-      linkedServiceId: null
+    tx.$queryRaw.mockResolvedValue([{ id: "org-1" }]);
+    projectFind.mockResolvedValue({ id: "project-1" });
+    projectUpdate.mockResolvedValue({});
+    vi.mocked(getMonitorEntitlementCapacityInTransaction).mockResolvedValue({
+      enabled: true,
+      allowMutations: true,
+      limit: 50,
+      current: 0,
+      available: 50
     });
+    connectionFind.mockResolvedValue(null);
+    connectionCreate.mockImplementation(async ({ data }: any) => ({
+      ...data,
+      id: data.name === "Public website" ? "connection-public" : "connection-admin",
+      linkedServiceId: null
+    }));
     connectionUpdate.mockResolvedValue({});
     serviceFind.mockResolvedValue(null);
-    serviceCreate.mockResolvedValue({ id: "service-public" });
+    serviceCreate.mockImplementation(async ({ data }: any) => ({
+      id: data.name === "Public website" ? "service-public" : "service-admin"
+    }));
     serviceUpdate.mockResolvedValue({});
+    serviceUpdateMany.mockResolvedValue({ count: 1 });
+    checkFindMany.mockResolvedValue([]);
+    checkCount.mockResolvedValue(0);
     checkFind.mockResolvedValue(null);
     checkCreate
       .mockResolvedValueOnce({ id: "http-check" })
@@ -90,6 +138,55 @@ describe("URL monitoring provisioning", () => {
     });
   });
 
+  it("creates public plus admin URL monitoring when four monitors are available", async () => {
+    const result = await reconcileProjectUrlMonitoring({
+      organizationId: "org-1",
+      projectId: "project-1",
+      projectName: "Test application",
+      environment: "testing",
+      publicUrl: "https://example.com/",
+      adminUrl: "https://admin.example.com/"
+    });
+
+    expect(result.public).toBeTruthy();
+    expect(result.admin).toBeTruthy();
+    expect(connectionCreate).toHaveBeenCalledTimes(2);
+    expect(checkCreate).toHaveBeenCalledTimes(4);
+  });
+
+  it.each([
+    { available: 1, publicUrl: "https://example.com/", adminUrl: undefined, required: 2 },
+    { available: 3, publicUrl: "https://example.com/", adminUrl: "https://admin.example.com/", required: 4 }
+  ])("rejects atomically when $required monitors are required but only $available are available", async ({
+    available,
+    publicUrl,
+    adminUrl,
+    required
+  }) => {
+    vi.mocked(getMonitorEntitlementCapacityInTransaction).mockResolvedValue({
+      enabled: true,
+      allowMutations: true,
+      limit: available,
+      current: 0,
+      available
+    });
+
+    await expect(reconcileProjectUrlMonitoring({
+      organizationId: "org-1",
+      projectId: "project-1",
+      projectName: "Test application",
+      environment: "testing",
+      publicUrl,
+      ...(adminUrl ? { adminUrl } : {})
+    })).rejects.toMatchObject<Partial<UrlMonitorEntitlementError>>({
+      monitorsRequired: required,
+      monitorsAvailable: available
+    });
+    expect(connectionCreate).not.toHaveBeenCalled();
+    expect(serviceCreate).not.toHaveBeenCalled();
+    expect(checkCreate).not.toHaveBeenCalled();
+  });
+
   it("reuses existing records on registration retry", async () => {
     connectionFind.mockResolvedValue({
       id: "connection-public",
@@ -100,6 +197,10 @@ describe("URL monitoring provisioning", () => {
       linkedServiceId: "service-public"
     });
     serviceFind.mockResolvedValue({ id: "service-public" });
+    checkFindMany.mockResolvedValue([
+      { id: "http-check", type: "HTTP", name: "Public website availability", isActive: true },
+      { id: "ssl-check", type: "SSL", name: "Public website certificate", isActive: true }
+    ]);
     checkFind
       .mockResolvedValueOnce({ id: "http-check" })
       .mockResolvedValueOnce({ id: "ssl-check" });
@@ -117,8 +218,51 @@ describe("URL monitoring provisioning", () => {
     expect(serviceCreate).not.toHaveBeenCalled();
     expect(checkCreate).not.toHaveBeenCalled();
     expect(checkUpdate).toHaveBeenCalledTimes(2);
+    expect(getMonitorEntitlementCapacityInTransaction).toHaveBeenCalled();
     expect(result.httpCheckId).toBe("http-check");
     expect(result.sslCheckId).toBe("ssl-check");
+  });
+
+  it("rejects a project outside the organization before creating records", async () => {
+    projectFind.mockResolvedValue(null);
+    await expect(reconcileProjectUrlMonitoring({
+      organizationId: "org-1",
+      projectId: "project-other",
+      projectName: "Other",
+      environment: "testing",
+      publicUrl: "https://example.com/"
+    })).rejects.toThrow(/not in your organization/i);
+    expect(connectionCreate).not.toHaveBeenCalled();
+    expect(checkCreate).not.toHaveBeenCalled();
+  });
+
+  it("deactivates URL checks so they no longer consume active monitor usage", async () => {
+    connectionFind.mockResolvedValue({
+      id: "connection-public",
+      linkedServiceId: "service-public",
+      isActive: true
+    });
+    serviceFind.mockResolvedValue({ id: "service-public" });
+    checkFindMany.mockResolvedValue([
+      { id: "http-check", type: "HTTP", name: "Public website availability", isActive: true },
+      { id: "ssl-check", type: "SSL", name: "Public website certificate", isActive: true }
+    ]);
+
+    await reconcileProjectUrlMonitoring({
+      organizationId: "org-1",
+      projectId: "project-1",
+      projectName: "Test application",
+      environment: "testing",
+      publicUrl: null
+    });
+
+    expect(checkUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { serviceId: "service-public", isActive: true },
+      data: expect.objectContaining({ isActive: false })
+    }));
+    expect(connectionUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ isActive: false, installationStatus: "DEACTIVATED" })
+    }));
   });
 
   it("creates an isolated admin connection and checks", async () => {

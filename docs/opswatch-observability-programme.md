@@ -84,3 +84,13 @@ For every phase, record:
 
 Phase 2 must not begin until Phase 1 passes its complete runtime acceptance
 criteria.
+
+## Tracked technical debt
+
+- During Phase 4 topology/connection-model unification, replace
+  `configJson.connectionId` ownership with an indexed `Check.connectionId`
+  foreign key.
+- Consider immediate first-run SSL execution as a later onboarding UX
+  improvement; scheduled SSL execution remains the verified Phase 1 behavior.
+- Retain wizard-modal browser flakiness as a known test-harness issue until the
+  slow `/projects` loading path is stabilized.

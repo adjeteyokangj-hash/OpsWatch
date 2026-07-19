@@ -23,7 +23,13 @@ type ProjectRow = {
     Check: Array<{
       id: string;
       isActive: boolean;
-      CheckResult: Array<{ status: string; checkedAt: Date; responseCode?: number | null; message?: string | null }>;
+      CheckResult: Array<{
+        status: string;
+        checkedAt: Date;
+        responseCode?: number | null;
+        responseTimeMs?: number | null;
+        message?: string | null;
+      }>;
     }>;
   }>;
   Alert: Array<{ serviceId: string | null; severity: string; status: string }>;
@@ -67,6 +73,7 @@ const attachLatestCheckResults = async <
                   status: latest.status,
                   checkedAt: latest.checkedAt,
                   responseCode: latest.responseCode ?? null,
+                  responseTimeMs: latest.responseTimeMs ?? null,
                   message: latest.message ?? null
                 }
               ]

@@ -29,7 +29,7 @@ const activeMonitoring = {
       adminUrlMonitoring: "PENDING" as const
     },
     applicationMonitoring: {
-      heartbeat: "AWAITING_SETUP" as const,
+      heartbeat: "NOT_CONFIGURED" as const,
       events: "NOT_CONFIGURED" as const
     },
     advancedMonitoring: {
@@ -103,7 +103,8 @@ describe("RegisterApplicationWizard URL-only onboarding", () => {
     expect(screen.getByText("Website connection created")).toBeInTheDocument();
     expect(screen.getByText("HTTP check scheduled")).toBeInTheDocument();
     expect(screen.getByText("SSL check scheduled")).toBeInTheDocument();
-    expect(screen.getByText("Awaiting setup")).toBeInTheDocument();
+    expect(screen.getByText("Application · Heartbeat")).toBeInTheDocument();
+    expect(screen.getAllByText("Not configured").length).toBeGreaterThan(0);
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(

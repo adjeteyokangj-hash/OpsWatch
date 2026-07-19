@@ -18,7 +18,7 @@ export type MonitoringSetup = {
       adminUrlMonitoring: "ACTIVE" | "PENDING" | "NOT_CONFIGURED";
     };
     applicationMonitoring: {
-      heartbeat: "CONNECTED" | "AWAITING_SETUP";
+      heartbeat: "CONNECTED" | "NOT_CONFIGURED";
       events: "CONNECTED" | "NOT_CONFIGURED";
     };
     advancedMonitoring: {

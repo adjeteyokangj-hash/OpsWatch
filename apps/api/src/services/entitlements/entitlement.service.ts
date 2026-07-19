@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import {
   EntitlementError,
@@ -53,7 +54,7 @@ const countUsage = async (organizationId: string, featureKey: LimitEntitlementKe
     case ENTITLEMENT_KEYS.TEAM_MEMBERS_MAX:
       return prisma.user.count({ where: { organizationId, isActive: true } });
     case ENTITLEMENT_KEYS.MONITORING_MONITORS_MAX:
-      return prisma.check.count({ where: { Service: { Project: { organizationId } } } });
+      return prisma.check.count({ where: { isActive: true, Service: { Project: { organizationId } } } });
     case ENTITLEMENT_KEYS.MONITORING_SLOS_MAX:
       return prisma.sLODefinition.count({
         where: { Project: { organizationId }, archivedAt: null }
@@ -207,6 +208,67 @@ export const assertWithinLimit = async (
   if (current + increment > limit) {
     throw entitlementLimitExceeded(featureKey, current, limit);
   }
+};
+
+export type MonitorEntitlementCapacity = {
+  enabled: boolean;
+  allowMutations: boolean;
+  limit: number | null;
+  current: number;
+  available: number | null;
+};
+
+/**
+ * Reads both entitlement and active monitor usage through the caller's
+ * transaction. Callers must lock the organization row before invoking this
+ * helper when capacity is being consumed.
+ */
+export const getMonitorEntitlementCapacityInTransaction = async (
+  tx: Prisma.TransactionClient,
+  organizationId: string
+): Promise<MonitorEntitlementCapacity> => {
+  const subscription = await tx.subscription.findUnique({
+    where: { organizationId },
+    include: {
+      Plan: {
+        include: { PlanEntitlement: true }
+      }
+    }
+  });
+  if (!subscription) {
+    throw new Error("Organization subscription is not initialized");
+  }
+
+  const access = resolveSubscriptionAccess({
+    subscription,
+    planCode: subscription.Plan.code as PlanCode
+  });
+  let plan = subscription.Plan;
+  if (access.effectivePlanCode !== subscription.Plan.code) {
+    plan = await tx.plan.findUniqueOrThrow({
+      where: { code: access.effectivePlanCode },
+      include: { PlanEntitlement: true }
+    });
+  }
+  const entitlements = applySubscriptionAccessToEntitlements(
+    mapSubscriptionEntitlements(plan.PlanEntitlement),
+    access
+  );
+  const monitorEntitlement = entitlements[ENTITLEMENT_KEYS.MONITORING_MONITORS_MAX];
+  const current = await tx.check.count({
+    where: {
+      isActive: true,
+      Service: { Project: { organizationId } }
+    }
+  });
+  const limit = monitorEntitlement?.limit ?? null;
+  return {
+    enabled: Boolean(monitorEntitlement?.enabled),
+    allowMutations: access.allowMutations,
+    limit,
+    current,
+    available: limit == null ? null : Math.max(0, limit - current)
+  };
 };
 
 export const getUsageSnapshot = async (organizationId: string) => {

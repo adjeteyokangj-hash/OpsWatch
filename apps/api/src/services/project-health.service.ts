@@ -72,9 +72,52 @@ type ServiceInput = {
   status: string;
   criticality: string;
   Check: Array<{
+    name?: string;
+    type?: string;
+    intervalSeconds?: number;
+    configJson?: unknown;
     isActive: boolean;
-    CheckResult: Array<{ status: string; checkedAt: Date; responseCode?: number | null }>;
+    CheckResult: Array<{
+      status: string;
+      checkedAt: Date;
+      responseCode?: number | null;
+      responseTimeMs?: number | null;
+      message?: string | null;
+    }>;
   }>;
+};
+
+const isFreshCheckResult = (
+  checkedAt: Date,
+  intervalSeconds: number | undefined,
+  now: Date
+): boolean => {
+  const freshnessMs = Math.max(5 * 60_000, Math.max(1, intervalSeconds ?? 60) * 3_000);
+  return now.getTime() - checkedAt.getTime() <= freshnessMs;
+};
+
+const monitoringRole = (service: ServiceInput, check: ServiceInput["Check"][number]): "PUBLIC" | "ADMIN" | null => {
+  const config = check.configJson && typeof check.configJson === "object"
+    ? check.configJson as Record<string, unknown>
+    : {};
+  if (config.monitoringRole === "PUBLIC" || config.monitoringRole === "ADMIN") return config.monitoringRole;
+  if (/public website/i.test(service.name)) return "PUBLIC";
+  if (/admin endpoint/i.test(service.name)) return "ADMIN";
+  return null;
+};
+
+const failedCheckReason = (
+  service: ServiceInput,
+  check: ServiceInput["Check"][number],
+  message?: string | null
+): string => {
+  const role = monitoringRole(service, check);
+  const label = role === "PUBLIC" ? "Public website" : role === "ADMIN" ? "Admin endpoint" : service.name;
+  if (check.type === "RESPONSE_TIME" || /response time|slow|latency/i.test(message ?? "")) {
+    return `${label} response is slow`;
+  }
+  if (check.type === "SSL") return `${label} SSL check failed`;
+  return `${label} is unreachable`;
 };
 
 export const buildServiceHealthSignals = (
@@ -111,7 +154,9 @@ export const computeProjectHealth = (input: {
   openAlerts: Array<{ serviceId: string | null; severity: string }>;
   unresolvedIncidents: Array<{ serviceId?: string | null }>;
   lastHeartbeatAt?: Date | null;
+  now?: Date;
 }): ProjectHealthSnapshot => {
+  const now = input.now ?? new Date();
   const alertsByService = new Map<string, { open: number; critical: number }>();
   for (const alert of input.openAlerts) {
     if (!alert.serviceId) continue;
@@ -196,6 +241,106 @@ export const computeProjectHealth = (input: {
       affectedModules,
       affectedWorkflows,
       affectedComponents
+    };
+  }
+
+  const configuredChecks = input.services.flatMap((service) =>
+    service.Check
+      .filter((check) => check.isActive)
+      .map((check) => ({ service, check, latest: check.CheckResult[0] ?? null }))
+  );
+  const currentChecks = configuredChecks.filter(
+    (row) => row.latest && isFreshCheckResult(row.latest.checkedAt, row.check.intervalSeconds, now)
+  ) as Array<{
+    service: ServiceInput;
+    check: ServiceInput["Check"][number];
+    latest: NonNullable<ServiceInput["Check"][number]["CheckResult"][number]>;
+  }>;
+  const currentFailures = currentChecks.filter((row) => row.latest.status === "FAIL");
+  const currentWarnings = currentChecks.filter((row) => row.latest.status === "WARN");
+
+  if (currentFailures.length > 0) {
+    const critical = currentFailures.find((row) =>
+      ["CRITICAL", "HIGH"].includes(row.service.criticality.toUpperCase()) ||
+      monitoringRole(row.service, row.check) === "PUBLIC"
+    );
+    const selected = critical ?? currentFailures[0]!;
+    const status: ProjectStatus = critical ? "DOWN" : "DEGRADED";
+    return {
+      status,
+      healthReason: failedCheckReason(selected.service, selected.check, selected.latest.message),
+      healthSource: "check",
+      displayLabel: healthDisplayLabel(status),
+      lastCompletedCheckAt,
+      lastSignalAt,
+      monitoredAreaCount,
+      affectedModules,
+      affectedWorkflows,
+      affectedComponents
+    };
+  }
+
+  if (currentWarnings.length > 0) {
+    const selected = currentWarnings[0]!;
+    return {
+      status: "DEGRADED",
+      healthReason: failedCheckReason(selected.service, selected.check, selected.latest.message),
+      healthSource: "check",
+      displayLabel: healthDisplayLabel("DEGRADED"),
+      lastCompletedCheckAt,
+      lastSignalAt,
+      monitoredAreaCount,
+      affectedModules,
+      affectedWorkflows,
+      affectedComponents
+    };
+  }
+
+  if (currentChecks.length > 0) {
+    const publicHttp = currentChecks.find((row) =>
+      monitoringRole(row.service, row.check) === "PUBLIC" && row.check.type === "HTTP"
+    );
+    const publicSsl = currentChecks.find((row) =>
+      monitoringRole(row.service, row.check) === "PUBLIC" && row.check.type === "SSL"
+    );
+    const pendingPublicSsl = configuredChecks.some((row) =>
+      monitoringRole(row.service, row.check) === "PUBLIC" && row.check.type === "SSL" && !row.latest
+    );
+    let reason = "Current monitoring checks passed";
+    if (publicHttp && publicSsl) reason = "Public website and SSL checks passed";
+    else if (publicHttp && pendingPublicSsl) reason = "Public website HTTP check passed; SSL check pending";
+    else if (publicHttp) reason = "Public website HTTP check passed";
+    if (!input.lastHeartbeatAt && currentChecks.some((row) => monitoringRole(row.service, row.check))) {
+      reason += "; heartbeat not connected";
+    }
+    return {
+      status: "HEALTHY",
+      healthReason: reason,
+      healthSource: "check",
+      displayLabel: healthDisplayLabel("HEALTHY"),
+      lastCompletedCheckAt,
+      lastSignalAt,
+      monitoredAreaCount,
+      affectedModules: [],
+      affectedWorkflows: [],
+      affectedComponents: []
+    };
+  }
+
+  if (configuredChecks.length > 0) {
+    const hadResult = configuredChecks.some((row) => Boolean(row.latest));
+    const reason = hadResult ? "Waiting for fresh website check" : "Waiting for first website check";
+    return {
+      status: "UNKNOWN",
+      healthReason: reason,
+      healthSource: "check",
+      displayLabel: reason,
+      lastCompletedCheckAt,
+      lastSignalAt,
+      monitoredAreaCount,
+      affectedModules: [],
+      affectedWorkflows: [],
+      affectedComponents: []
     };
   }
 
