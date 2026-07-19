@@ -12,6 +12,10 @@ import {
   CredentialCopyField,
   EnvSnippetBlock
 } from "./register-wizard-ui";
+import {
+  MonitoringDepthSummary,
+  type MonitoringSetup
+} from "./monitoring-depth-summary";
 
 type WizardStep = "register" | "success" | "credentials" | "verification" | "discover" | "monitoring";
 
@@ -30,6 +34,9 @@ type CreateApplicationResponse = {
   slug: string;
   environment?: string;
   status?: string;
+  frontendUrl?: string | null;
+  adminUrl?: string | null;
+  monitoringSetup?: MonitoringSetup;
   ingestCredentials?: IngestCredentials;
 };
 
@@ -53,6 +60,7 @@ type ProjectConnection = {
   environment?: string;
   status?: string;
   heartbeats?: HeartbeatRow[];
+  monitoringSetup?: MonitoringSetup;
 };
 
 type ServiceRow = {
@@ -75,6 +83,7 @@ type RegisterForm = {
   clientName: string;
   environment: string;
   publicUrl: string;
+  adminUrl: string;
 };
 
 type ClientMode = "none" | "existing" | "new";
@@ -97,7 +106,8 @@ const EMPTY_FORM: RegisterForm = {
   name: "",
   clientName: "",
   environment: "development",
-  publicUrl: ""
+  publicUrl: "",
+  adminUrl: ""
 };
 
 const buildSetupEnv = (input: {
@@ -218,6 +228,7 @@ export function RegisterApplicationWizard({
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [waitingForHeartbeat, setWaitingForHeartbeat] = useState(false);
   const [discovering, setDiscovering] = useState(false);
+  const [retryingMonitoring, setRetryingMonitoring] = useState(false);
 
   const credentials = created?.ingestCredentials;
   const hasCredentials = Boolean(credentials && !credentials.error && credentials.apiKey);
@@ -226,6 +237,7 @@ export function RegisterApplicationWizard({
   const applicationId = created ? formatApplicationId(created.id) : "";
   const journeySteps = getJourneySteps(step);
   const discovery = useMemo(() => buildDiscoverySnapshot(topology, services), [topology, services]);
+  const monitoringSetup = connection?.monitoringSetup ?? created?.monitoringSetup ?? null;
 
   const clientSuggestions = useMemo(
     () => [...new Set(knownClients.map((value) => value.trim()).filter(Boolean))].sort(),
@@ -321,6 +333,24 @@ export function RegisterApplicationWizard({
     [stopHeartbeatPolling]
   );
 
+  const loadProjectState = useCallback(async (projectId: string) => {
+    try {
+      const project = await apiFetch<ProjectConnection>(`/projects/${projectId}`);
+      setConnection(project);
+    } catch {
+      // Monitoring setup polling is best-effort; explicit retries surface errors.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (step === "register" || !created?.id) return;
+    void loadProjectState(created.id);
+    const timer = setInterval(() => {
+      void loadProjectState(created.id);
+    }, DISCOVERY_POLL_MS);
+    return () => clearInterval(timer);
+  }, [created?.id, loadProjectState, step]);
+
   useEffect(() => {
     if (step !== "verification" || !created?.id) {
       stopHeartbeatPolling();
@@ -373,12 +403,14 @@ export function RegisterApplicationWizard({
           clientName: resolvedClientName || form.name.trim(),
           environment: form.environment,
           frontendUrl: form.publicUrl.trim() || undefined,
+          adminUrl: form.adminUrl.trim() || undefined,
           monitoringEnabled: true,
           automationMode: "MONITOR_ONLY"
         })
       });
 
       setCreated(response);
+      setConnection(response);
 
       if (response.ingestCredentials?.error) {
         setError(response.ingestCredentials.error);
@@ -397,6 +429,26 @@ export function RegisterApplicationWizard({
       setError(err instanceof Error ? err.message : "Failed to register application");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const retryMonitoringSetup = async () => {
+    if (!created?.id) return;
+    setRetryingMonitoring(true);
+    setError(null);
+    try {
+      const project = await apiFetch<ProjectConnection>(`/projects/${created.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...(form.publicUrl.trim() ? { frontendUrl: form.publicUrl.trim() } : {}),
+          ...(form.adminUrl.trim() ? { adminUrl: form.adminUrl.trim() } : {})
+        })
+      });
+      setConnection(project);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Monitoring setup retry failed");
+    } finally {
+      setRetryingMonitoring(false);
     }
   };
 
@@ -447,7 +499,7 @@ export function RegisterApplicationWizard({
 
   const stepDescription =
     step === "register"
-      ? "Register a new application with OpsWatch. After the first heartbeat it is Connected."
+      ? "Register an application. A public URL starts external monitoring without an agent; heartbeat setup remains optional."
       : step === "success"
         ? "Copy your API key now, then connect your application to OpsWatch."
         : step === "credentials"
@@ -613,7 +665,22 @@ export function RegisterApplicationWizard({
               placeholder="https://your-domain.com"
               type="url"
             />
-            <span className="field-hint field-hint--spaced">Leave blank for internal services.</span>
+            <span className="field-hint field-hint--spaced">
+              Uses safe external HTTP and SSL checks. No agent or SDK required.
+            </span>
+          </label>
+
+          <label>
+            Admin URL (optional)
+            <input
+              value={form.adminUrl}
+              onChange={(event) => setForm((current) => ({ ...current, adminUrl: event.target.value }))}
+              placeholder="https://admin.your-domain.com"
+              type="url"
+            />
+            <span className="field-hint field-hint--spaced">
+              Reachability and TLS only. Do not enter administrator credentials.
+            </span>
           </label>
 
           <div className="register-wizard-form-actions">
@@ -636,8 +703,23 @@ export function RegisterApplicationWizard({
       {step === "success" && created ? (
         <div className="stack-form">
           <div className="register-wizard-success-banner">
-            <strong>✓ {created.name} is ready to connect</strong>
+            <strong>✓ {created.name} registered</strong>
+            <p>
+              {monitoringSetup?.status === "ACTIVE"
+                ? "External monitoring is active."
+                : form.publicUrl.trim()
+                  ? "Setting up external monitoring…"
+                  : "External monitoring is not configured."}
+            </p>
           </div>
+
+          {monitoringSetup ? (
+            <MonitoringDepthSummary
+              setup={monitoringSetup}
+              onRetry={() => void retryMonitoringSetup()}
+              retrying={retryingMonitoring}
+            />
+          ) : null}
 
           <label>
             Application ID
@@ -658,8 +740,8 @@ export function RegisterApplicationWizard({
             <strong>Next step</strong>
             <p>Connect your application using the API key above.</p>
             <p>
-              The first heartbeat marks the app Connected. Modules and workflows come from a discovery payload, seed,
-              or services you add — not from the heartbeat alone.
+              URL checks work independently. A later heartbeat adds internal application liveness; modules and
+              workflows still require discovery data or services you add.
             </p>
           </div>
 
@@ -846,18 +928,25 @@ export function RegisterApplicationWizard({
       {step === "monitoring" && created ? (
         <div className="stack-form">
           <div className="register-wizard-success-banner register-wizard-success-banner--celebrate">
-            <strong>🎉 Application connected successfully</strong>
-            <p>Your application is now securely connected to OpsWatch.</p>
+            <strong>Application onboarding complete</strong>
+            <p>Only the monitoring areas shown as active below are connected.</p>
           </div>
 
           <div className="hint-panel register-wizard-next-step">
             <strong>Next</strong>
             <ul className="register-wizard-inline-list">
-              <li>✓ Health monitoring from heartbeats and checks</li>
-              <li>✓ Topology from discovery payload, seed, or added services</li>
+              <li>External monitoring runs from configured URL checks.</li>
+              <li>Application monitoring remains independent and can be connected later.</li>
             </ul>
-            <p>Attach checks on services that have a Base URL when you need HTTP/SSL coverage.</p>
           </div>
+
+          {monitoringSetup ? (
+            <MonitoringDepthSummary
+              setup={monitoringSetup}
+              onRetry={() => void retryMonitoringSetup()}
+              retrying={retryingMonitoring}
+            />
+          ) : null}
 
           <div className="register-monitoring-preview">
             <div className="register-monitoring-row">
@@ -882,7 +971,7 @@ export function RegisterApplicationWizard({
             </div>
           </div>
 
-          <p className="field-hint">Everything is now being monitored.</p>
+          <p className="field-hint">Logs, traces, infrastructure, events, and heartbeat remain separate connections.</p>
 
           <div className="register-wizard-form-actions">
             <button type="button" className="secondary-button" onClick={closeWizard} data-action="local-ui">

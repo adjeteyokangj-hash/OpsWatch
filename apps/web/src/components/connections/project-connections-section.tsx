@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "../../lib/api";
 import { formatRelativeTime } from "../../lib/relative-time";
@@ -13,24 +13,47 @@ import {
   modeToMethod
 } from "./connection-form-state";
 import type { ConnectionRecord } from "./types";
+import {
+  MonitoringDepthSummary,
+  type MonitoringSetup
+} from "../projects/monitoring-depth-summary";
 
 type ProjectConnectionsSectionProps = {
   projectId: string;
 };
 
+type ProjectMonitoring = {
+  frontendUrl?: string | null;
+  adminUrl?: string | null;
+  monitoringSetup?: MonitoringSetup;
+};
+
 export function ProjectConnectionsSection({ projectId }: ProjectConnectionsSectionProps) {
   const [connections, setConnections] = useState<ConnectionRecord[]>([]);
+  const [projectMonitoring, setProjectMonitoring] = useState<ProjectMonitoring | null>(null);
+  const [publicUrl, setPublicUrl] = useState("");
+  const [adminUrl, setAdminUrl] = useState("");
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async (cancelled?: () => boolean) => {
+    const [connectionRows, project] = await Promise.all([
+      apiFetch<ConnectionRecord[]>(`/connections?projectId=${encodeURIComponent(projectId)}`),
+      apiFetch<ProjectMonitoring>(`/projects/${encodeURIComponent(projectId)}`)
+    ]);
+    if (cancelled?.()) return;
+    setConnections(Array.isArray(connectionRows) ? connectionRows : []);
+    setProjectMonitoring(project);
+    setPublicUrl(project.frontendUrl ?? "");
+    setAdminUrl(project.adminUrl ?? "");
+  }, [projectId]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    apiFetch<ConnectionRecord[]>(`/connections?projectId=${encodeURIComponent(projectId)}`)
-      .then((rows) => {
-        if (!cancelled) setConnections(Array.isArray(rows) ? rows : []);
-      })
+    load(() => cancelled)
       .catch((loadError) => {
         if (!cancelled) {
           setError(loadError instanceof Error ? loadError.message : "Failed to load connections");
@@ -42,7 +65,26 @@ export function ProjectConnectionsSection({ projectId }: ProjectConnectionsSecti
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [load]);
+
+  const saveUrlMonitoring = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await apiFetch(`/projects/${encodeURIComponent(projectId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          frontendUrl: publicUrl.trim() || null,
+          adminUrl: adminUrl.trim() || null
+        })
+      });
+      await load();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Failed to configure URL monitoring");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <section className="panel project-connections-section" aria-label="Connections" data-testid="project-connections-section">
@@ -59,6 +101,49 @@ export function ProjectConnectionsSection({ projectId }: ProjectConnectionsSecti
         <p className="error-panel" role="alert">
           {error}
         </p>
+      ) : null}
+      <div className="stack-form monitoring-url-form">
+        <div className="form-grid">
+          <label>
+            Public website URL
+            <input
+              type="url"
+              value={publicUrl}
+              onChange={(event) => setPublicUrl(event.target.value)}
+              placeholder="https://www.example.com"
+            />
+          </label>
+          <label>
+            Admin URL (optional, unauthenticated checks only)
+            <input
+              type="url"
+              value={adminUrl}
+              onChange={(event) => setAdminUrl(event.target.value)}
+              placeholder="https://admin.example.com"
+            />
+          </label>
+        </div>
+        <div>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => void saveUrlMonitoring()}
+            disabled={saving}
+            data-action="api"
+          >
+            {saving ? "Setting up monitoring…" : "Save URL monitoring"}
+          </button>
+        </div>
+        <p className="dashboard-subtle">
+          Safe reachability, redirect, response-time, HTTP status, and TLS checks only. Never enter administrator credentials in a URL.
+        </p>
+      </div>
+      {projectMonitoring?.monitoringSetup ? (
+        <MonitoringDepthSummary
+          setup={projectMonitoring.monitoringSetup}
+          onRetry={() => void saveUrlMonitoring()}
+          retrying={saving}
+        />
       ) : null}
       {loading ? (
         <p aria-busy="true">Loading connections…</p>
