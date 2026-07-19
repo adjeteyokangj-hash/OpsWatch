@@ -85,9 +85,16 @@ const upsertSslAlert = async (input: {
   }
 };
 
-export const runSslChecksJob = async (): Promise<void> => {
+export const runSslChecksJob = async (
+  options: { projectId?: string; checkIds?: string[] } = {}
+): Promise<void> => {
   const checks = await prisma.check.findMany({
-    where: { isActive: true, type: "SSL" },
+    where: {
+      isActive: true,
+      type: "SSL",
+      ...(options.checkIds?.length ? { id: { in: options.checkIds } } : {}),
+      ...(options.projectId ? { Service: { projectId: options.projectId } } : {})
+    },
     include: { Service: { include: { Project: true } } }
   });
 

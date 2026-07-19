@@ -23,7 +23,7 @@ type ProjectRow = {
     Check: Array<{
       id: string;
       isActive: boolean;
-      CheckResult: Array<{ status: string; checkedAt: Date; responseCode?: number | null }>;
+      CheckResult: Array<{ status: string; checkedAt: Date; responseCode?: number | null; message?: string | null }>;
     }>;
   }>;
   Alert: Array<{ serviceId: string | null; severity: string; status: string }>;
@@ -66,7 +66,8 @@ const attachLatestCheckResults = async <
                 {
                   status: latest.status,
                   checkedAt: latest.checkedAt,
-                  responseCode: latest.responseCode ?? null
+                  responseCode: latest.responseCode ?? null,
+                  message: latest.message ?? null
                 }
               ]
             : []
@@ -190,7 +191,8 @@ export const projectInclude = {
       installationStatus: true,
       linkedServiceId: true,
       linkedCheckId: true,
-      configurationJson: true
+      configurationJson: true,
+      createdAt: true
     }
   },
   NotificationChannel: {

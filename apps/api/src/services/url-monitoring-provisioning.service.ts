@@ -224,3 +224,41 @@ export const provisionUrlMonitoring = async (
     };
   });
 };
+
+export const deactivateUrlMonitoring = async (input: {
+  organizationId: string;
+  projectId: string;
+  role: UrlMonitoringRole;
+}): Promise<void> => {
+  const connection = await prisma.connection.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      name: displayName(input.role),
+      isActive: true
+    },
+    select: { id: true, linkedServiceId: true }
+  });
+  if (!connection) return;
+  await prisma.$transaction(async (tx) => {
+    if (connection.linkedServiceId) {
+      await tx.check.updateMany({
+        where: { serviceId: connection.linkedServiceId },
+        data: { isActive: false, updatedAt: new Date() }
+      });
+      await tx.service.updateMany({
+        where: { id: connection.linkedServiceId, projectId: input.projectId },
+        data: { status: "PAUSED", updatedAt: new Date() }
+      });
+    }
+    await tx.connection.update({
+      where: { id: connection.id },
+      data: {
+        isActive: false,
+        deactivatedAt: new Date(),
+        installationStatus: "DEACTIVATED",
+        updatedAt: new Date()
+      }
+    });
+  });
+};

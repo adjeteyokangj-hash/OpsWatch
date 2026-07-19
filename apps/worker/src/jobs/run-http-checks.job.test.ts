@@ -104,10 +104,12 @@ describe("generated URL HTTP checks", () => {
   });
 
   it("accepts a safe redirect and marks monitoring connected", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, {
-      status: 302,
-      headers: { location: "https://www.example.test/" }
-    })));
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(new Response(null, {
+        status: 302,
+        headers: { location: "https://www.example.test/" }
+      }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 })));
     resultFindMany.mockResolvedValue([
       { status: "PASS" },
       { status: "PASS" }
@@ -116,12 +118,36 @@ describe("generated URL HTTP checks", () => {
     await runHttpChecksJob();
 
     expect(resultCreate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ status: "PASS", responseCode: 302 })
+      data: expect.objectContaining({
+        status: "PASS",
+        responseCode: 200,
+        rawJson: expect.objectContaining({
+          finalUrl: "https://www.example.test/",
+          redirects: ["https://www.example.test/"]
+        })
+      })
     }));
     expect(connectionUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         health: "HEALTHY",
         installationStatus: "CONNECTED"
+      })
+    }));
+  });
+
+  it("fails safely when a redirect loop is detected", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, {
+      status: 302,
+      headers: { location: "https://example.test" }
+    })));
+    resultFindMany.mockResolvedValue([{ status: "FAIL" }]);
+
+    await runHttpChecksJob();
+
+    expect(resultCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: "FAIL",
+        message: expect.stringMatching(/redirect loop/i)
       })
     }));
   });

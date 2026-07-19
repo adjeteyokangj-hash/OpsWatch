@@ -95,9 +95,49 @@ const describeHttpTargetFailure = (targetUrl: string, error: unknown): string =>
   ].join(" ");
 };
 
-export const runHttpChecksJob = async (): Promise<void> => {
+const fetchWithSafeRedirects = async (input: {
+  target: string;
+  headers: Record<string, string>;
+  signal: AbortSignal;
+}): Promise<{ response: Response; finalUrl: string; redirects: string[] }> => {
+  const initial = await resolveSafeOutboundTarget(input.target);
+  let current = initial.url;
+  const initialOrigin = current.origin;
+  const visited = new Set([current.toString()]);
+  const redirects: string[] = [];
+
+  for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
+    const response = await fetch(current.toString(), {
+      signal: input.signal,
+      headers: current.origin === initialOrigin ? input.headers : {},
+      redirect: "manual"
+    });
+    if (response.status < 300 || response.status >= 400 || !response.headers.get("location")) {
+      return { response, finalUrl: current.toString(), redirects };
+    }
+    if (redirectCount === 5) throw new Error("Redirect limit exceeded");
+    const nextUrl = new URL(response.headers.get("location")!, current);
+    const safeNext = await resolveSafeOutboundTarget(nextUrl.toString());
+    const normalizedNext = safeNext.url.toString();
+    if (visited.has(normalizedNext)) throw new Error("Redirect loop detected");
+    visited.add(normalizedNext);
+    redirects.push(normalizedNext);
+    current = safeNext.url;
+  }
+
+  throw new Error("Redirect limit exceeded");
+};
+
+export const runHttpChecksJob = async (
+  options: { projectId?: string; checkIds?: string[] } = {}
+): Promise<void> => {
   const checks = await prisma.check.findMany({
-    where: { isActive: true, type: { in: ["HTTP", "KEYWORD", "RESPONSE_TIME"] } },
+    where: {
+      isActive: true,
+      type: { in: ["HTTP", "KEYWORD", "RESPONSE_TIME"] },
+      ...(options.checkIds?.length ? { id: { in: options.checkIds } } : {}),
+      ...(options.projectId ? { Service: { projectId: options.projectId } } : {})
+    },
     include: { Service: { include: { Project: true } } }
   });
 
@@ -107,10 +147,13 @@ export const runHttpChecksJob = async (): Promise<void> => {
     let responseCode: number | null = null;
     let message = "OK";
     let managedConnectionId: string | null = null;
+    let finalUrl: string | null = null;
+    let redirects: string[] = [];
+    let timeout: NodeJS.Timeout | null = null;
 
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), check.timeoutMs);
+      timeout = setTimeout(() => controller.abort(), check.timeoutMs);
       const checkConfig = check.configJson && typeof check.configJson === "object"
         ? check.configJson as Record<string, unknown>
         : {};
@@ -140,9 +183,14 @@ export const runHttpChecksJob = async (): Promise<void> => {
         managedConnectionId = connection.id;
         headers = connectionRequestHeaders(connection);
       }
-      const safeTarget = await resolveSafeOutboundTarget(check.Service.baseUrl || "");
-      const response = await fetch(safeTarget.url.toString(), { signal: controller.signal, headers, redirect: "manual" });
-      clearTimeout(timeout);
+      const fetched = await fetchWithSafeRedirects({
+        target: check.Service.baseUrl || "",
+        headers,
+        signal: controller.signal
+      });
+      const response = fetched.response;
+      finalUrl = fetched.finalUrl;
+      redirects = fetched.redirects;
       responseCode = response.status;
 
       if (check.type === "HTTP") {
@@ -197,6 +245,8 @@ export const runHttpChecksJob = async (): Promise<void> => {
     } catch (error) {
       status = "FAIL";
       message = formatFailureMessage(classifyHttpCheckFailure({ error, message: describeHttpTargetFailure(check.Service.baseUrl || "", error) }));
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
 
     const responseTimeMs = Date.now() - start;
@@ -221,6 +271,8 @@ export const runHttpChecksJob = async (): Promise<void> => {
         message,
         rawJson: {
           url: check.Service.baseUrl,
+          finalUrl,
+          redirects,
           checkedAt: new Date().toISOString(),
           ...(failureMeta
             ? {

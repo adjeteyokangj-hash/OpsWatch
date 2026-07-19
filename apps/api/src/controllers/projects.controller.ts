@@ -20,6 +20,7 @@ import {
 	type ProvisionedIngestCredentials
 } from "../services/project-ingest-credentials.service";
 import {
+	deactivateUrlMonitoring,
 	normalizeMonitoringUrl,
 	provisionUrlMonitoring
 } from "../services/url-monitoring-provisioning.service";
@@ -54,9 +55,16 @@ const buildMonitoringSummary = (row: any) => {
 	const failedConnection = urlConnections.find((connection: any) =>
 		connection.installationStatus === "ERROR" || connection.health === "DEGRADED"
 	);
+	const failedCheck = generatedChecks.find((check: any) =>
+		check.latestResult && check.latestResult.status !== "PASS"
+	);
 	const firstResultPending = generatedChecks.length > 0 && generatedChecks.every((check: any) => !check.latestResult);
+	const oldestConnectionAt = urlConnections
+		.map((connection: any) => connection.createdAt ? new Date(connection.createdAt).getTime() : Date.now())
+		.reduce((oldest: number, createdAt: number) => Math.min(oldest, createdAt), Date.now());
+	const workerUnavailable = firstResultPending && Date.now() - oldestConnectionAt > 5 * 60_000;
 	const active = generatedChecks.some((check: any) => Boolean(check.latestResult));
-	const setupStatus = failedConnection
+	const setupStatus = failedConnection || failedCheck || workerUnavailable
 		? "FAILED"
 		: active
 			? "ACTIVE"
@@ -66,7 +74,10 @@ const buildMonitoringSummary = (row: any) => {
 
 	return {
 		status: setupStatus,
-		error: failedConnection?.healthReason ?? null,
+		error:
+			failedCheck?.latestResult?.message ??
+			failedConnection?.healthReason ??
+			(workerUnavailable ? "No check results received; the monitoring worker may be unavailable" : null),
 		steps: {
 			websiteConnectionCreated: Boolean(publicConnection),
 			httpCheckScheduled: Boolean(publicHttp),
@@ -472,6 +483,12 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 				url: frontendUrl,
 				createdBy: req.user?.id ?? req.user?.sub ?? null
 			});
+		} else if (frontendUrl === null) {
+			await deactivateUrlMonitoring({
+				organizationId: orgId,
+				projectId: row.id,
+				role: "PUBLIC"
+			});
 		}
 		if (adminUrl) {
 			await provisionUrlMonitoring({
@@ -482,6 +499,12 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 				role: "ADMIN",
 				url: adminUrl,
 				createdBy: req.user?.id ?? req.user?.sub ?? null
+			});
+		} else if (adminUrl === null) {
+			await deactivateUrlMonitoring({
+				organizationId: orgId,
+				projectId: row.id,
+				role: "ADMIN"
 			});
 		}
 	} catch (error) {

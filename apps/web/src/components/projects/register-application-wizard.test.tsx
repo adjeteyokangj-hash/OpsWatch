@@ -91,10 +91,10 @@ describe("RegisterApplicationWizard URL-only onboarding", () => {
     fireEvent.change(screen.getByLabelText("Environment *"), {
       target: { value: "testing" }
     });
-    fireEvent.change(screen.getByLabelText("Public application URL (optional)"), {
+    fireEvent.change(screen.getByLabelText(/Public application URL \(optional\)/), {
       target: { value: "https://www.example.com" }
     });
-    fireEvent.change(screen.getByLabelText("Admin URL (optional)"), {
+    fireEvent.change(screen.getByLabelText(/Admin URL \(optional\)/), {
       target: { value: "https://admin.example.com" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Register application" }));

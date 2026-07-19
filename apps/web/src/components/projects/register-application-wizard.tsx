@@ -657,9 +657,10 @@ export function RegisterApplicationWizard({
             </select>
           </label>
 
-          <label>
+          <label htmlFor="register-public-url">
             Public application URL (optional)
             <input
+              id="register-public-url"
               value={form.publicUrl}
               onChange={(event) => setForm((current) => ({ ...current, publicUrl: event.target.value }))}
               placeholder="https://your-domain.com"
@@ -670,9 +671,10 @@ export function RegisterApplicationWizard({
             </span>
           </label>
 
-          <label>
+          <label htmlFor="register-admin-url">
             Admin URL (optional)
             <input
+              id="register-admin-url"
               value={form.adminUrl}
               onChange={(event) => setForm((current) => ({ ...current, adminUrl: event.target.value }))}
               placeholder="https://admin.your-domain.com"
