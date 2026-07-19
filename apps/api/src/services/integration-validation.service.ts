@@ -277,6 +277,10 @@ export const validateIntegrationConnectivity = async (row: {
   configJson: Record<string, unknown> | null;
   projectId?: string;
   secretRef?: string | null;
+  organizationId?: string | null;
+  credentialFamilyId?: string | null;
+  integrationId?: string | null;
+  environment?: string | null;
 }): Promise<IntegrationValidationResult> => {
   if (!row.enabled) {
     return {
@@ -328,7 +332,11 @@ export const validateIntegrationConnectivity = async (row: {
       projectId: row.projectId ?? "unknown",
       providerType: row.type as "WORKER_PROVIDER" | "SERVICE_PROVIDER" | "DEPLOYMENT_PROVIDER",
       configJson: row.configJson,
-      secretRef: row.secretRef
+      secretRef: row.secretRef,
+      organizationId: row.organizationId,
+      credentialFamilyId: row.credentialFamilyId,
+      integrationId: row.integrationId,
+      environment: row.environment
     });
 
     return {

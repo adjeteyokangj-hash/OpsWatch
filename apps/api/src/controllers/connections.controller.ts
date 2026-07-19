@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import type { Response } from "express";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { encryptSecret } from "../lib/secret-crypto";
 import type { AuthRequest } from "../middleware/auth";
 import {
   getConnectionManifest,
@@ -18,6 +17,13 @@ import {
   testUnsavedConnection
 } from "../services/agentless-connection.service";
 import { isOtelIngestionEnabled } from "../services/otel-bridge.service";
+import {
+  fetchActiveCredentialMetadata,
+  fetchActiveCredentialMetadataBatch,
+  rotateConnectionManagedCredential,
+  toConnectionCredentialDto,
+  upsertConnectionCredential
+} from "../services/credentials/connection-credential.service";
 
 const requireOrg = (req: AuthRequest, res: Response): string | null => {
   const orgId = req.user?.organizationId;
@@ -28,39 +34,45 @@ const requireOrg = (req: AuthRequest, res: Response): string | null => {
   return orgId;
 };
 
-const toConnectionDto = (row: any) => ({
-  id: row.id,
-  name: row.name,
-  type: row.type,
-  mode: row.mode,
-  environment: row.environment,
-  authMethod: row.authMethod,
-  capabilities: row.capabilitiesJson ?? [],
-  configuration: row.configurationJson ?? null,
-  secretConfigured: Boolean(row.secretRef || (row.managedSecretCiphertext && row.managedSecretIv && row.managedSecretAuthTag)),
-  health: row.health,
-  healthReason: row.healthReason,
-  lastValidatedAt: row.lastValidatedAt?.toISOString() ?? null,
-  validationStatusCode: row.validationStatusCode,
-  validationLatencyMs: row.validationLatencyMs,
-  validationErrorCategory: row.validationErrorCategory,
-  lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null,
-  lastFailureAt: row.lastFailureAt?.toISOString() ?? null,
-  lastError: row.lastError,
-  requestRatePerMinute: row.requestRatePerMinute,
-  errorRatePercent: row.errorRatePercent,
-  permissions: row.permissionsJson ?? null,
-  installationStatus: row.installationStatus,
-  collectorVersion: row.collectorVersion,
-  manifestVersion: row.manifestVersion,
-  deactivatedAt: row.deactivatedAt?.toISOString() ?? null,
-  isActive: row.isActive,
-  linkedServiceId: row.linkedServiceId,
-  linkedCheckId: row.linkedCheckId,
-  project: row.Project ? { id: row.Project.id, name: row.Project.name } : null,
-  createdAt: row.createdAt.toISOString(),
-  updatedAt: row.updatedAt.toISOString()
-});
+const toConnectionDto = async (row: any, orgId: string) => {
+  const metadata = row.credentialFamilyId
+    ? await fetchActiveCredentialMetadata(orgId, row.credentialFamilyId)
+    : null;
+  const credential = toConnectionCredentialDto(row, metadata);
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    mode: row.mode,
+    environment: row.environment,
+    authMethod: row.authMethod,
+    capabilities: row.capabilitiesJson ?? [],
+    configuration: row.configurationJson ?? null,
+    ...credential,
+    health: row.health,
+    healthReason: row.healthReason,
+    lastValidatedAt: row.lastValidatedAt?.toISOString() ?? null,
+    validationStatusCode: row.validationStatusCode,
+    validationLatencyMs: row.validationLatencyMs,
+    validationErrorCategory: row.validationErrorCategory,
+    lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null,
+    lastFailureAt: row.lastFailureAt?.toISOString() ?? null,
+    lastError: row.lastError,
+    requestRatePerMinute: row.requestRatePerMinute,
+    errorRatePercent: row.errorRatePercent,
+    permissions: row.permissionsJson ?? null,
+    installationStatus: row.installationStatus,
+    collectorVersion: row.collectorVersion,
+    manifestVersion: row.manifestVersion,
+    deactivatedAt: row.deactivatedAt?.toISOString() ?? null,
+    isActive: row.isActive,
+    linkedServiceId: row.linkedServiceId,
+    linkedCheckId: row.linkedCheckId,
+    project: row.Project ? { id: row.Project.id, name: row.Project.name } : null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
+};
 
 export const listConnections = async (req: AuthRequest, res: Response) => {
   const orgId = requireOrg(req, res);
@@ -71,7 +83,51 @@ export const listConnections = async (req: AuthRequest, res: Response) => {
     include: { Project: { select: { id: true, name: true } } },
     orderBy: { createdAt: "desc" }
   });
-  res.json(rows.map(toConnectionDto));
+  const metadataByFamily = await fetchActiveCredentialMetadataBatch(
+    orgId,
+    rows.map((row) => row.credentialFamilyId).filter((id): id is string => Boolean(id))
+  );
+  res.json(
+    rows.map((row) => {
+      const metadata = row.credentialFamilyId
+        ? metadataByFamily.get(row.credentialFamilyId) ?? null
+        : null;
+      const credential = toConnectionCredentialDto(row, metadata);
+      return {
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        mode: row.mode,
+        environment: row.environment,
+        authMethod: row.authMethod,
+        capabilities: row.capabilitiesJson ?? [],
+        configuration: row.configurationJson ?? null,
+        ...credential,
+        health: row.health,
+        healthReason: row.healthReason,
+        lastValidatedAt: row.lastValidatedAt?.toISOString() ?? null,
+        validationStatusCode: row.validationStatusCode,
+        validationLatencyMs: row.validationLatencyMs,
+        validationErrorCategory: row.validationErrorCategory,
+        lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null,
+        lastFailureAt: row.lastFailureAt?.toISOString() ?? null,
+        lastError: row.lastError,
+        requestRatePerMinute: row.requestRatePerMinute,
+        errorRatePercent: row.errorRatePercent,
+        permissions: row.permissionsJson ?? null,
+        installationStatus: row.installationStatus,
+        collectorVersion: row.collectorVersion,
+        manifestVersion: row.manifestVersion,
+        deactivatedAt: row.deactivatedAt?.toISOString() ?? null,
+        isActive: row.isActive,
+        linkedServiceId: row.linkedServiceId,
+        linkedCheckId: row.linkedCheckId,
+        project: row.Project ? { id: row.Project.id, name: row.Project.name } : null,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString()
+      };
+    })
+  );
 };
 
 export const getConnectionManifestHandler = async (req: AuthRequest, res: Response) => {
@@ -139,10 +195,27 @@ export const createConnection = async (req: AuthRequest, res: Response) => {
       return;
     }
   }
-  const encrypted = parsed.authSecret ? encryptSecret(parsed.authSecret) : null;
+
+  const connectionId = randomUUID();
+  let credentialFamilyId: string | null = null;
+  let legacyEncrypted: { ciphertext: string; iv: string; authTag: string } | null = null;
+  if (parsed.authSecret) {
+    const managed = await upsertConnectionCredential({
+      organizationId: orgId,
+      connectionId,
+      projectId,
+      environment: parsed.environment,
+      authMethod: parsed.authMethod,
+      plaintext: parsed.authSecret,
+      actorUserId: req.user?.id ?? req.user?.sub ?? null
+    });
+    credentialFamilyId = managed.familyId;
+    legacyEncrypted = managed.legacyEncrypted;
+  }
+
   const row = await prisma.connection.create({
     data: {
-      id: randomUUID(),
+      id: connectionId,
       organizationId: orgId,
       createdBy: req.user?.id ?? req.user?.sub ?? null,
       projectId,
@@ -154,10 +227,11 @@ export const createConnection = async (req: AuthRequest, res: Response) => {
       capabilitiesJson: parsed.capabilities,
       configurationJson: configuration as Prisma.InputJsonValue,
       secretRef: parsed.secretRef ?? null,
-      ...(encrypted ? {
-        managedSecretCiphertext: encrypted.ciphertext,
-        managedSecretIv: encrypted.iv,
-        managedSecretAuthTag: encrypted.authTag
+      ...(credentialFamilyId ? { credentialFamilyId } : {}),
+      ...(legacyEncrypted ? {
+        managedSecretCiphertext: legacyEncrypted.ciphertext,
+        managedSecretIv: legacyEncrypted.iv,
+        managedSecretAuthTag: legacyEncrypted.authTag
       } : {}),
       health: "UNKNOWN",
       installationStatus: "DRAFT",
@@ -176,7 +250,7 @@ export const createConnection = async (req: AuthRequest, res: Response) => {
       metadataJson: { organizationId: orgId, mode: row.mode, manifestVersion: row.manifestVersion }
     }
   });
-  res.status(201).json(toConnectionDto(row));
+  res.status(201).json(await toConnectionDto(row, orgId));
 };
 
 export const patchConnection = async (req: AuthRequest, res: Response) => {
@@ -233,11 +307,34 @@ export const patchConnection = async (req: AuthRequest, res: Response) => {
     "authType", "authMethod", "authSecret", "authHeaderName", "authPrefix", "mode", "connectorType", "type"
   ];
   const reconfigured = reconfiguredKeys.some((key) => Object.prototype.hasOwnProperty.call(body, key));
-  const encrypted = parsed.authSecret ? encryptSecret(parsed.authSecret) : null;
+
+  let credentialFamilyId = existing.credentialFamilyId;
+  let legacyEncrypted: { ciphertext: string; iv: string; authTag: string } | null = null;
+  if (parsed.authSecret) {
+    const managed = await upsertConnectionCredential({
+      organizationId: orgId,
+      connectionId: existing.id,
+      projectId: parsed.projectId ?? existing.projectId,
+      environment: parsed.environment,
+      authMethod: parsed.authMethod,
+      plaintext: parsed.authSecret,
+      existingFamilyId: existing.credentialFamilyId,
+      actorUserId: req.user?.id ?? req.user?.sub ?? null
+    });
+    credentialFamilyId = managed.familyId;
+    legacyEncrypted = managed.legacyEncrypted;
+  }
+
   if (body.name !== undefined && !parsed.name) {
     res.status(400).json({ error: "name must not be empty" });
     return;
   }
+
+  const secretRefChanged = body.secretRef !== undefined && parsed.secretRef !== existing.secretRef;
+  const hasManagedCiphertext = Boolean(
+    existing.managedSecretCiphertext && existing.managedSecretIv && existing.managedSecretAuthTag
+  );
+
   const row = await prisma.$transaction(async (tx) => {
     if (body.isActive === false && existing.linkedCheckId) {
       await tx.check.updateMany({
@@ -263,10 +360,11 @@ export const patchConnection = async (req: AuthRequest, res: Response) => {
         ...(body.capabilities !== undefined ? { capabilitiesJson: parsed.capabilities } : {}),
         ...(reconfigured ? { configurationJson: parsed.configuration as Prisma.InputJsonValue } : {}),
         ...(body.secretRef !== undefined ? { secretRef: parsed.secretRef ?? null } : {}),
-        ...(encrypted ? {
-          managedSecretCiphertext: encrypted.ciphertext,
-          managedSecretIv: encrypted.iv,
-          managedSecretAuthTag: encrypted.authTag
+        ...(credentialFamilyId ? { credentialFamilyId } : {}),
+        ...(legacyEncrypted ? {
+          managedSecretCiphertext: legacyEncrypted.ciphertext,
+          managedSecretIv: legacyEncrypted.iv,
+          managedSecretAuthTag: legacyEncrypted.authTag
         } : {}),
         ...(reconfigured ? {
           health: "UNKNOWN",
@@ -289,6 +387,24 @@ export const patchConnection = async (req: AuthRequest, res: Response) => {
       include: { Project: { select: { id: true, name: true } } }
     });
   });
+
+  if (secretRefChanged) {
+    await prisma.auditLog.create({
+      data: {
+        id: randomUUID(),
+        userId: req.user?.id,
+        action: "SECRET_REFERENCE_CHANGED",
+        entityType: "CONNECTION",
+        entityId: row.id,
+        metadataJson: {
+          organizationId: orgId,
+          hasManagedCredential: Boolean(credentialFamilyId || hasManagedCiphertext),
+          precedence: "Managed credentials are preferred for outbound auth; secretRef is fallback only."
+        }
+      }
+    });
+  }
+
   await prisma.auditLog.create({
     data: {
       id: randomUUID(),
@@ -299,7 +415,7 @@ export const patchConnection = async (req: AuthRequest, res: Response) => {
       metadataJson: { organizationId: orgId, mode: row.mode, isActive: row.isActive }
     }
   });
-  res.json(toConnectionDto(row));
+  res.json(await toConnectionDto(row, orgId));
 };
 
 export const testConnection = async (req: AuthRequest, res: Response) => {
@@ -313,8 +429,10 @@ export const testConnection = async (req: AuthRequest, res: Response) => {
       projectId: true,
       name: true,
       mode: true,
+      environment: true,
       authMethod: true,
       configurationJson: true,
+      credentialFamilyId: true,
       secretRef: true,
       managedSecretCiphertext: true,
       managedSecretIv: true,
@@ -374,8 +492,10 @@ export const discoverConnection = async (req: AuthRequest, res: Response) => {
       projectId: true,
       name: true,
       mode: true,
+      environment: true,
       authMethod: true,
       configurationJson: true,
+      credentialFamilyId: true,
       secretRef: true,
       managedSecretCiphertext: true,
       managedSecretIv: true,
@@ -465,15 +585,39 @@ export const rotateConnectionCredential = async (req: AuthRequest, res: Response
     res.status(422).json(result);
     return;
   }
-  const encrypted = encryptSecret(authSecret);
+
+  let credentialFamilyId = existing.credentialFamilyId;
+  let legacyEncrypted: { ciphertext: string; iv: string; authTag: string };
+  if (credentialFamilyId) {
+    const rotated = await rotateConnectionManagedCredential({
+      organizationId: orgId,
+      familyId: credentialFamilyId,
+      plaintext: authSecret,
+      actorUserId: req.user?.id ?? req.user?.sub ?? null
+    });
+    legacyEncrypted = rotated.legacyEncrypted;
+  } else {
+    const managed = await upsertConnectionCredential({
+      organizationId: orgId,
+      connectionId: existing.id,
+      projectId: existing.projectId,
+      environment: existing.environment,
+      authMethod: existing.authMethod,
+      plaintext: authSecret,
+      actorUserId: req.user?.id ?? req.user?.sub ?? null
+    });
+    credentialFamilyId = managed.familyId;
+    legacyEncrypted = managed.legacyEncrypted;
+  }
+
   await prisma.$transaction([
     prisma.connection.update({
       where: { id: existing.id },
       data: {
-        managedSecretCiphertext: encrypted.ciphertext,
-        managedSecretIv: encrypted.iv,
-        managedSecretAuthTag: encrypted.authTag,
-        secretRef: null,
+        credentialFamilyId,
+        managedSecretCiphertext: legacyEncrypted.ciphertext,
+        managedSecretIv: legacyEncrypted.iv,
+        managedSecretAuthTag: legacyEncrypted.authTag,
         health: "HEALTHY",
         installationStatus: "CONNECTED",
         lastValidatedAt: new Date(),
@@ -485,8 +629,12 @@ export const rotateConnectionCredential = async (req: AuthRequest, res: Response
     }),
     prisma.auditLog.create({
       data: {
-        id: randomUUID(), userId: req.user?.id, action: "CONNECTION_CREDENTIAL_ROTATED",
-        entityType: "CONNECTION", entityId: existing.id, metadataJson: { organizationId: orgId, validated: true }
+        id: randomUUID(),
+        userId: req.user?.id,
+        action: "CREDENTIAL_ROTATED",
+        entityType: "CONNECTION",
+        entityId: existing.id,
+        metadataJson: { organizationId: orgId, validated: true, familyId: credentialFamilyId }
       }
     })
   ]);

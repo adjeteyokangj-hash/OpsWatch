@@ -170,8 +170,9 @@ export const runHttpChecksJob = async (
             Project: { id: check.Service.projectId, organizationId: check.Service.Project.organizationId }
           },
           select: {
-            id: true,
+            organizationId: true,
             authMethod: true,
+            credentialFamilyId: true,
             secretRef: true,
             managedSecretCiphertext: true,
             managedSecretIv: true,
@@ -181,7 +182,7 @@ export const runHttpChecksJob = async (
         });
         if (!connection) throw new Error("Managed connection is inactive or outside the check project");
         managedConnectionId = connection.id;
-        headers = connectionRequestHeaders(connection);
+        headers = await connectionRequestHeaders(connection);
       }
       const fetched = await fetchWithSafeRedirects({
         target: check.Service.baseUrl || "",

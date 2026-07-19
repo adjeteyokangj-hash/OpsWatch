@@ -14,6 +14,7 @@ import {
 import {
   readRemediatorConfig,
   resolveRemediatorSecret,
+  resolveRemediatorSecretAsync,
   withCircuitState
 } from "./remediator-config";
 import {
@@ -40,6 +41,10 @@ export type RemediatorRow = {
   enabled: boolean;
   configJson: Record<string, unknown> | null;
   secretRef: string | null;
+  credentialFamilyId: string | null;
+  projectId: string;
+  organizationId: string;
+  environment: string;
   validationStatus: "UNKNOWN" | "VALID" | "INVALID";
 };
 
@@ -127,16 +132,23 @@ export const loadRemediatorIntegration = async (
       enabled: true,
       configJson: true,
       secretRef: true,
-      validationStatus: true
+      credentialFamilyId: true,
+      projectId: true,
+      validationStatus: true,
+      Project: { select: { organizationId: true, environment: true } }
     }
   });
-  if (!row) return null;
+  if (!row || !row.Project.organizationId) return null;
   return {
     id: row.id,
     type: row.type,
     enabled: row.enabled,
     configJson: (row.configJson as Record<string, unknown> | null) ?? null,
     secretRef: row.secretRef,
+    credentialFamilyId: row.credentialFamilyId,
+    projectId: row.projectId,
+    organizationId: row.Project.organizationId,
+    environment: row.Project.environment,
     validationStatus: row.validationStatus
   };
 };
@@ -205,7 +217,10 @@ export const evaluateRemediatorGate = (input: {
       summary: "Remediator webhook URL is not configured. Cannot claim a successful repair."
     };
   }
-  if (!resolveRemediatorSecret(input.integration.configJson, input.integration.secretRef)) {
+  if (
+    !input.integration.credentialFamilyId &&
+    !resolveRemediatorSecret(input.integration.configJson, input.integration.secretRef)
+  ) {
     return {
       ok: false,
       reason: "MISSING_SECRET",
@@ -263,9 +278,23 @@ export const runRemediatorValidationHandshake = async (input: {
   providerType: RemediatorProviderType;
   configJson: Record<string, unknown> | null;
   secretRef?: string | null;
+  organizationId?: string | null;
+  credentialFamilyId?: string | null;
+  integrationId?: string | null;
+  environment?: string | null;
 }): Promise<ValidateHandshakeResult> => {
   const cfg = readRemediatorConfig(input.providerType, input.configJson, input.secretRef);
-  const secret = resolveRemediatorSecret(input.configJson, input.secretRef);
+  const secret = input.organizationId
+    ? await resolveRemediatorSecretAsync({
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      environment: input.environment ?? null,
+      credentialFamilyId: input.credentialFamilyId ?? null,
+      integrationId: input.integrationId ?? null,
+      configJson: input.configJson,
+      secretRef: input.secretRef
+    })
+    : resolveRemediatorSecret(input.configJson, input.secretRef);
 
   if (!cfg.webhookUrl) {
     return {
@@ -536,7 +565,15 @@ export const executeRemediatorRepair = async (input: {
   }
 
   const cfg = readRemediatorConfig(integration.type, integration.configJson, integration.secretRef);
-  const secret = resolveRemediatorSecret(integration.configJson, integration.secretRef);
+  const secret = await resolveRemediatorSecretAsync({
+    organizationId: integration.organizationId,
+    projectId: integration.projectId,
+    environment: integration.environment,
+    credentialFamilyId: integration.credentialFamilyId,
+    integrationId: integration.id,
+    configJson: integration.configJson,
+    secretRef: integration.secretRef
+  });
   if (!cfg.webhookUrl || !secret) {
     return misconfigured("Remediator webhook is not configured. Cannot claim success.", [
       "MISSING_CONFIGURATION"

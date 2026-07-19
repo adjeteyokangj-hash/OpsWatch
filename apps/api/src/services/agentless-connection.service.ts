@@ -4,7 +4,6 @@ import {
   isDisallowedNetworkAddress,
   parseSafeExternalHttpUrl
 } from "@opswatch/shared";
-import { decryptSecret, type EncryptedSecret } from "../lib/secret-crypto";
 import { prisma } from "../lib/prisma";
 import {
   isConnectionMode,
@@ -15,6 +14,12 @@ import {
   createChangeLedgerEntry,
   type ChangeLedgerKind
 } from "./change-ledger.service";
+import {
+  recordConnectionCredentialProbe,
+  resolveConnectionSecret,
+  resolveConnectionSecrets,
+  sanitizeConnectionError
+} from "./credentials/connection-credential.service";
 
 type ConnectionRow = {
   id: string;
@@ -22,8 +27,10 @@ type ConnectionRow = {
   projectId: string | null;
   name: string;
   mode: string;
+  environment?: string | null;
   authMethod?: string;
   configurationJson: unknown;
+  credentialFamilyId?: string | null;
   secretRef: string | null;
   managedSecretCiphertext?: string | null;
   managedSecretIv?: string | null;
@@ -61,6 +68,10 @@ const recordAudit = async (
 
 const recordProbeResult = async (connection: ConnectionRow, result: ProbeResult) => {
   const now = new Date();
+  const sanitizedError = sanitizeConnectionError(
+    result.error,
+    (await resolveConnectionSecrets(connection)).map((entry) => entry.plaintext)
+  );
   await prisma.connection.update({
     where: { id: connection.id },
     data: result.succeeded
@@ -80,7 +91,7 @@ const recordProbeResult = async (connection: ConnectionRow, result: ProbeResult)
         health: "DEGRADED",
         healthReason: "Agentless probe failed",
         lastFailureAt: now,
-        lastError: result.error ?? "Agentless probe failed",
+        lastError: sanitizedError ?? "Agentless probe failed",
         lastValidatedAt: now,
         validationStatusCode: result.statusCode ?? null,
         validationLatencyMs: result.responseTimeMs ?? null,
@@ -89,11 +100,12 @@ const recordProbeResult = async (connection: ConnectionRow, result: ProbeResult)
         updatedAt: now
       }
   });
+  await recordConnectionCredentialProbe(connection, { succeeded: result.succeeded });
   await recordAudit(connection, "CONNECTION_PROBE", {
     succeeded: result.succeeded,
     statusCode: result.statusCode ?? null,
     responseTimeMs: result.responseTimeMs ?? null,
-    error: result.error ?? null,
+    error: sanitizedError ?? null,
     errorCategory: result.errorCategory ?? null
   });
   await createChangeLedgerEntry({
@@ -106,7 +118,7 @@ const recordProbeResult = async (connection: ConnectionRow, result: ProbeResult)
     evidence: {
       statusCode: result.statusCode ?? null,
       responseTimeMs: result.responseTimeMs ?? null,
-      error: result.error ?? null,
+      error: sanitizedError ?? null,
       errorCategory: result.errorCategory ?? null
     }
   });
@@ -119,17 +131,6 @@ export const assertSafeConnectionTarget = async (target: string): Promise<void> 
   if (!addresses.length || addresses.some(({ address }) => isDisallowedNetworkAddress(address))) {
     throw new Error("Private or unresolved network targets are not allowed");
   }
-};
-
-const managedSecret = (connection: ConnectionRow): string | null => {
-  if (connection.managedSecretCiphertext && connection.managedSecretIv && connection.managedSecretAuthTag) {
-    return decryptSecret({
-      ciphertext: connection.managedSecretCiphertext,
-      iv: connection.managedSecretIv,
-      authTag: connection.managedSecretAuthTag
-    } satisfies EncryptedSecret);
-  }
-  return resolveConnectionSecretReference(connection.secretRef);
 };
 
 export const buildConnectionHeaders = (
@@ -181,10 +182,14 @@ const probe = async (connection: ConnectionRow, overrideSecret?: string): Promis
   const timeoutMs = typeof validated.value.timeoutMs === "number" ? validated.value.timeoutMs : 10_000;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = Date.now();
+  const resolvedSecrets = overrideSecret
+    ? [overrideSecret]
+    : (await resolveConnectionSecrets(connection)).map((entry) => entry.plaintext);
   try {
     const endpoint = String(validated.value.endpoint);
     await assertSafeConnectionTarget(endpoint);
-    const headers = buildConnectionHeaders(connection.authMethod ?? "NONE", overrideSecret ?? managedSecret(connection), validated.value);
+    const secret = overrideSecret ?? resolvedSecrets[0] ?? null;
+    const headers = buildConnectionHeaders(connection.authMethod ?? "NONE", secret, validated.value);
     const response = await fetch(endpoint, {
       method: String(validated.value.method ?? "GET").toUpperCase(),
       headers,
@@ -192,17 +197,22 @@ const probe = async (connection: ConnectionRow, overrideSecret?: string): Promis
       redirect: "manual"
     });
     const category = httpFailure(response.status);
+    const rawError = response.ok ? undefined : `Endpoint returned HTTP ${response.status}`;
     return {
       succeeded: response.ok,
       statusCode: response.status,
       responseTimeMs: Date.now() - startedAt,
-      ...(response.ok ? {} : { error: `Endpoint returned HTTP ${response.status}`, errorCategory: category })
+      ...(response.ok ? {} : {
+        error: sanitizeConnectionError(rawError, resolvedSecrets),
+        errorCategory: category
+      })
     };
   } catch (error) {
+    const rawError = error instanceof Error ? error.message : "Probe failed";
     return {
       succeeded: false,
       responseTimeMs: Date.now() - startedAt,
-      error: error instanceof Error ? error.message : "Probe failed",
+      error: sanitizeConnectionError(rawError, resolvedSecrets),
       errorCategory: classifyFetchError(error)
     };
   } finally {
@@ -263,7 +273,9 @@ export const testAgentlessConnection = async (
   options: { startMonitoring?: boolean } = {}
 ): Promise<ProbeResult> => {
   const result = await probe(connection);
-  await recordProbeResult(connection, result);
+  if (connection.id !== "unsaved") {
+    await recordProbeResult(connection, result);
+  }
   if (result.succeeded && options.startMonitoring) await provisionMonitoring(connection, result.statusCode ?? 200);
   return result;
 };
@@ -279,7 +291,8 @@ export const discoverApiConnection = async (connection: ConnectionRow) => {
   const discoveryUrl = new URL(joinConnectionUrl(endpoint.origin, discoveryPath));
   if (discoveryUrl.origin !== endpoint.origin) throw new Error("discoveryPath must stay on the configured endpoint origin");
   await assertSafeConnectionTarget(discoveryUrl.toString());
-  const headers = buildConnectionHeaders(connection.authMethod ?? "NONE", managedSecret(connection), validated.value);
+  const secret = await resolveConnectionSecret(connection);
+  const headers = buildConnectionHeaders(connection.authMethod ?? "NONE", secret, validated.value);
   const response = await fetch(discoveryUrl, { method: "GET", headers, redirect: "manual" });
   if (!response.ok) throw new Error(`Discovery endpoint returned HTTP ${response.status}`);
   const payload: unknown = await response.json();

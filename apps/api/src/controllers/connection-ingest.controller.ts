@@ -6,13 +6,17 @@ import {
 } from "../lib/request-signature";
 import { prisma } from "../lib/prisma";
 import { acceptIngestNonce } from "../services/ingest-replay.service";
-import {
-  recordSignedConnectionEvent,
-  resolveConnectionSecretReference
-} from "../services/agentless-connection.service";
+import { recordSignedConnectionEvent } from "../services/agentless-connection.service";
+import { resolveIngestSecrets } from "../services/credentials/connection-credential.service";
 
 const signedEventKinds = new Set(["DEPLOYMENT", "CHANGE"]);
 const timestampWindowMs = Number(process.env.INGEST_TIMESTAMP_WINDOW_SECONDS || 300) * 1000;
+
+const verifyWithAnySecret = (
+  secrets: string[],
+  rawBody: Buffer,
+  headers: { timestamp: string; nonce: string; signature: string }
+): boolean => secrets.some((secret) => verifyIngestSignature(secret, rawBody, headers));
 
 export const ingestSignedConnectionEvent = async (req: Request, res: Response) => {
   const connection = await prisma.connection.findFirst({
@@ -23,17 +27,22 @@ export const ingestSignedConnectionEvent = async (req: Request, res: Response) =
       projectId: true,
       name: true,
       mode: true,
+      environment: true,
       configurationJson: true,
-      secretRef: true
+      credentialFamilyId: true,
+      secretRef: true,
+      managedSecretCiphertext: true,
+      managedSecretIv: true,
+      managedSecretAuthTag: true
     }
   });
   if (!connection) {
     res.status(404).json({ error: "Active signed-webhook connection not found" });
     return;
   }
-  const secret = resolveConnectionSecretReference(connection.secretRef);
-  if (!secret) {
-    res.status(503).json({ error: "Connection signing secret reference is unavailable" });
+  const secrets = await resolveIngestSecrets(connection);
+  if (secrets.length === 0) {
+    res.status(503).json({ error: "Connection signing secret is unavailable" });
     return;
   }
   const timestamp = req.header("x-opswatch-timestamp")?.trim();
@@ -49,7 +58,7 @@ export const ingestSignedConnectionEvent = async (req: Request, res: Response) =
     res.status(401).json({ error: "Signed connection event timestamp is invalid or stale" });
     return;
   }
-  if (!verifyIngestSignature(secret, rawBody, { timestamp, nonce, signature })) {
+  if (!verifyWithAnySecret(secrets, rawBody, { timestamp, nonce, signature })) {
     res.status(401).json({ error: "Invalid signed connection event signature" });
     return;
   }

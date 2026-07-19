@@ -8,7 +8,6 @@ import {
   verifyIngestSignature,
   type RawBodyRequest
 } from "../lib/request-signature";
-import { resolveConnectionSecretReference } from "../services/agentless-connection.service";
 import { acceptIngestNonce } from "../services/ingest-replay.service";
 import {
   ingestOtelBridgePayload,
@@ -16,6 +15,7 @@ import {
   otelPayloadLimitBytes,
   parseOtelBridgePayload
 } from "../services/otel-bridge.service";
+import { resolveIngestSecrets } from "../services/credentials/connection-credential.service";
 
 const timestampWindowMs = (): number => Number(process.env.INGEST_TIMESTAMP_WINDOW_SECONDS || 300) * 1000;
 const asObject = (value: unknown): Record<string, unknown> | null =>
@@ -44,9 +44,16 @@ const reject = async (
   res.status(status).json({ error, code });
 };
 
+const verifyWithAnySecret = (
+  secrets: string[],
+  rawBody: Buffer,
+  headers: { timestamp: string; nonce: string; signature: string }
+): boolean => secrets.some((secret) => verifyIngestSignature(secret, rawBody, headers));
+
+const matchConnectionKey = (secrets: string[], connectionKey: string): boolean =>
+  secrets.some((secret) => timingSafeEqualString(connectionKey, secret));
+
 export const ingestOtelBridge = async (req: Request, res: Response): Promise<void> => {
-  // This is a Collector bridge, not an OTLP receiver. Disabled is deliberately
-  // checked before lookup/authentication so no telemetry is accepted by default.
   if (!isOtelIngestionEnabled()) {
     await reject(req, res, 503, "OTEL_INGESTION_DISABLED", "OpenTelemetry collector ingestion is disabled");
     return;
@@ -60,7 +67,19 @@ export const ingestOtelBridge = async (req: Request, res: Response): Promise<voi
 
   const connection = await prisma.connection.findFirst({
     where: { id: req.params.connectionId, mode: "OTEL_COLLECTOR", isActive: true },
-    select: { id: true, organizationId: true, projectId: true, name: true, environment: true, configurationJson: true, secretRef: true }
+    select: {
+      id: true,
+      organizationId: true,
+      projectId: true,
+      name: true,
+      environment: true,
+      configurationJson: true,
+      credentialFamilyId: true,
+      secretRef: true,
+      managedSecretCiphertext: true,
+      managedSecretIv: true,
+      managedSecretAuthTag: true
+    }
   });
   if (!connection) {
     await reject(req, res, 404, "OTEL_CONNECTION_NOT_FOUND", "Active OpenTelemetry collector connection not found");
@@ -71,8 +90,8 @@ export const ingestOtelBridge = async (req: Request, res: Response): Promise<voi
   const nonce = req.header("x-opswatch-nonce")?.trim();
   const signature = req.header("x-opswatch-signature")?.trim();
   const connectionKey = req.header("x-opswatch-connection-key")?.trim();
-  const secret = resolveConnectionSecretReference(connection.secretRef);
-  if (!secret) {
+  const secrets = await resolveIngestSecrets(connection);
+  if (secrets.length === 0) {
     await reject(req, res, 401, "OTEL_AUTH_INVALID", "Signed OpenTelemetry collector request headers are required", connection);
     return;
   }
@@ -83,14 +102,12 @@ export const ingestOtelBridge = async (req: Request, res: Response): Promise<voi
       await reject(req, res, 401, "OTEL_TIMESTAMP_INVALID", "OpenTelemetry collector request timestamp is invalid or stale", connection);
       return;
     }
-    if (!verifyIngestSignature(secret, rawBody, { timestamp, nonce, signature })) {
+    if (!verifyWithAnySecret(secrets, rawBody, { timestamp, nonce, signature })) {
       await reject(req, res, 401, "OTEL_AUTH_INVALID", "Invalid OpenTelemetry collector request signature", connection);
       return;
     }
     replayNonce = nonce;
-  } else if (connectionKey && timingSafeEqualString(connectionKey, secret)) {
-    // Stock Collector HTTP exporters cannot calculate per-request HMACs. The
-    // static connection credential is paired with a body digest replay key.
+  } else if (connectionKey && matchConnectionKey(secrets, connectionKey)) {
     replayNonce = `otel-body:${createHash("sha256").update(rawBody).digest("hex")}`;
   } else {
     await reject(req, res, 401, "OTEL_AUTH_INVALID", "Valid signed headers or collector connection credential is required", connection);

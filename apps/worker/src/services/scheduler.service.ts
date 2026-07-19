@@ -9,6 +9,7 @@ import { runIncidentAutoHealJob } from "../jobs/run-incident-auto-heal.job";
 import { runAutomationAutonomousJob } from "../jobs/run-automation-autonomous.job";
 import { runMaintenanceWindowTransitionsJob } from "../jobs/transition-maintenance-windows.job";
 import { pruneRetentionJob } from "../jobs/prune-retention.job";
+import { runExpireCredentialsJob } from "../jobs/expire-credentials.job";
 import { createExclusiveRunner } from "../lib/exclusive-job";
 import { markSchedulerSuccess } from "./worker-heartbeat.service";
 
@@ -36,6 +37,7 @@ type SchedulerOptions = {
   automationAutonomousMs?: number;
   maintenanceWindowsMs?: number;
   retentionMs?: number;
+  credentialExpiryMs?: number;
 };
 
 const readInterval = (key: string, fallback: number): number => {
@@ -68,7 +70,9 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
     maintenanceWindowsMs:
       options.maintenanceWindowsMs ?? readInterval("WORKER_MAINTENANCE_WINDOWS_INTERVAL_MS", 60_000),
     retentionMs:
-      options.retentionMs ?? readInterval("WORKER_RETENTION_INTERVAL_MS", 6 * 60 * 60_000)
+      options.retentionMs ?? readInterval("WORKER_RETENTION_INTERVAL_MS", 6 * 60 * 60_000),
+    credentialExpiryMs:
+      options.credentialExpiryMs ?? readInterval("WORKER_CREDENTIAL_EXPIRY_INTERVAL_MS", 60 * 60_000)
   };
 
   const timers: NodeJS.Timeout[] = [];
@@ -91,6 +95,7 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
     });
     void runSafely("runMaintenanceWindowTransitionsJob", runMaintenanceWindowTransitionsJob);
     void runSafely("pruneRetentionJob", pruneRetentionJob);
+    void runSafely("runExpireCredentialsJob", runExpireCredentialsJob);
   }
 
   timers.push(
@@ -163,6 +168,12 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
     setInterval(() => {
       void runSafely("pruneRetentionJob", pruneRetentionJob);
     }, intervals.retentionMs)
+  );
+
+  timers.push(
+    setInterval(() => {
+      void runSafely("runExpireCredentialsJob", runExpireCredentialsJob);
+    }, intervals.credentialExpiryMs)
   );
 
   return () => {

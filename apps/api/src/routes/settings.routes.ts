@@ -14,8 +14,12 @@ import {
 import {
   mergeRemediatorConfigForStorage,
   redactRemediatorConfigForApi,
-  REMEDIATOR_CAPABILITIES_KEY
+  REMEDIATOR_CAPABILITIES_KEY,
+  REMEDIATOR_SECRET_CONFIG_KEY,
+  REMEDIATOR_SECRET_ENC_KEY,
+  upsertRemediatorManagedCredential
 } from "../services/remediation/remediator-config";
+import { fetchActiveCredentialMetadata } from "../services/credentials/connection-credential.service";
 
 export const settingsRouter = Router();
 
@@ -25,16 +29,27 @@ const projectSelect = {
   slug: true
 };
 
-const serializeIntegrationRow = <T extends { configJson: unknown; secretRef?: string | null }>(
-  row: T
-): T & { secretConfigured: boolean } => {
-  const { configJson, secretConfigured } = redactRemediatorConfigForApi(
-    (row.configJson as Record<string, unknown> | null) ?? null
+const serializeIntegrationRow = async <T extends {
+  configJson: unknown;
+  secretRef?: string | null;
+  credentialFamilyId?: string | null;
+}>(
+  row: T,
+  organizationId: string
+): Promise<Omit<T, "secretRef"> & { secretConfigured: boolean; credential: ReturnType<typeof redactRemediatorConfigForApi>["credential"] }> => {
+  const metadata = row.credentialFamilyId
+    ? await fetchActiveCredentialMetadata(organizationId, row.credentialFamilyId)
+    : null;
+  const { configJson, secretConfigured, credential } = redactRemediatorConfigForApi(
+    (row.configJson as Record<string, unknown> | null) ?? null,
+    { secretRef: row.secretRef, credential: metadata }
   );
+  const { secretRef: _secretRef, ...rest } = row;
   return {
-    ...row,
+    ...rest,
     configJson: configJson as T["configJson"],
-    secretConfigured: secretConfigured || Boolean(row.secretRef)
+    secretConfigured,
+    credential
   };
 };
 
@@ -282,7 +297,7 @@ settingsRouter.get("/settings/integrations", async (req: AuthRequest, res) => {
     orderBy: [{ projectId: "asc" }, { type: "asc" }]
   });
 
-  res.json(rows.map((row) => serializeIntegrationRow(row)));
+  res.json(await Promise.all(rows.map((row) => serializeIntegrationRow(row, orgId))));
 });
 
 settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRequest, res) => {
@@ -315,16 +330,44 @@ settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRe
         type: parsed.type
       }
     },
-    select: { configJson: true, secretRef: true }
+    select: { id: true, configJson: true, secretRef: true, credentialFamilyId: true }
   });
 
+  const project = await prisma.project.findFirst({
+    where: { id: parsed.projectId, organizationId: orgId },
+    select: { id: true, environment: true }
+  });
+  if (!project) {
+    res.status(404).json({ error: "Project not found" });
+    return;
+  }
+
   let configToStore = parsed.configJson as Record<string, unknown> | undefined;
+  let credentialFamilyId = existing?.credentialFamilyId ?? null;
   if (parsed.configJson !== undefined && isRemediatorProviderType(parsed.type)) {
     configToStore = mergeRemediatorConfigForStorage(
       parsed.type,
       parsed.configJson,
       (existing?.configJson as Record<string, unknown> | null) ?? null
     );
+    const incomingSecret = (parsed.configJson as Record<string, unknown>)[REMEDIATOR_SECRET_CONFIG_KEY];
+    if (typeof incomingSecret === "string" && incomingSecret.trim()) {
+      const integrationId = existing?.id ?? randomUUID();
+      const managed = await upsertRemediatorManagedCredential({
+        organizationId: orgId,
+        projectId: parsed.projectId,
+        integrationId,
+        environment: project.environment,
+        plaintext: incomingSecret.trim(),
+        existingFamilyId: existing?.credentialFamilyId,
+        actorUserId: req.user?.id ?? req.user?.sub ?? null
+      });
+      credentialFamilyId = managed.familyId;
+      configToStore = {
+        ...configToStore,
+        [REMEDIATOR_SECRET_ENC_KEY]: managed.legacyEncrypted
+      };
+    }
   }
 
   const savedDetails =
@@ -346,6 +389,7 @@ settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRe
         ? { configJson: configToStore as Prisma.InputJsonValue }
         : {}),
       ...(parsed.secretRef !== undefined ? { secretRef: parsed.secretRef || null } : {}),
+      ...(credentialFamilyId ? { credentialFamilyId } : {}),
       ...(parsed.validationStatus !== undefined ? { validationStatus: parsed.validationStatus } : {}),
       ...(parsed.validationMessage !== undefined ? { validationMessage: parsed.validationMessage } : {}),
       ...(savedDetails
@@ -361,13 +405,14 @@ settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRe
         : {})
     },
     create: {
-      id: randomUUID(),
+      id: existing?.id ?? randomUUID(),
       projectId: parsed.projectId,
       type: parsed.type,
       name: parsed.name,
       enabled: parsed.enabled ?? true,
       configJson: (configToStore ?? parsed.configJson) as Prisma.InputJsonValue | undefined,
       secretRef: parsed.secretRef,
+      credentialFamilyId,
       validationStatus: parsed.validationStatus ?? "UNKNOWN",
       validationMessage: parsed.validationMessage,
       validationDetails: (savedDetails ?? undefined) as Prisma.InputJsonValue | undefined,
@@ -379,7 +424,7 @@ settingsRouter.put("/settings/integrations/:projectId/:type", async (req: AuthRe
     }
   });
 
-  res.json(serializeIntegrationRow(row));
+  res.json(await serializeIntegrationRow(row, orgId));
 });
 
 settingsRouter.post("/settings/integrations/:projectId/:type/validate", async (req: AuthRequest, res) => {
@@ -411,7 +456,9 @@ settingsRouter.post("/settings/integrations/:projectId/:type/validate", async (r
       enabled: true,
       configJson: true,
       secretRef: true,
-      projectId: true
+      credentialFamilyId: true,
+      projectId: true,
+      Project: { select: { organizationId: true, environment: true } }
     }
   });
 
@@ -425,7 +472,11 @@ settingsRouter.post("/settings/integrations/:projectId/:type/validate", async (r
     enabled: row.enabled,
     configJson: (row.configJson as Record<string, unknown> | null) ?? null,
     projectId: row.projectId,
-    secretRef: row.secretRef
+    secretRef: row.secretRef,
+    organizationId: row.Project.organizationId,
+    credentialFamilyId: row.credentialFamilyId,
+    integrationId: row.id,
+    environment: row.Project.environment
   });
 
   let nextConfig = (row.configJson as Record<string, unknown> | null) ?? null;
@@ -452,5 +503,5 @@ settingsRouter.post("/settings/integrations/:projectId/:type/validate", async (r
     }
   });
 
-  res.json(serializeIntegrationRow(updated));
+  res.json(await serializeIntegrationRow(updated, orgId));
 });

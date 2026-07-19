@@ -2,6 +2,11 @@ import type { IntegrationType } from "@prisma/client";
 import { decryptSecret, encryptSecret, type EncryptedSecret } from "../../lib/secret-crypto";
 import { resolveConnectionSecretReference } from "../agentless-connection.service";
 import {
+  createCredentialVersion,
+  resolveActiveSecrets,
+  type CredentialMetadataDto
+} from "../credentials/managed-credential.service";
+import {
   DEFAULT_CAPABILITIES,
   isRemediatorProviderType,
   remediatorUrlKeyForProvider,
@@ -23,6 +28,7 @@ export type RemediatorSecretEnc = EncryptedSecret;
 export type RemediatorConfig = {
   webhookUrl: string | null;
   secretConfigured: boolean;
+  credential?: CredentialMetadataDto | null;
   capabilities: RemediatorAction[];
   emergencyDisabled: boolean;
   circuitOpenUntil: Date | null;
@@ -58,7 +64,8 @@ export const parseCapabilities = (raw: unknown): RemediatorAction[] => {
 export const readRemediatorConfig = (
   type: IntegrationType | string,
   configJson: Record<string, unknown> | null | undefined,
-  secretRef?: string | null
+  secretRef?: string | null,
+  credential?: CredentialMetadataDto | null
 ): RemediatorConfig => {
   const config = asRecord(configJson);
   const providerType = isRemediatorProviderType(String(type))
@@ -93,7 +100,8 @@ export const readRemediatorConfig = (
       : null;
 
   const secretConfigured = Boolean(
-    secretRef ||
+    credential?.configured ||
+      secretRef ||
       config[REMEDIATOR_SECRET_ENC_KEY] ||
       (typeof config[REMEDIATOR_SECRET_CONFIG_KEY] === "string" &&
         config[REMEDIATOR_SECRET_CONFIG_KEY].trim())
@@ -102,6 +110,7 @@ export const readRemediatorConfig = (
   return {
     webhookUrl,
     secretConfigured,
+    credential: credential ?? null,
     capabilities,
     emergencyDisabled:
       config[REMEDIATOR_EMERGENCY_DISABLE_KEY] === true ||
@@ -117,10 +126,6 @@ export const resolveRemediatorSecret = (
   configJson: Record<string, unknown> | null | undefined,
   secretRef?: string | null
 ): string | null => {
-  if (secretRef) {
-    const fromRef = resolveConnectionSecretReference(secretRef);
-    if (fromRef) return fromRef;
-  }
   const config = asRecord(configJson);
   const enc = config[REMEDIATOR_SECRET_ENC_KEY];
   if (enc && typeof enc === "object" && !Array.isArray(enc)) {
@@ -130,11 +135,86 @@ export const resolveRemediatorSecret = (
       return null;
     }
   }
+  if (secretRef) {
+    const fromRef = resolveConnectionSecretReference(secretRef);
+    if (fromRef) return fromRef;
+  }
   const inline = config[REMEDIATOR_SECRET_CONFIG_KEY];
   if (typeof inline === "string" && inline.trim()) {
     return inline.trim();
   }
   return null;
+};
+
+export const resolveRemediatorSecretAsync = async (input: {
+  organizationId: string;
+  projectId: string;
+  environment?: string | null;
+  credentialFamilyId?: string | null;
+  integrationId?: string | null;
+  configJson: Record<string, unknown> | null | undefined;
+  secretRef?: string | null;
+}): Promise<string | null> => {
+  if (input.credentialFamilyId) {
+    const managed = await resolveActiveSecrets({
+      organizationId: input.organizationId,
+      familyId: input.credentialFamilyId,
+      projectId: input.projectId,
+      integrationId: input.integrationId ?? null,
+      environment: input.environment ?? null
+    });
+    if (managed.length > 0) return managed[0]?.plaintext ?? null;
+  }
+
+  const config = asRecord(input.configJson);
+  const enc = config[REMEDIATOR_SECRET_ENC_KEY];
+  if (enc && typeof enc === "object" && !Array.isArray(enc)) {
+    try {
+      return decryptSecret(enc as EncryptedSecret);
+    } catch {
+      return null;
+    }
+  }
+
+  if (input.secretRef) {
+    const fromRef = resolveConnectionSecretReference(input.secretRef);
+    if (fromRef) return fromRef;
+  }
+
+  const inline = config[REMEDIATOR_SECRET_CONFIG_KEY];
+  if (typeof inline === "string" && inline.trim()) {
+    return inline.trim();
+  }
+
+  return null;
+};
+
+export const upsertRemediatorManagedCredential = async (input: {
+  organizationId: string;
+  projectId: string;
+  integrationId: string;
+  environment: string;
+  plaintext: string;
+  existingFamilyId?: string | null;
+  actorUserId?: string | null;
+}): Promise<{ familyId: string; legacyEncrypted: EncryptedSecret }> => {
+  const created = await createCredentialVersion({
+    organizationId: input.organizationId,
+    familyId: input.existingFamilyId ?? undefined,
+    projectId: input.projectId,
+    integrationId: input.integrationId,
+    purpose: "REMEDIATOR",
+    credentialType: "HMAC_SECRET",
+    environment: input.environment,
+    plaintext: input.plaintext,
+    createdBy: input.actorUserId ?? null,
+    gracePeriodMs: input.existingFamilyId ? 24 * 60 * 60 * 1000 : null,
+    actorUserId: input.actorUserId ?? null
+  });
+  return {
+    familyId: created.familyId,
+    legacyEncrypted: encryptSecret(input.plaintext)
+  };
 };
 
 /**
@@ -174,20 +254,34 @@ export const mergeRemediatorConfigForStorage = (
 
 /** Strip secret material before returning ProjectIntegration to clients. */
 export const redactRemediatorConfigForApi = (
-  configJson: Record<string, unknown> | null | undefined
-): { configJson: Record<string, unknown> | null; secretConfigured: boolean } => {
+  configJson: Record<string, unknown> | null | undefined,
+  options?: {
+    secretRef?: string | null;
+    credential?: CredentialMetadataDto | null;
+  }
+): { configJson: Record<string, unknown> | null; secretConfigured: boolean; credential: CredentialMetadataDto | null } => {
   if (!configJson) {
-    return { configJson: null, secretConfigured: false };
+    return {
+      configJson: null,
+      secretConfigured: Boolean(options?.credential?.configured || options?.secretRef),
+      credential: options?.credential ?? null
+    };
   }
   const redacted = { ...asRecord(configJson) };
   const secretConfigured = Boolean(
-    redacted[REMEDIATOR_SECRET_ENC_KEY] ||
+    options?.credential?.configured ||
+      options?.secretRef ||
+      redacted[REMEDIATOR_SECRET_ENC_KEY] ||
       (typeof redacted[REMEDIATOR_SECRET_CONFIG_KEY] === "string" &&
         redacted[REMEDIATOR_SECRET_CONFIG_KEY].trim())
   );
   delete redacted[REMEDIATOR_SECRET_ENC_KEY];
   delete redacted[REMEDIATOR_SECRET_CONFIG_KEY];
-  return { configJson: redacted, secretConfigured };
+  return {
+    configJson: redacted,
+    secretConfigured,
+    credential: options?.credential ?? null
+  };
 };
 
 export const withCircuitState = (
