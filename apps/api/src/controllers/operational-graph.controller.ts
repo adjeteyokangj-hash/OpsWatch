@@ -327,7 +327,7 @@ export const proposeLearnedOperationalRelationship = async (req: AuthRequest, re
   }
   const entities = await prisma.operationalEntity.findMany({
     where: { organizationId: orgId, id: { in: [sourceEntityId, targetEntityId] } },
-    select: { id: true, projectId: true }
+    select: { id: true, projectId: true, environment: true }
   });
   if (entities.length !== 2) {
     res.status(400).json({ error: "relationship entities must belong to your organization" });
@@ -335,6 +335,10 @@ export const proposeLearnedOperationalRelationship = async (req: AuthRequest, re
   }
   const sourceEntity = entities.find((entity) => entity.id === sourceEntityId)!;
   const targetEntity = entities.find((entity) => entity.id === targetEntityId)!;
+  if (sourceEntity.environment !== targetEntity.environment) {
+    res.status(409).json({ error: "relationship entities must use the same environment" });
+    return;
+  }
   if (body.impactRole !== undefined && body.impactRole !== null && !IMPACT_ROLE_SET.has(String(body.impactRole))) {
     res.status(400).json({ error: "impactRole must be REQUIRED, OPTIONAL, REDUNDANT, DEGRADED, or BUSINESS_CRITICAL" });
     return;
@@ -362,27 +366,30 @@ export const proposeLearnedOperationalRelationship = async (req: AuthRequest, re
     return;
   }
 
-  const row = await prisma.operationalRelationship.create({
-    data: {
-      id: randomUUID(),
-      organizationId: orgId,
-      projectId: sourceEntity.projectId === targetEntity.projectId ? sourceEntity.projectId : null,
-      sourceEntityId,
-      targetEntityId,
-      relationshipType,
-      provenance: "LEARNED",
-      approvalStatus: "PENDING",
-      requiresApproval: true,
-      impactRole: normalizeImpactRole(typeof body.impactRole === "string" ? body.impactRole : undefined),
-      observationCount: 1,
-      criticality: typeof body.criticality === "string" ? body.criticality : "MEDIUM",
-      confidence: typeof body.confidence === "number" ? body.confidence : 0.55,
-      ...(recordOrNull(body.evidence) ? { evidenceJson: recordOrNull(body.evidence) as Prisma.InputJsonValue } : {}),
-      discoveredAt: new Date(),
-      lastObservedAt: new Date(),
-      lifecycle: "ACTIVE",
-      updatedAt: new Date()
-    }
+  const row = await canonicalGraph.upsertRelationship({
+    organizationId: orgId,
+    projectId:
+      sourceEntity.projectId === targetEntity.projectId
+        ? sourceEntity.projectId
+        : null,
+    environment: sourceEntity.environment,
+    sourceEntityId,
+    targetEntityId,
+    relationshipType,
+    source: "LEARNED_API",
+    provenance: "LEARNED",
+    approvalStatus: "PENDING",
+    requiresApproval: true,
+    impactRole: normalizeImpactRole(
+      typeof body.impactRole === "string" ? body.impactRole : undefined
+    ),
+    evidenceCount: 1,
+    criticality:
+      typeof body.criticality === "string" ? body.criticality : "MEDIUM",
+    confidence: typeof body.confidence === "number" ? body.confidence : 0.55,
+    confirmationState: "CANDIDATE",
+    discoveryState: "CANDIDATE",
+    evidence: recordOrNull(body.evidence) as Prisma.InputJsonValue | undefined
   });
   res.status(201).json({
     relationship: row,

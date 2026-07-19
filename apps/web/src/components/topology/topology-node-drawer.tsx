@@ -120,6 +120,9 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
 
   const compatibilityServiceId =
     context?.canonical?.legacyServiceId ?? node.id;
+  const alertReferenceQuery = context?.canonical
+    ? `entityId=${node.id}`
+    : `serviceId=${compatibilityServiceId}`;
   const quickActions = [
     { label: "View checks", href: `/checks?projectId=${projectId}&serviceId=${compatibilityServiceId}`, primary: true },
     { label: "Run check", href: `/checks?projectId=${projectId}&serviceId=${compatibilityServiceId}`, primary: false },
@@ -129,7 +132,7 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
     node.type === "MODULE"
       ? { label: "Edit module", href: `/projects/${projectId}/modules`, primary: false }
       : null,
-    { label: "View alerts", href: `/alerts?projectId=${projectId}&entityId=${node.id}`, primary: false }
+    { label: "View alerts", href: `/alerts?projectId=${projectId}&${alertReferenceQuery}`, primary: false }
   ].filter(Boolean) as Array<{ label: string; href: string; primary: boolean }>;
 
   const tabs: Array<{ id: DetailTab; label: string }> = [

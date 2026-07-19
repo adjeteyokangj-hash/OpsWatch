@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prismaMock } = vi.hoisted(() => ({
+const { canonicalGraphMock, prismaMock } = vi.hoisted(() => ({
+  canonicalGraphMock: {
+    upsertEntity: vi.fn(),
+    upsertRelationship: vi.fn()
+  },
   prismaMock: {
     operationalLocation: {
       findMany: vi.fn(),
@@ -28,6 +32,9 @@ const { prismaMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
+vi.mock("../services/canonical-graph.service", () => ({
+  canonicalGraph: canonicalGraphMock
+}));
 
 import {
   createOperationalLocation,
@@ -83,11 +90,13 @@ describe("operational-graph controller phase 5", () => {
 
   it("creates LEARNED relationships as PENDING and never auto-approves", async () => {
     prismaMock.operationalEntity.findMany.mockResolvedValue([
-      { id: "a", projectId: "p1" },
-      { id: "b", projectId: "p1" }
+      { id: "a", projectId: "p1", environment: "production" },
+      { id: "b", projectId: "p1", environment: "production" }
     ]);
     prismaMock.operationalRelationship.findFirst.mockResolvedValue(null);
-    prismaMock.operationalRelationship.create.mockImplementation(async ({ data }: any) => data);
+    canonicalGraphMock.upsertRelationship.mockImplementation(
+      async (data: any) => data
+    );
     const status = vi.fn().mockReturnThis();
     const json = vi.fn();
 
@@ -100,7 +109,7 @@ describe("operational-graph controller phase 5", () => {
     );
 
     expect(status).toHaveBeenCalledWith(201);
-    const created = prismaMock.operationalRelationship.create.mock.calls[0][0].data;
+    const created = canonicalGraphMock.upsertRelationship.mock.calls[0][0];
     expect(created.provenance).toBe("LEARNED");
     expect(created.approvalStatus).toBe("PENDING");
     expect(created.requiresApproval).toBe(true);

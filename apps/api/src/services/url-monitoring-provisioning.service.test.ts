@@ -10,7 +10,9 @@ const {
   serviceUpdate,
   checkFind,
   checkCreate,
-  checkUpdate
+  checkUpdate,
+  graphUpsertEntity,
+  graphMapLegacyService
 } = vi.hoisted(() => ({
   transaction: vi.fn(),
   connectionFind: vi.fn(),
@@ -21,12 +23,25 @@ const {
   serviceUpdate: vi.fn(),
   checkFind: vi.fn(),
   checkCreate: vi.fn(),
-  checkUpdate: vi.fn()
+  checkUpdate: vi.fn(),
+  graphUpsertEntity: vi.fn(),
+  graphMapLegacyService: vi.fn()
 }));
 
 vi.mock("../lib/prisma", () => ({
   prisma: { $transaction: transaction }
 }));
+
+vi.mock("@opswatch/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@opswatch/shared")>();
+  return {
+    ...actual,
+    createCanonicalGraphService: vi.fn(() => ({
+      upsertEntity: graphUpsertEntity,
+      mapLegacyService: graphMapLegacyService
+    }))
+  };
+});
 
 vi.mock("./agentless-connection.service", () => ({
   assertSafeConnectionTarget: vi.fn().mockResolvedValue(undefined)
@@ -98,6 +113,8 @@ describe("URL monitoring provisioning", () => {
       id: data.name === "Public website" ? "service-public" : "service-admin"
     }));
     serviceUpdate.mockResolvedValue({});
+    graphUpsertEntity.mockResolvedValue({ id: "entity-url-monitor" });
+    graphMapLegacyService.mockResolvedValue({});
     serviceUpdateMany.mockResolvedValue({ count: 1 });
     checkFindMany.mockResolvedValue([]);
     checkCount.mockResolvedValue(0);
