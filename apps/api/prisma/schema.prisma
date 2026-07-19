@@ -2531,3 +2531,112 @@ model StripeWebhookEvent {
 
   @@index([eventType, processedAt])
 }
+
+/// Phase 7 governed remediation approval (extends AutomationApproval with full evidence fields).
+model RemediationApproval {
+  id                 String    @id
+  organizationId     String
+  projectId          String?
+  environment        String?
+  alertId            String?
+  incidentId         String?
+  entityId           String?
+  relationshipId     String?
+  actionKey          String
+  requestedBy        String?
+  requestedAt        DateTime  @default(now())
+  reason             String
+  evidenceJson       Json?
+  riskLevel          String
+  expectedImpact     String?
+  verificationMethod String?
+  rollbackMethod     String?
+  expiresAt          DateTime
+  decision           String    @default("PENDING")
+  decidedBy          String?
+  decidedAt          DateTime?
+  decisionReason     String?
+  correlationId      String
+  executionRunId     String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime
+
+  @@unique([organizationId, correlationId])
+  @@index([organizationId, decision, expiresAt])
+  @@index([projectId, actionKey, createdAt])
+  @@index([incidentId, createdAt])
+  @@index([alertId, createdAt])
+}
+
+/// Phase 7 remediation execution run with recovery lifecycle (reuse AutomationRun where possible).
+model RemediationExecutionRun {
+  id                    String    @id
+  correlationId         String
+  organizationId        String
+  projectId             String?
+  environment           String?
+  connectionId          String?
+  provider              String
+  actionKey             String
+  alertId               String?
+  incidentId            String?
+  entityId              String?
+  relationshipId        String?
+  requestedBy           String?
+  approvedBy            String?
+  approvalId            String?
+  automationMode        String
+  riskLevel             String
+  status                String    @default("PROPOSED")
+  startedAt             DateTime?
+  endedAt               DateTime?
+  sanitisedInputJson    Json?
+  previousStateJson     Json?
+  providerResultJson    Json?
+  verificationJson      Json?
+  resultingStateJson    Json?
+  rollbackResultJson    Json?
+  failureReason         String?
+  retryCount            Int       @default(0)
+  circuitBreakerState   String?
+  idempotencyKey        String?
+  cancelledAt           DateTime?
+  cancelledBy           String?
+  deadLetterAt          DateTime?
+  lockHolder            String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime
+
+  @@unique([organizationId, correlationId])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, status, createdAt])
+  @@index([projectId, actionKey, createdAt])
+  @@index([incidentId, createdAt])
+  @@index([alertId, createdAt])
+  @@index([status, startedAt])
+}
+
+/// Phase 7 action-level circuit breaker with manual trip/reset.
+model RemediationCircuitBreaker {
+  id               String    @id
+  organizationId   String
+  projectId        String?
+  actionKey        String
+  state            String    @default("CLOSED")
+  failureCount     Int       @default(0)
+  verificationFailures Int   @default(0)
+  rollbackFailures Int       @default(0)
+  providerErrors   Int       @default(0)
+  openedAt         DateTime?
+  openUntil        DateTime?
+  lastFailureAt    DateTime?
+  lastFailureReason String?
+  trippedBy        String?
+  resetBy          String?
+  resetAt          DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime
+
+  @@unique([organizationId, projectId, actionKey])
+  @@index([organizationId, state, openUntil])
+}
