@@ -39,6 +39,9 @@ model Alert {
   Service               Service?            @relation(fields: [serviceId], references: [id])
   IncidentAlert         IncidentAlert[]
   OtelAlertEvidence     OtelAlertEvidence[]
+  LogEvidenceLink       LogEvidenceLink[]
+  SpanEvidenceLink      SpanEvidenceLink[]
+  ApmEvidenceLink       ApmEvidenceLink[]
 
   @@index([projectId, fingerprint, status])
   @@index([operationalEntityId, status])
@@ -168,6 +171,9 @@ model Incident {
   MergedInto            Incident?                  @relation("IncidentMerge", fields: [mergedIntoIncidentId], references: [id], onDelete: SetNull)
   MergedFrom            Incident[]                 @relation("IncidentMerge")
   OtelIncidentEvidence  OtelIncidentEvidence[]
+  LogEvidenceLink       LogEvidenceLink[]
+  SpanEvidenceLink      SpanEvidenceLink[]
+  ApmEvidenceLink       ApmEvidenceLink[]
 
   @@index([projectId, openedAt])
   @@index([correlationGroupId])
@@ -297,6 +303,16 @@ model Organization {
   OperationalEntityIdentity           OperationalEntityIdentity[]
   LegacyServiceEntityMapping          LegacyServiceEntityMapping[]
   LegacyDependencyRelationshipMapping LegacyDependencyRelationshipMapping[]
+  LogRecord                           LogRecord[]
+  LogOccurrenceGroup                  LogOccurrenceGroup[]
+  TraceRecord                         TraceRecord[]
+  SpanRecord                          SpanRecord[]
+  ApmServiceWindow                    ApmServiceWindow[]
+  ApmEndpointWindow                   ApmEndpointWindow[]
+  ApmDependencyWindow                 ApmDependencyWindow[]
+  LogEvidenceLink                     LogEvidenceLink[]
+  SpanEvidenceLink                    SpanEvidenceLink[]
+  ApmEvidenceLink                     ApmEvidenceLink[]
 }
 
 model OrganizationIncidentGroup {
@@ -380,6 +396,16 @@ model Project {
   OperationalEntityIdentity           OperationalEntityIdentity[]
   LegacyServiceEntityMapping          LegacyServiceEntityMapping[]
   LegacyDependencyRelationshipMapping LegacyDependencyRelationshipMapping[]
+  LogRecord                           LogRecord[]
+  LogOccurrenceGroup                  LogOccurrenceGroup[]
+  TraceRecord                         TraceRecord[]
+  SpanRecord                          SpanRecord[]
+  ApmServiceWindow                    ApmServiceWindow[]
+  ApmEndpointWindow                   ApmEndpointWindow[]
+  ApmDependencyWindow                 ApmDependencyWindow[]
+  LogEvidenceLink                     LogEvidenceLink[]
+  SpanEvidenceLink                    SpanEvidenceLink[]
+  ApmEvidenceLink                     ApmEvidenceLink[]
 
   @@index([organizationId])
   @@index([operationalLocationId])
@@ -432,6 +458,9 @@ model Connection {
   ManagedCredential           ManagedCredential[]
   OtelIngestBatch             OtelIngestBatch[]
   NormalizedOperationalSignal NormalizedOperationalSignal[]
+  LogRecord                   LogRecord[]
+  SpanRecord                  SpanRecord[]
+  TraceRecord                 TraceRecord[]
 
   @@unique([organizationId, projectId, name])
   @@index([credentialFamilyId])
@@ -527,6 +556,15 @@ model OperationalEntity {
   OtelIncidentEvidence       OtelIncidentEvidence[]
   SourceIdentities           OperationalEntityIdentity[]
   LegacyMappings             LegacyServiceEntityMapping[]
+  LogRecords                 LogRecord[]
+  LogOccurrenceGroups        LogOccurrenceGroup[]
+  SpanRecordsAsService       SpanRecord[]                   @relation("SpanServiceEntity")
+  SpanRecordsAsSource        SpanRecord[]                   @relation("SpanSourceEntity")
+  SpanRecordsAsDestination   SpanRecord[]                   @relation("SpanDestinationEntity")
+  ApmServiceWindows          ApmServiceWindow[]
+  ApmEndpointWindows         ApmEndpointWindow[]
+  ApmDependencyWindowsAsSrc  ApmDependencyWindow[]          @relation("ApmDepSourceEntity")
+  ApmDependencyWindowsAsTgt  ApmDependencyWindow[]          @relation("ApmDepTargetEntity")
 
   @@unique([organizationId, entityType, externalId])
   @@unique([organizationId, projectScopeKey, environment, entityType, stableIdentityKey])
@@ -585,6 +623,7 @@ model OperationalRelationship {
   OtelAlertEvidence          OtelAlertEvidence[]
   OtelIncidentEvidence       OtelIncidentEvidence[]
   LegacyMappings             LegacyDependencyRelationshipMapping[]
+  ApmDependencyWindows       ApmDependencyWindow[]
 
   @@unique([organizationId, sourceEntityId, targetEntityId, relationshipType])
   @@unique([organizationId, projectScopeKey, environment, stableIdentityKey])
@@ -1698,6 +1737,9 @@ model OtelIngestBatch {
   MetricWindows       OtelMetricWindow[]
   AlertEvidence       OtelAlertEvidence[]
   IncidentEvidence    OtelIncidentEvidence[]
+  LogRecords          LogRecord[]
+  SpanRecords         SpanRecord[]
+  TraceRecords        TraceRecord[]
 
   @@unique([connectionId, idempotencyHash])
   @@index([organizationId, status, receivedAt])
@@ -1861,6 +1903,431 @@ model OtelIncidentEvidence {
   @@index([organizationId, traceId])
   @@index([signalId])
   @@index([batchId])
+}
+
+/// Phase 6: first-class searchable operational log record (dual-write with NormalizedOperationalSignal).
+model LogRecord {
+  id                     String              @id
+  organizationId         String
+  projectId              String?
+  environment            String              @default("unknown")
+  connectionId           String?
+  entityId               String?
+  serviceName            String?
+  serviceNamespace       String?
+  serviceInstance        String?
+  provider               String              @default("OTEL")
+  source                 String              @default("OTEL_COLLECTOR")
+  timestamp              DateTime
+  receivedAt             DateTime            @default(now())
+  severity               String?
+  severityNumber         Int?
+  body                   String?
+  attributesJson         Json?
+  resourceAttributesJson Json?
+  traceId                String?
+  spanId                 String?
+  correlationId          String?
+  fingerprint            String
+  occurrenceGroupId      String?
+  redactionStatus        String              @default("REDACTED")
+  redactionMetaJson      Json?
+  retentionExpiresAt     DateTime
+  evidenceSignalId       String?
+  evidenceBatchId        String?
+  sourceRef              String?
+  createdAt              DateTime            @default(now())
+  Organization           Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project                Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Connection             Connection?         @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  Entity                 OperationalEntity?  @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  OccurrenceGroup        LogOccurrenceGroup? @relation(fields: [occurrenceGroupId], references: [id], onDelete: SetNull)
+  Batch                  OtelIngestBatch?    @relation(fields: [evidenceBatchId], references: [id], onDelete: SetNull)
+  EvidenceLinks          LogEvidenceLink[]
+
+  @@index([organizationId, projectId, timestamp])
+  @@index([organizationId, environment, timestamp])
+  @@index([organizationId, fingerprint, timestamp])
+  @@index([organizationId, severity, timestamp])
+  @@index([organizationId, traceId])
+  @@index([organizationId, spanId])
+  @@index([organizationId, correlationId])
+  @@index([occurrenceGroupId, timestamp])
+  @@index([entityId, timestamp])
+  @@index([retentionExpiresAt])
+  @@index([evidenceBatchId])
+  @@index([connectionId, timestamp])
+}
+
+/// Phase 6: grouped repeated log occurrences (deterministic fingerprint).
+model LogOccurrenceGroup {
+  id                 String             @id
+  organizationId     String
+  projectId          String?
+  environment        String             @default("unknown")
+  entityId           String?
+  fingerprint        String
+  severity           String?
+  normalizedMessage  String?
+  exceptionClass     String?
+  operation          String?
+  occurrenceCount    Int                @default(1)
+  firstSeenAt        DateTime
+  lastSeenAt         DateTime
+  sampleLogId        String?
+  sampleEvidenceJson Json?
+  groupingWindowMs   Int                @default(900000)
+  suppressedUntil    DateTime?
+  status             String             @default("ACTIVE")
+  relatedAlertId     String?
+  retentionExpiresAt DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime
+  Organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project            Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Entity             OperationalEntity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  LogRecords         LogRecord[]
+  EvidenceLinks      LogEvidenceLink[]
+
+  @@unique([organizationId, projectId, environment, fingerprint])
+  @@index([organizationId, status, lastSeenAt])
+  @@index([organizationId, projectId, lastSeenAt])
+  @@index([entityId, lastSeenAt])
+  @@index([relatedAlertId])
+  @@index([retentionExpiresAt])
+}
+
+/// Phase 6: reconstructed trace metadata from stored spans.
+model TraceRecord {
+  id                 String           @id
+  organizationId     String
+  projectId          String?
+  environment        String           @default("unknown")
+  connectionId       String?
+  traceId            String
+  rootServiceName    String?
+  rootSpanId         String?
+  startAt            DateTime?
+  endAt              DateTime?
+  durationMs         Int?
+  spanCount          Int              @default(0)
+  serviceCount       Int              @default(0)
+  errorCount         Int              @default(0)
+  status             String           @default("UNSET")
+  isPartial          Boolean          @default(false)
+  lateArrivalCount   Int              @default(0)
+  failingSpanId      String?
+  retentionExpiresAt DateTime
+  lastReconstructedAt DateTime        @default(now())
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime
+  Organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project            Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Connection         Connection?      @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  Batch              OtelIngestBatch? @relation(fields: [evidenceBatchId], references: [id], onDelete: SetNull)
+  evidenceBatchId    String?
+  SpanRecords        SpanRecord[]
+  EvidenceLinks      SpanEvidenceLink[]
+
+  @@unique([organizationId, projectId, traceId])
+  @@index([organizationId, startAt])
+  @@index([organizationId, status, startAt])
+  @@index([projectId, startAt])
+  @@index([retentionExpiresAt])
+  @@index([connectionId])
+  @@index([evidenceBatchId])
+}
+
+/// Phase 6: first-class span persistence for APM and trace reconstruction.
+model SpanRecord {
+  id                     String                  @id
+  organizationId         String
+  projectId              String?
+  environment            String                  @default("unknown")
+  connectionId           String?
+  serviceEntityId        String?
+  sourceEntityId         String?
+  destinationEntityId    String?
+  traceId                String
+  spanId                 String
+  parentSpanId           String?
+  traceFlags             Int?
+  spanKind               String?
+  operationName          String
+  startTimestamp         DateTime
+  endTimestamp           DateTime?
+  durationMs             Int?
+  status                 String                  @default("UNSET")
+  exceptionSummary       String?
+  httpMethod             String?
+  httpRoute              String?
+  httpStatusCode         Int?
+  dbSystem               String?
+  dbOperation            String?
+  messagingSystem        String?
+  messagingDestination   String?
+  externalPeer           String?
+  attributesJson         Json?
+  redactionStatus        String                  @default("REDACTED")
+  retentionExpiresAt     DateTime
+  evidenceSignalId       String?
+  evidenceBatchId        String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime
+  Organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project                Project?                @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Connection             Connection?             @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  traceRecordId          String?
+  ServiceEntity          OperationalEntity?      @relation("SpanServiceEntity", fields: [serviceEntityId], references: [id], onDelete: SetNull)
+  SourceEntity           OperationalEntity?      @relation("SpanSourceEntity", fields: [sourceEntityId], references: [id], onDelete: SetNull)
+  DestinationEntity      OperationalEntity?      @relation("SpanDestinationEntity", fields: [destinationEntityId], references: [id], onDelete: SetNull)
+  Trace                  TraceRecord?            @relation(fields: [traceRecordId], references: [id], onDelete: SetNull)
+  Batch                  OtelIngestBatch?        @relation(fields: [evidenceBatchId], references: [id], onDelete: SetNull)
+  EvidenceLinks          SpanEvidenceLink[]
+
+  @@unique([organizationId, traceId, spanId])
+  @@index([organizationId, projectId, startTimestamp])
+  @@index([organizationId, serviceEntityId, startTimestamp])
+  @@index([organizationId, status, startTimestamp])
+  @@index([organizationId, httpRoute, startTimestamp])
+  @@index([traceId, startTimestamp])
+  @@index([traceRecordId])
+  @@index([retentionExpiresAt])
+  @@index([evidenceBatchId])
+  @@index([connectionId, startTimestamp])
+}
+
+/// Phase 6: service-level APM aggregation windows.
+model ApmServiceWindow {
+  id                 String             @id
+  organizationId     String
+  projectId          String?
+  entityId           String?
+  serviceName        String
+  environment        String             @default("unknown")
+  windowSize         String
+  windowStart        DateTime
+  windowEnd          DateTime
+  requestCount       Int                @default(0)
+  errorCount         Int                @default(0)
+  errorRate          Float              @default(0)
+  latencySumMs       Float              @default(0)
+  latencyAvgMs       Float?
+  latencyP50Ms       Float?
+  latencyP95Ms       Float?
+  latencyP99Ms       Float?
+  availability       Float?
+  sampleCount        Int                @default(0)
+  confidence         Float              @default(0)
+  health             String             @default("UNKNOWN")
+  healthRule         String?
+  healthEvidenceJson Json?
+  lastObservedAt     DateTime?
+  freshUntil         DateTime?
+  lastEvaluatedAt    DateTime?
+  activeAlertCount   Int                @default(0)
+  activeIncidentCount Int               @default(0)
+  retentionExpiresAt DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime
+  Organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project            Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Entity             OperationalEntity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  EvidenceLinks      ApmEvidenceLink[]
+
+  @@unique([organizationId, projectId, serviceName, environment, windowSize, windowStart])
+  @@index([organizationId, windowEnd])
+  @@index([organizationId, health, windowEnd])
+  @@index([projectId, windowSize, windowEnd])
+  @@index([entityId, windowEnd])
+  @@index([freshUntil])
+  @@index([retentionExpiresAt])
+}
+
+/// Phase 6: endpoint/operation APM aggregation windows.
+model ApmEndpointWindow {
+  id                 String             @id
+  organizationId     String
+  projectId          String?
+  entityId           String?
+  serviceName        String
+  environment        String             @default("unknown")
+  operation          String
+  httpMethod         String?
+  windowSize         String
+  windowStart        DateTime
+  windowEnd          DateTime
+  requestCount       Int                @default(0)
+  errorCount         Int                @default(0)
+  errorRate          Float              @default(0)
+  latencySumMs       Float              @default(0)
+  latencyAvgMs       Float?
+  latencyP50Ms       Float?
+  latencyP95Ms       Float?
+  latencyP99Ms       Float?
+  slowRequestCount   Int                @default(0)
+  failingTraceCount  Int                @default(0)
+  sampleCount        Int                @default(0)
+  confidence         Float              @default(0)
+  health             String             @default("UNKNOWN")
+  healthRule         String?
+  healthEvidenceJson Json?
+  lastObservedAt     DateTime?
+  freshUntil         DateTime?
+  retentionExpiresAt DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime
+  Organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project            Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Entity             OperationalEntity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  EvidenceLinks      ApmEvidenceLink[]  @relation("ApmEndpointEvidence")
+
+  @@unique([organizationId, projectId, serviceName, environment, operation, windowSize, windowStart])
+  @@index([organizationId, windowEnd])
+  @@index([projectId, windowSize, windowEnd])
+  @@index([entityId, windowEnd])
+  @@index([retentionExpiresAt])
+}
+
+/// Phase 6: dependency APM aggregation windows.
+model ApmDependencyWindow {
+  id                 String                    @id
+  organizationId     String
+  projectId          String?
+  relationshipId     String?
+  sourceEntityId     String?
+  targetEntityId     String?
+  sourceServiceName  String
+  targetServiceName  String
+  environment        String                    @default("unknown")
+  windowSize         String
+  windowStart        DateTime
+  windowEnd          DateTime
+  requestCount       Int                       @default(0)
+  errorCount         Int                       @default(0)
+  errorRate          Float                     @default(0)
+  timeoutCount       Int                       @default(0)
+  timeoutRate        Float                     @default(0)
+  latencySumMs       Float                     @default(0)
+  latencyAvgMs       Float?
+  latencyP95Ms       Float?
+  sampleCount        Int                       @default(0)
+  confidence         Float                     @default(0)
+  health             String                    @default("UNKNOWN")
+  healthRule         String?
+  healthEvidenceJson Json?
+  lastSuccessAt      DateTime?
+  lastFailureAt      DateTime?
+  lastObservedAt     DateTime?
+  freshUntil         DateTime?
+  retentionExpiresAt DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime
+  Organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project            Project?                  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Relationship       OperationalRelationship?  @relation(fields: [relationshipId], references: [id], onDelete: SetNull)
+  SourceEntity       OperationalEntity?        @relation("ApmDepSourceEntity", fields: [sourceEntityId], references: [id], onDelete: SetNull)
+  TargetEntity       OperationalEntity?        @relation("ApmDepTargetEntity", fields: [targetEntityId], references: [id], onDelete: SetNull)
+  EvidenceLinks      ApmEvidenceLink[]         @relation("ApmDependencyEvidence")
+
+  @@unique([organizationId, projectId, sourceServiceName, targetServiceName, environment, windowSize, windowStart])
+  @@index([organizationId, windowEnd])
+  @@index([organizationId, health, windowEnd])
+  @@index([relationshipId, windowEnd])
+  @@index([sourceEntityId, windowEnd])
+  @@index([targetEntityId, windowEnd])
+  @@index([freshUntil])
+  @@index([retentionExpiresAt])
+}
+
+/// Phase 6: log evidence linked to alerts/incidents.
+model LogEvidenceLink {
+  id                 String              @id
+  organizationId     String
+  projectId          String?
+  alertId            String?
+  incidentId         String?
+  logRecordId        String?
+  occurrenceGroupId  String?
+  evidenceKind       String
+  summary            String
+  confidence         Float?
+  metadataJson       Json?
+  observedAt         DateTime            @default(now())
+  createdAt          DateTime            @default(now())
+  Organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project            Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Alert              Alert?              @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  Incident           Incident?           @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  LogRecord          LogRecord?          @relation(fields: [logRecordId], references: [id], onDelete: SetNull)
+  OccurrenceGroup    LogOccurrenceGroup? @relation(fields: [occurrenceGroupId], references: [id], onDelete: SetNull)
+
+  @@index([alertId, observedAt])
+  @@index([incidentId, observedAt])
+  @@index([organizationId, logRecordId])
+  @@index([occurrenceGroupId])
+}
+
+/// Phase 6: span/trace evidence linked to alerts/incidents.
+model SpanEvidenceLink {
+  id             String       @id
+  organizationId String
+  projectId      String?
+  alertId        String?
+  incidentId     String?
+  spanRecordId   String?
+  traceRecordId  String?
+  traceId        String?
+  spanId         String?
+  evidenceKind   String
+  summary        String
+  confidence     Float?
+  metadataJson   Json?
+  observedAt     DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project        Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Alert          Alert?       @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  Incident       Incident?    @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  SpanRecord     SpanRecord?  @relation(fields: [spanRecordId], references: [id], onDelete: SetNull)
+  TraceRecord    TraceRecord? @relation(fields: [traceRecordId], references: [id], onDelete: SetNull)
+
+  @@index([alertId, observedAt])
+  @@index([incidentId, observedAt])
+  @@index([organizationId, traceId])
+  @@index([spanRecordId])
+  @@index([traceRecordId])
+}
+
+/// Phase 6: APM window evidence linked to alerts/incidents.
+model ApmEvidenceLink {
+  id                   String               @id
+  organizationId       String
+  projectId            String?
+  alertId              String?
+  incidentId           String?
+  serviceWindowId      String?
+  endpointWindowId     String?
+  dependencyWindowId   String?
+  evidenceKind         String
+  summary              String
+  confidence           Float?
+  metadataJson         Json?
+  observedAt           DateTime             @default(now())
+  createdAt            DateTime             @default(now())
+  Organization         Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project              Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Alert                Alert?               @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  Incident             Incident?            @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  ServiceWindow        ApmServiceWindow?    @relation(fields: [serviceWindowId], references: [id], onDelete: SetNull)
+  EndpointWindow       ApmEndpointWindow?   @relation("ApmEndpointEvidence", fields: [endpointWindowId], references: [id], onDelete: SetNull)
+  DependencyWindow     ApmDependencyWindow? @relation("ApmDependencyEvidence", fields: [dependencyWindowId], references: [id], onDelete: SetNull)
+
+  @@index([alertId, observedAt])
+  @@index([incidentId, observedAt])
+  @@index([serviceWindowId])
+  @@index([endpointWindowId])
+  @@index([dependencyWindowId])
 }
 
 /// Accumulated evidence baselines (nothing without samples).
