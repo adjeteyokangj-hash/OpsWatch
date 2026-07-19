@@ -17,11 +17,35 @@ import {
   triggerAutoRun,
   getAutoRunMetrics,
 } from "../controllers/auto-run.controller";
+import {
+  listRemediationActions,
+  requestPhase7Approval,
+  decidePhase7Approval,
+  executePhase7Governed,
+  listPhase7Runs,
+  tripPhase7Circuit,
+  resetPhase7Circuit,
+  recoverPhase7StaleRuns
+} from "../controllers/phase7-remediation.controller";
 
 const router = Router();
 
 // All remediation endpoints require authentication
 router.use(requireAuth);
+
+// Phase 7 governed remediation
+router.get("/actions", listRemediationActions);
+router.get("/runs", listPhase7Runs);
+router.post("/approvals", requirePermission("remediation:execute:safe"), requestPhase7Approval);
+router.post(
+  "/approvals/:approvalId/decide",
+  requirePermission("remediation:approve"),
+  decidePhase7Approval
+);
+router.post("/governed-execute", executePhase7Governed);
+router.post("/circuit-breaker/trip", requirePermission("policy:manage"), tripPhase7Circuit);
+router.post("/circuit-breaker/reset", requirePermission("policy:manage"), resetPhase7Circuit);
+router.post("/runs/recover-stale", requirePermission("policy:manage"), recoverPhase7StaleRuns);
 
 // GET  /remediation/logs               → list org's remediation history
 router.get("/logs", getRemediationLogs);

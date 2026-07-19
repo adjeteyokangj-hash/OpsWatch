@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
-import { prisma } from "../../lib/prisma";
-import { testAgentlessConnection } from "../agentless-connection.service";
+import { prisma } from "../../../lib/prisma";
+import { testAgentlessConnection } from "../../agentless-connection.service";
 import type { RemediationExecutor } from "../types";
 import { completed, failed, missingContext } from "./_common";
 import { redactUnknown } from "../../../lib/redact-secrets";

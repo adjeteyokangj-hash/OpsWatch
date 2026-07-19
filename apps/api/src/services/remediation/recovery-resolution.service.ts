@@ -29,11 +29,21 @@ export const applyVerifiedRecoveryResolution = async (input: {
 }> => {
   if (input.verificationState !== "VERIFIED_HEALTHY") {
     if (input.incidentId) {
+      if (!input.projectId) {
+        return {
+          alertResolved: false,
+          incidentResolved: false,
+          incidentStillOpenReason:
+            input.verificationState === "VERIFICATION_FAILED"
+              ? "Verification failed"
+              : "Only partial recovery observed"
+        };
+      }
       await prisma.incidentTimelineEvent.create({
         data: {
           id: randomUUID(),
           incidentId: input.incidentId,
-          projectId: input.projectId ?? "",
+          projectId: input.projectId,
           eventType: "REMEDIATION",
           summary:
             input.verificationState === "VERIFICATION_FAILED"

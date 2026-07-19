@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 import type { SelectedTopologyEdge } from "./topology-edge-style";
+import {
+  relationshipMarkerLabel,
+  resolveRelationshipRemediationMarker
+} from "./relationship-remediation-marker";
 import type { ProjectTopologyResponse } from "./topology-types";
 import { buildNodeRelationshipDiagnostics } from "./topology-relationship";
 import {
@@ -592,6 +596,28 @@ export function TopologyRelationshipDrawer({
         <div>
           <dt>Line colour meaning</dt>
           <dd data-testid="topology-edge-colour-meaning">{edge.colourMeaning}</dd>
+        </div>
+        <div>
+          <dt>Remediation marker</dt>
+          <dd data-testid="topology-relationship-remediation-marker">
+            {relationshipMarkerLabel(
+              resolveRelationshipRemediationMarker({
+                edgeStatus: edge.status,
+                runStatus:
+                  evaluation?.buttonState === "remediating"
+                    ? "EXECUTING"
+                    : evaluation?.activeRunId
+                      ? "VERIFYING"
+                      : null,
+                evidenceFresh:
+                  evidence.openAlertCount === 0 && evidence.failedCheckEndpoints.length === 0
+                    ? true
+                    : evidence.lastFailure
+                      ? Date.now() - new Date(evidence.lastFailure).getTime() < 30 * 60_000
+                      : false
+              })
+            )}
+          </dd>
         </div>
         <div>
           <dt>Colour selection reason</dt>

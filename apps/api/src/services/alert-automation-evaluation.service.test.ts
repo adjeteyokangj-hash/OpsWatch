@@ -9,6 +9,12 @@ const prismaMock = vi.hoisted(() => ({
   },
   heartbeat: {
     findMany: vi.fn()
+  },
+  remediationExecutionRun: {
+    findFirst: vi.fn()
+  },
+  connection: {
+    findFirst: vi.fn()
   }
 }));
 
@@ -24,15 +30,19 @@ import {
 describe("alert automation evaluation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prismaMock.remediationExecutionRun.findFirst.mockResolvedValue(null);
+    prismaMock.connection.findFirst.mockResolvedValue(null);
   });
 
-  it("evaluates heartbeat-stale alerts as NO_ACTION_AVAILABLE with an honest reason", async () => {
+  it("evaluates observe-mode alerts as OBSERVE_ONLY with an honest reason", async () => {
     prismaMock.alert.findFirst.mockResolvedValue({
       id: "alert-1",
       title: "Heartbeat stale",
       message: "No heartbeat received",
       sourceType: "HEARTBEAT",
       status: AlertStatus.OPEN,
+      projectId: "proj-1",
+      serviceId: null,
       firstSeenAt: new Date("2026-07-15T10:00:00.000Z"),
       lastSeenAt: new Date("2026-07-15T10:30:00.000Z"),
       resolvedAt: null,
@@ -40,10 +50,10 @@ describe("alert automation evaluation", () => {
     });
 
     const result = await evaluateAlertAutomation({ alertId: "alert-1", organizationId: "org-1" });
-    expect(result.evaluationStatus).toBe("NO_ACTION_AVAILABLE");
-    expect(result.executionStatus).toBe("NOT_ATTEMPTED");
-    expect(result.reasonNoAction).toMatch(/no approved automated repair/i);
-    expect(result.availableActions).toEqual([]);
+    expect(result.evaluationStatus).toBe("OBSERVE_ONLY");
+    expect(result.availabilityState).toBe("OBSERVE_ONLY");
+    expect(result.availabilityReason).toMatch(/Observe/i);
+    expect(result.selectedAction).toBeTruthy();
   });
 
   it("does not claim remediation caused recovery when an alert is already resolved", async () => {
@@ -53,6 +63,8 @@ describe("alert automation evaluation", () => {
       message: "resolved",
       sourceType: "HEARTBEAT",
       status: AlertStatus.RESOLVED,
+      projectId: "proj-1",
+      serviceId: null,
       firstSeenAt: new Date("2026-07-15T09:00:00.000Z"),
       lastSeenAt: new Date("2026-07-15T11:00:00.000Z"),
       resolvedAt: new Date("2026-07-15T11:00:00.000Z"),

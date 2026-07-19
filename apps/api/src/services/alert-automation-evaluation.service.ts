@@ -1,5 +1,7 @@
 import { AlertStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
+import { listAvailableActionsForContext } from "./remediation/availability.service";
+import { getUniversalAction } from "./remediation/action-registry";
 
 export type AlertAutomationEvaluationStatus =
   | "NOT_EVALUATED"
@@ -14,7 +16,10 @@ export type AlertAutomationEvaluationStatus =
   | "SUCCEEDED"
   | "FAILED"
   | "ROLLED_BACK"
-  | "RECOVERED_NATURALLY";
+  | "RECOVERED_NATURALLY"
+  | "OBSERVE_ONLY"
+  | "SETUP_REQUIRED"
+  | "BLOCKED";
 
 export type AlertAutomationEvaluationDto = {
   alertId: string;
@@ -33,6 +38,11 @@ export type AlertAutomationEvaluationDto = {
   recoveryTimestamp: string | null;
   autoResolutionReason: string | null;
   remediationCausedRecovery: boolean | null;
+  availabilityState: string | null;
+  availabilityReason: string | null;
+  riskLevel: string | null;
+  runId: string | null;
+  correlationId: string | null;
   timeline: Array<{ stage: string; at: string | null; detail: string }>;
 };
 
@@ -40,6 +50,23 @@ export type AlertAutomationEvaluationDto = {
 export const HEARTBEAT_RECOVERY_MIN_COUNT = 3;
 /** Minimum age gap (seconds) across those heartbeats for stable recovery. */
 export const HEARTBEAT_RECOVERY_STABLE_SECONDS = 180;
+
+const mapAvailabilityToStatus = (state: string): AlertAutomationEvaluationStatus => {
+  switch (state) {
+    case "READY":
+      return "READY";
+    case "APPROVAL_REQUIRED":
+      return "APPROVAL_REQUIRED";
+    case "SETUP_REQUIRED":
+      return "SETUP_REQUIRED";
+    case "BLOCKED":
+      return "BLOCKED";
+    case "OBSERVE_ONLY":
+      return "OBSERVE_ONLY";
+    default:
+      return "NO_ACTION_AVAILABLE";
+  }
+};
 
 export const evaluateAlertAutomation = async (input: {
   alertId: string;
@@ -59,12 +86,22 @@ export const evaluateAlertAutomation = async (input: {
   const automationMode = (alert.Project.automationMode || "OBSERVE").toUpperCase();
   const now = new Date().toISOString();
   const isHeartbeat =
-    alert.sourceType === "HEARTBEAT" || /heartbeat/i.test(alert.title) || /heartbeat/i.test(alert.message);
+    alert.sourceType === "HEARTBEAT" ||
+    /heartbeat/i.test(alert.title) ||
+    /heartbeat/i.test(alert.message);
 
   const baseTimeline = [
     { stage: "Detected", at: alert.firstSeenAt.toISOString(), detail: alert.title },
     { stage: "Diagnosed", at: alert.lastSeenAt.toISOString(), detail: alert.message }
   ];
+
+  const latestRun = await prisma.remediationExecutionRun.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      OR: [{ alertId: alert.id }, ...(alert.projectId ? [{ projectId: alert.projectId }] : [])]
+    },
+    orderBy: { createdAt: "desc" }
+  });
 
   if (alert.status === AlertStatus.RESOLVED) {
     return {
@@ -74,93 +111,163 @@ export const evaluateAlertAutomation = async (input: {
       automationMode,
       matchingPolicy: isHeartbeat ? "heartbeat-recovery-verification" : null,
       availableActions: [],
-      selectedAction: null,
+      selectedAction: latestRun?.actionKey ?? null,
       requiredPermissions: [],
       approvalRequired: false,
       reasonNoAction: null,
-      executionStatus: null,
+      executionStatus: latestRun?.status ?? null,
       verificationStatus: "PASSED",
-      finalOutcome: "Alert resolved after verified recovery (no remediation action recorded).",
+      finalOutcome: "Alert resolved after verified recovery.",
       recoveryTimestamp: alert.resolvedAt?.toISOString() ?? null,
       autoResolutionReason: "Recovery verified from returning healthy signals",
-      remediationCausedRecovery: false,
+      remediationCausedRecovery: Boolean(latestRun && latestRun.status === "VERIFIED_HEALTHY"),
+      availabilityState: null,
+      availabilityReason: null,
+      riskLevel: latestRun?.riskLevel ?? null,
+      runId: latestRun?.id ?? null,
+      correlationId: latestRun?.correlationId ?? null,
       timeline: [
         ...baseTimeline,
         {
           stage: "Recovered",
           at: alert.resolvedAt?.toISOString() ?? now,
-          detail: "Resolved without a recorded remediation execution"
+          detail: "Resolved after verified recovery evidence"
         }
       ]
     };
   }
 
-  if (isHeartbeat) {
-    // Honest evaluation: no heartbeat restart connector is registered for project ingest.
+  if (latestRun && ["EXECUTING", "EXECUTED", "VERIFYING"].includes(latestRun.status)) {
+    return {
+      alertId: alert.id,
+      evaluationStatus: latestRun.status === "VERIFYING" ? "VERIFYING" : "RUNNING",
+      evaluationTimestamp: now,
+      automationMode,
+      matchingPolicy: "phase7-execution-run",
+      availableActions: [latestRun.actionKey],
+      selectedAction: latestRun.actionKey,
+      requiredPermissions: ["remediation:execute"],
+      approvalRequired: latestRun.automationMode === "APPROVAL",
+      reasonNoAction: null,
+      executionStatus: latestRun.status,
+      verificationStatus: latestRun.status === "VERIFYING" ? "IN_PROGRESS" : null,
+      finalOutcome: null,
+      recoveryTimestamp: null,
+      autoResolutionReason: null,
+      remediationCausedRecovery: null,
+      availabilityState: "READY",
+      availabilityReason: "Remediation run in progress",
+      riskLevel: latestRun.riskLevel,
+      runId: latestRun.id,
+      correlationId: latestRun.correlationId,
+      timeline: [
+        ...baseTimeline,
+        {
+          stage: "Action executed",
+          at: latestRun.startedAt?.toISOString() ?? now,
+          detail: `${latestRun.actionKey} is ${latestRun.status}`
+        }
+      ]
+    };
+  }
+
+  const connection = await prisma.connection.findFirst({
+    where: { projectId: alert.projectId, organizationId: input.organizationId, isActive: true },
+    select: { id: true },
+    orderBy: { updatedAt: "desc" }
+  });
+
+  const candidates = listAvailableActionsForContext({
+    context: {
+      organizationId: input.organizationId,
+      projectId: alert.projectId,
+      alertId: alert.id,
+      serviceId: alert.serviceId ?? undefined,
+      integrationId: connection?.id,
+      extra: connection?.id ? { connectionId: connection.id } : {}
+    },
+    automationMode,
+    entityType: "ALERT"
+  }).filter((row) => row.state !== "NO_AUTOMATED_FIX");
+
+  const preferred =
+    candidates.find((row) => row.state === "READY") ||
+    candidates.find((row) => row.state === "APPROVAL_REQUIRED") ||
+    candidates.find((row) => row.state === "SETUP_REQUIRED") ||
+    candidates.find((row) => row.state === "OBSERVE_ONLY") ||
+    candidates.find((row) => row.state === "BLOCKED") ||
+    null;
+
+  if (!preferred) {
     return {
       alertId: alert.id,
       evaluationStatus: "NO_ACTION_AVAILABLE",
       evaluationTimestamp: now,
       automationMode,
-      matchingPolicy: "heartbeat-stale",
+      matchingPolicy: isHeartbeat ? "heartbeat-stale" : "phase7-registry",
       availableActions: [],
       selectedAction: null,
-      requiredPermissions: ["remediation:execute", "connector:heartbeat-worker"],
-      approvalRequired: automationMode === "APPROVAL" || automationMode === "AUTONOMOUS",
-      reasonNoAction:
-        "OpsWatch detected this problem, but no approved automated repair is currently configured. The heartbeat is ingested via an OpsWatch API key; no connector can restart the client sender, worker, or scheduled job. Connect a worker / service remediator on the project Integrations page if automated restart becomes available.",
+      requiredPermissions: isHeartbeat
+        ? ["remediation:execute", "connector:heartbeat-worker"]
+        : [],
+      approvalRequired: false,
+      reasonNoAction: isHeartbeat
+        ? "OpsWatch detected this problem, but no approved automated repair is currently configured for heartbeat-stale without a worker remediator or heartbeat request path."
+        : "No safe supported remediation action is registered for this alert.",
       executionStatus: "NOT_ATTEMPTED",
-      verificationStatus: alert.status === ("RECOVERING" as AlertStatus) ? "IN_PROGRESS" : null,
+      verificationStatus: null,
       finalOutcome: null,
       recoveryTimestamp: null,
       autoResolutionReason: null,
       remediationCausedRecovery: null,
-      timeline: [
-        ...baseTimeline,
-        {
-          stage: "Action selected",
-          at: now,
-          detail: "No safe supported remediation action is registered for heartbeat-stale"
-        },
-        {
-          stage: "Approval",
-          at: null,
-          detail: "Not applicable — no action available"
-        },
-        {
-          stage: "Action executed",
-          at: null,
-          detail: "Not attempted"
-        },
-        {
-          stage: "Verification",
-          at: null,
-          detail:
-            "When healthy heartbeats return, OpsWatch will mark RECOVERING and resolve only after consecutive successful heartbeats"
-        }
-      ]
+      availabilityState: "NO_AUTOMATED_FIX",
+      availabilityReason: "No registry action matched this alert context",
+      riskLevel: null,
+      runId: latestRun?.id ?? null,
+      correlationId: latestRun?.correlationId ?? null,
+      timeline: baseTimeline
     };
   }
 
+  const def = getUniversalAction(preferred.actionKey);
   return {
     alertId: alert.id,
-    evaluationStatus: "NO_ACTION_AVAILABLE",
+    evaluationStatus: mapAvailabilityToStatus(preferred.state),
     evaluationTimestamp: now,
     automationMode,
-    matchingPolicy: null,
-    availableActions: [],
-    selectedAction: null,
-    requiredPermissions: [],
-    approvalRequired: false,
+    matchingPolicy: "phase7-universal-registry",
+    availableActions: candidates.map((row) => row.actionKey),
+    selectedAction: preferred.actionKey,
+    requiredPermissions: preferred.requiredScopes,
+    approvalRequired: preferred.state === "APPROVAL_REQUIRED" || preferred.requiresApproval,
     reasonNoAction:
-      "OpsWatch detected this problem, but no approved automated repair is currently configured for this alert type. Connect a scoped remediator (worker / service restart webhook) on the project Integrations page when an approved action exists.",
-    executionStatus: "NOT_ATTEMPTED",
+      preferred.state === "READY" || preferred.state === "APPROVAL_REQUIRED"
+        ? null
+        : preferred.reason,
+    executionStatus: latestRun?.status ?? "NOT_ATTEMPTED",
     verificationStatus: null,
     finalOutcome: null,
     recoveryTimestamp: null,
     autoResolutionReason: null,
     remediationCausedRecovery: null,
-    timeline: baseTimeline
+    availabilityState: preferred.state,
+    availabilityReason: preferred.reason,
+    riskLevel: preferred.riskLevel,
+    runId: latestRun?.id ?? null,
+    correlationId: latestRun?.correlationId ?? null,
+    timeline: [
+      ...baseTimeline,
+      {
+        stage: "Action selected",
+        at: now,
+        detail: `${preferred.displayName} → ${preferred.state}: ${preferred.reason}`
+      },
+      {
+        stage: "Verification method",
+        at: null,
+        detail: def?.verificationStrategy ?? "NONE"
+      }
+    ]
   };
 };
 
@@ -218,7 +325,6 @@ export const progressHeartbeatAlertRecovery = async (projectId: string): Promise
     }
 
     if (alert.status === AlertStatus.OPEN || alert.status === AlertStatus.ACKNOWLEDGED) {
-      // RECOVERING may not exist until migration — fall back to OPEN with message stamp.
       try {
         await prisma.alert.update({
           where: { id: alert.id },

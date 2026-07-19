@@ -78,6 +78,11 @@ type AlertAutomationEvaluation = {
   recoveryTimestamp: string | null;
   autoResolutionReason: string | null;
   remediationCausedRecovery: boolean | null;
+  availabilityState?: string | null;
+  availabilityReason?: string | null;
+  riskLevel?: string | null;
+  runId?: string | null;
+  correlationId?: string | null;
   timeline: Array<{ stage: string; at: string | null; detail: string }>;
 };
 
@@ -321,6 +326,28 @@ export default function AlertDetailPage() {
                   <div>
                     <dt>Automation mode</dt>
                     <dd>{automation.automationMode}</dd>
+                  </div>
+                  <div>
+                    <dt>Availability</dt>
+                    <dd data-testid="alert-availability-state">
+                      {automation.availabilityState ?? automation.evaluationStatus}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Availability reason</dt>
+                    <dd data-testid="alert-availability-reason">
+                      {automation.availabilityReason ?? automation.reasonNoAction ?? "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Risk</dt>
+                    <dd>{automation.riskLevel ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Correlation ID</dt>
+                    <dd data-testid="alert-remediation-correlation">
+                      {automation.correlationId ? <code>{automation.correlationId}</code> : "—"}
+                    </dd>
                   </div>
                   <div>
                     <dt>Matching policy</dt>
