@@ -41,14 +41,18 @@ model Alert {
 }
 
 model AuditLog {
-  id           String   @id
-  userId       String?
-  action       String
-  entityType   String
-  entityId     String
-  metadataJson Json?
-  createdAt    DateTime @default(now())
-  User         User?    @relation(fields: [userId], references: [id])
+  id             String        @id
+  userId         String?
+  organizationId String?
+  action         String
+  entityType     String
+  entityId       String
+  metadataJson   Json?
+  createdAt      DateTime      @default(now())
+  User           User?         @relation(fields: [userId], references: [id])
+  Organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
 }
 
 model AutoRemediationPolicy {
@@ -197,23 +201,26 @@ model OnboardingProgress {
 }
 
 model OrgApiKey {
-  id                String       @id
-  organizationId    String
-  name              String
-  keyId             String       @unique
-  secretHash        String
-  scopes            Json
-  environment       String
-  lastUsedAt        DateTime?
-  expiresAt         DateTime?
-  createdAt         DateTime     @default(now())
-  projectId         String?
-  revokedAt         DateTime?
-  lastUsedRoute     String?
-  lastUsedIp        String?
-  lastUsedUserAgent String?
-  revokeReason      String?
-  Organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id                      String       @id
+  organizationId          String
+  name                    String
+  keyId                   String       @unique
+  secretHash              String
+  scopes                  Json
+  environment             String
+  lastUsedAt              DateTime?
+  expiresAt               DateTime?
+  createdAt               DateTime     @default(now())
+  projectId               String?
+  revokedAt               DateTime?
+  lastUsedRoute           String?
+  lastUsedIp              String?
+  lastUsedUserAgent       String?
+  revokeReason            String?
+  graceExpiresAt          DateTime?
+  rotatedFromKeyId        String?
+  allowCrossEnvironment   Boolean      @default(false)
+  Organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, revokedAt])
   @@index([projectId])
@@ -254,6 +261,8 @@ model Organization {
   OperationalLocation      OperationalLocation[]
   OperationalEntity        OperationalEntity[]
   OperationalRelationship  OperationalRelationship[]
+  ManagedCredential        ManagedCredential[]
+  AuditLog                 AuditLog[]
 }
 
 model OrganizationIncidentGroup {
@@ -298,8 +307,10 @@ model Project {
   vercelProjectId         String?
   renderServiceId         String?
   apiKey                  String                    @unique
-  signingSecret           String
-  maintenanceTier         String?
+  signingSecret               String
+  signingCredentialFamilyId   String?
+  signingSecretRotatedAt      DateTime?
+  maintenanceTier             String?
   isActive                Boolean                   @default(true)
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime
@@ -326,9 +337,11 @@ model Project {
   OperationalLocation     OperationalLocation?      @relation(fields: [operationalLocationId], references: [id], onDelete: SetNull)
   operationalLocationId   String?
   OperationalRelationship OperationalRelationship[]
+  ManagedCredential       ManagedCredential[]
 
   @@index([organizationId])
   @@index([operationalLocationId])
+  @@index([signingCredentialFamilyId])
 }
 
 /// A generic, organization-scoped operational connection. Secret material is
@@ -347,9 +360,10 @@ model Connection {
   configurationJson    Json?
   secretRef            String?
   managedSecretCiphertext String?
-  managedSecretIv      String?
-  managedSecretAuthTag String?
-  health               String              @default("UNKNOWN")
+  managedSecretIv         String?
+  managedSecretAuthTag    String?
+  credentialFamilyId      String?
+  health                  String              @default("UNKNOWN")
   healthReason         String?
   lastValidatedAt      DateTime?
   validationStatusCode Int?
@@ -373,8 +387,10 @@ model Connection {
   Organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   Project              Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
   ChangeLedgerEntry    ChangeLedgerEntry[]
+  ManagedCredential    ManagedCredential[]
 
   @@unique([organizationId, projectId, name])
+  @@index([credentialFamilyId])
   @@index([organizationId, isActive, createdAt])
   @@index([projectId, isActive])
   @@index([organizationId, mode, installationStatus])
@@ -487,23 +503,72 @@ model OperationalRelationship {
 }
 
 model ProjectIntegration {
-  id                String                      @id
-  projectId         String
-  type              IntegrationType
-  name              String?
-  enabled           Boolean                     @default(true)
-  configJson        Json?
-  secretRef         String?
-  validationStatus  IntegrationValidationStatus @default(UNKNOWN)
-  validationMessage String?
-  validationDetails Json?
-  lastValidatedAt   DateTime?
-  createdAt         DateTime                    @default(now())
-  updatedAt         DateTime
-  Project           Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id                 String                      @id
+  projectId          String
+  type               IntegrationType
+  name               String?
+  enabled            Boolean                     @default(true)
+  configJson         Json?
+  secretRef          String?
+  credentialFamilyId String?
+  validationStatus   IntegrationValidationStatus @default(UNKNOWN)
+  validationMessage  String?
+  validationDetails  Json?
+  lastValidatedAt    DateTime?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime
+  Project            Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ManagedCredential  ManagedCredential[]
 
   @@unique([projectId, type])
   @@index([projectId, enabled])
+  @@index([credentialFamilyId])
+}
+
+/// Versioned, organization-owned credential material with grace/revoke lifecycle.
+model ManagedCredential {
+  id               String              @id
+  organizationId   String
+  projectId        String?
+  connectionId     String?
+  integrationId    String?
+  familyId         String
+  purpose          String
+  credentialType   String
+  environment      String
+  version          Int
+  keyVersion       String
+  ciphertext       String
+  iv               String
+  authTag          String
+  maskedSuffix     String?
+  fingerprint      String?
+  status           String              @default("ACTIVE")
+  activatedAt      DateTime
+  expiresAt        DateTime?
+  graceExpiresAt   DateTime?
+  revokedAt        DateTime?
+  revokeReason     String?
+  createdBy        String?
+  rotatedFromId    String?
+  lastUsedAt       DateTime?
+  lastSuccessAt    DateTime?
+  lastFailureAt    DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime
+  Organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project          Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Connection       Connection?         @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  ProjectIntegration ProjectIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  RotatedFrom      ManagedCredential?  @relation("CredentialRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
+  RotatedTo        ManagedCredential[] @relation("CredentialRotation")
+
+  @@unique([familyId, version])
+  @@index([organizationId, purpose, status])
+  @@index([connectionId, status])
+  @@index([projectId, purpose, status])
+  @@index([familyId, status])
+  @@index([expiresAt])
 }
 
 model PlatformStripeSettings {
