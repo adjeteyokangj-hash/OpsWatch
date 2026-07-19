@@ -8,6 +8,7 @@ import { HealthBadge } from "../health/health-badge";
 import { clearAuthCookies, getCsrfToken } from "../../lib/auth";
 import { API_BASE_URL } from "../../lib/constants";
 import { ProjectWorkspaceNav } from "./project-workspace-nav";
+import { ProductTruthStatus } from "../ui/product-truth-status";
 
 const signalAgeLabel = (receivedAt?: string | null): string => {
   if (!receivedAt) return "Waiting for first heartbeat";
@@ -18,6 +19,32 @@ const signalAgeLabel = (receivedAt?: string | null): string => {
   const ageHours = Math.floor(ageMin / 60);
   if (ageHours < 24) return `${ageHours} h ago`;
   return `${Math.floor(ageHours / 24)} d ago`;
+};
+
+const isExplicitTestOrSeedRecord = (row: any): boolean => {
+  const environment = String(row?.environment ?? "").toLowerCase();
+  const provenance = String(row?.provenance ?? row?.discoverySource ?? "").toUpperCase();
+  return (
+    environment === "test" ||
+    provenance === "TEST" ||
+    provenance === "SEED" ||
+    provenance === "SEEDED" ||
+    row?.metadata?.testData === true ||
+    row?.metadata?.seeded === true
+  );
+};
+
+export const projectTestDataState = (
+  project: any
+): "test-application" | "mixed-non-test" | null => {
+  if (!project) return null;
+  if (String(project.environment ?? "").toLowerCase() === "test") return "test-application";
+  const records = [
+    ...(project.services ?? []),
+    ...(project.events ?? []),
+    ...(project.heartbeats ?? [])
+  ];
+  return records.some(isExplicitTestOrSeedRecord) ? "mixed-non-test" : null;
 };
 
 type Props = {
@@ -55,6 +82,7 @@ export function ProjectWorkspaceShell({
     (project?.status === "UNKNOWN" ? "Waiting for first heartbeat" : project?.status);
   const latestSignal =
     project?.lastSignalAt ?? project?.lastCompletedCheckAt ?? project?.heartbeats?.[0]?.receivedAt;
+  const testDataState = projectTestDataState(project);
 
   const handleLogout = async () => {
     const csrfToken = getCsrfToken();
@@ -109,6 +137,21 @@ export function ProjectWorkspaceShell({
         </section>
 
         {error ? <section className="panel error-panel">{error}</section> : null}
+
+        {testDataState ? (
+          <section
+            className={`panel ${testDataState === "mixed-non-test" ? "error-panel" : ""}`}
+            data-testid="project-test-data-indicator"
+            role={testDataState === "mixed-non-test" ? "alert" : "status"}
+          >
+            <ProductTruthStatus state="Test data" />
+            <p className="dashboard-subtle">
+              {testDataState === "test-application"
+                ? "This application is explicitly marked as a test environment. Its entities and results are test data unless independently live verified."
+                : "Diagnostic: explicitly marked test/seed records are present in a non-test application. Do not treat them as live operational evidence."}
+            </p>
+          </section>
+        ) : null}
 
         {loading && !project ? (
           <p className="workspace-hero-loading">Loading project context…</p>

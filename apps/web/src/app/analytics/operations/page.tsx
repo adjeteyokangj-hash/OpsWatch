@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Shell } from "../../../components/layout/shell";
 import { Header } from "../../../components/layout/header";
 import { StatCard } from "../../../components/dashboard/stat-card";
+import { StatusBadge } from "../../../components/ui/status-badge";
 import { apiFetch } from "../../../lib/api";
 
 type OperationsAnalytics = {
@@ -43,7 +44,7 @@ type OperationsAnalytics = {
 };
 
 const formatMinutes = (value: number | null): string => {
-  if (value == null) return "—";
+  if (value == null) return "Unavailable";
   if (value < 60) return `${Math.round(value)}m`;
   return `${(value / 60).toFixed(1)}h`;
 };
@@ -79,7 +80,11 @@ export default function OperationsAnalyticsPage() {
           </Link>
           <span className="pill">Operations</span>
         </nav>
-        <p className="dashboard-subtle">Rolling {data?.windowDays ?? 30}-day command-centre metrics for incidents, automation, and correlation.</p>
+        <p className="dashboard-subtle">
+          <StatusBadge label="Live calculated" tone="success" /> Rolling {data?.windowDays ?? 30}-day
+          calculations from persisted incidents, automation runs, playbook versions, and maintenance records.
+          Unavailable means the required timestamps or outcomes do not exist; it does not mean zero.
+        </p>
       </section>
 
       {error ? <section className="panel error-panel">{error}</section> : null}

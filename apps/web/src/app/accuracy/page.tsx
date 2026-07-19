@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
 import { PageSection } from "../../components/ui/page-section";
+import { ProductTruthStatus } from "../../components/ui/product-truth-status";
 import { apiFetch } from "../../lib/api";
 
 type ActionAccuracy = {
@@ -102,8 +103,12 @@ export default function AccuracyPage() {
     return (
       <Shell>
         <Header title="Remediation Accuracy" />
-        <section className="panel">
-          <p className="metric-label">No completed remediation runs yet. Accuracy data will appear once actions have been executed and resolved.</p>
+        <section className="panel" data-testid="accuracy-unavailable-state">
+          <ProductTruthStatus state="Not configured" />
+          <p className="metric-label">
+            Accuracy is unavailable. It requires completed remediation runs with persisted outcomes and recovery
+            verification; the absence of evaluations is not evidence that automation is accurate.
+          </p>
         </section>
       </Shell>
     );

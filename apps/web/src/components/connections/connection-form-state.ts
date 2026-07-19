@@ -23,6 +23,11 @@ export const isRestMethod = (method: ConnectionMethodValue): boolean => method =
 export const methodLabel = (method: ConnectionMethodValue | string): string =>
   CONNECTION_METHODS.find((row) => row.value === method || row.mode === method)?.label ?? method;
 
+export const connectionProductStatus = (
+  method: ConnectionMethodValue | string
+): "Available" | "Preview" | "Planned" | "Requires configuration" =>
+  CONNECTION_METHODS.find((row) => row.value === method || row.mode === method)?.productStatus ?? "Preview";
+
 export const methodToMode = (method: ConnectionMethodValue): string =>
   CONNECTION_METHODS.find((row) => row.value === method)?.mode ?? "API";
 

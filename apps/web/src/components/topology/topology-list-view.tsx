@@ -1,5 +1,5 @@
 import type { ProjectTopologyResponse, TopologyHealthStatus, TopologyNodeType } from "./topology-types";
-import { healthClassName, healthLabel } from "./topology-types";
+import { canonicalDiscoveryLabel, healthClassName, healthLabel } from "./topology-types";
 
 type Props = {
   topology: ProjectTopologyResponse;
@@ -65,6 +65,7 @@ export function TopologyListView({
             <th>Health</th>
             <th>Location</th>
             <th>Source</th>
+            <th>Discovery state</th>
             <th>Alerts</th>
             <th>Incidents</th>
           </tr>
@@ -83,6 +84,7 @@ export function TopologyListView({
               </td>
               <td>{topology.nodeContext[node.id]?.canonical?.location?.name ?? "Unbound"}</td>
               <td>{topology.nodeContext[node.id]?.canonical?.provenance ?? "Legacy"}</td>
+              <td>{canonicalDiscoveryLabel(topology.nodeContext[node.id]?.canonical)}</td>
               <td>{node.risk.openAlerts}</td>
               <td>{node.risk.unresolvedIncidents}</td>
             </tr>

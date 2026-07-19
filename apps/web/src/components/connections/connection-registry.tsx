@@ -2,6 +2,7 @@
 
 import {
   authTypeLabel,
+  connectionProductStatus,
   configurationString,
   formatLatency,
   hostFromBaseUrl,
@@ -101,6 +102,7 @@ export function ConnectionRegistry({
             <tbody>
               {connections.map((connection) => {
                 const method = modeToMethod(connection.connectorType || connection.mode);
+                const productStatus = connectionProductStatus(connection.connectorType || connection.mode);
                 const credentialStatus = deriveConnectionCredentialStatus(connection);
                 const rotating = rotateId === connection.id;
                 const credentialEnv = connection.credentialEnvironment ?? connection.environment;
@@ -121,6 +123,9 @@ export function ConnectionRegistry({
                     <td data-label="Name">
                       {connection.name}
                       <small>{methodLabel(method)}</small>
+                      <small data-testid={`connection-product-status-${connection.id}`}>
+                        Catalogue: {productStatus}
+                      </small>
                     </td>
                     <td data-label="Credential">
                       <span

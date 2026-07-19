@@ -65,6 +65,7 @@ type IntelligenceSnapshot = {
   }>;
   deployments: Array<{
     id: string;
+    projectId: string;
     summary: string;
     deployedAt: string;
     version: string | null;

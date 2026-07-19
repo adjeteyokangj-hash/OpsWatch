@@ -4,6 +4,8 @@ import { useParams } from "next/navigation";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
 import { ServiceList } from "../../../../components/projects/service-list";
 import { PageSection } from "../../../../components/ui/page-section";
+import { EmptyState } from "../../../../components/ui/empty-state";
+import { ProductTruthStatus } from "../../../../components/ui/product-truth-status";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 
 const layerTitle: Record<string, string> = {
@@ -36,8 +38,22 @@ export default function MonitoredAreasPage() {
       loading={loading}
       error={error}
     >
+      <section className="panel">
+        <ProductTruthStatus state="Foundation" />
+        <p className="dashboard-subtle">
+          Infrastructure, serverless, and network entities appear only when declared or discovered through
+          canonical topology evidence. OpsWatch does not infer them from names.
+        </p>
+      </section>
       {loading ? (
         <section className="panel">Loading monitored areas…</section>
+      ) : services.length === 0 ? (
+        <section className="panel" data-testid="monitored-areas-empty">
+          <EmptyState
+            title="No monitored areas"
+            description="Declare services and dependencies, connect verified OpenTelemetry topology evidence, or configure a supported connection to populate this view."
+          />
+        </section>
       ) : (
         layerOrder.map((layer) => {
           const rows = services.filter((service: any) => service.type === layer);

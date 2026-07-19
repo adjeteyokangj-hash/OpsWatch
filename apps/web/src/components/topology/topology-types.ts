@@ -115,6 +115,19 @@ export const healthLabel = (status: TopologyHealthStatus): string => {
   return status.charAt(0) + status.slice(1).toLowerCase();
 };
 
+export const canonicalDiscoveryLabel = (
+  canonical: TopologyNodeContext["canonical"] | null | undefined
+): "Declared" | "Discovered" | "Manually confirmed" | "Discovery pending" | "Stale" | "Test/seed data" => {
+  if (!canonical) return "Discovery pending";
+  if (canonical.isTestSeed) return "Test/seed data";
+  if (canonical.freshness === "STALE" || canonical.freshness === "INACTIVE") return "Stale";
+  if (canonical.confirmationState.toUpperCase().includes("CONFIRM")) return "Manually confirmed";
+  const provenance = `${canonical.provenance} ${canonical.discoveryState}`.toUpperCase();
+  if (provenance.includes("DISCOVER")) return "Discovered";
+  if (provenance.includes("DECLAR") || canonical.legacyServiceId) return "Declared";
+  return "Discovery pending";
+};
+
 /** Honest explanation when health cannot be confirmed from real checks/heartbeats. */
 export const unknownHealthReason = (input: {
   monitoringState?: "AWAITING_FIRST_CHECK" | "MONITORED" | string | null;

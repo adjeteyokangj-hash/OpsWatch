@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { ProjectTopologyResponse, TopologyNode } from "./topology-types";
-import { healthClassName, healthLabel, unknownHealthReason } from "./topology-types";
+import { canonicalDiscoveryLabel, healthClassName, healthLabel, unknownHealthReason } from "./topology-types";
 import { TopologySparkline } from "./topology-sparkline";
 import { TopologyApplicationPanel } from "./topology-application-panel";
 import { buildNodeRelationshipDiagnostics } from "./topology-relationship";
@@ -85,10 +85,8 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
                 : "Project"
           },
           {
-            label: "Entity state",
-            value: context.canonical.isTestSeed
-              ? "Seeded test data"
-              : context.canonical.confirmationState
+            label: "Discovery state",
+            value: canonicalDiscoveryLabel(context.canonical)
           }
         ]
       : []),

@@ -441,7 +441,7 @@ export default function DashboardPage() {
             <>
               <p>Current checks: {checkSummary?.pass ?? 0} passing, {checkSummary?.fail ?? 0} failing, {checkSummary?.warn ?? 0} warning.</p>
               {weakestServices.length === 0 ? (
-                <p>Monitoring healthy. No concentrated service failures.</p>
+                <p>No failing or warning results are present in the loaded check data. This is not an uptime claim.</p>
               ) : (
                 <div className="activity-feed">
                   {weakestServices.map(([serviceName, issueCount]) => (
@@ -512,7 +512,10 @@ export default function DashboardPage() {
       <section className="two-col dashboard-secondary">
         <PageSection title="Actionable recommendations" description="Open insights from product monitoring analysis.">
           {loading ? <p>Loading recommendations…</p> : recommendations.length === 0 ? (
-            <EmptyState title="No active recommendations" description="Monitoring looks healthy across tracked projects." />
+            <EmptyState
+              title="No active recommendations"
+              description="No open calculated recommendations are available from the loaded evidence. This does not prove monitoring coverage or health."
+            />
           ) : (
             <div className="activity-feed">
               {recommendations.map((recommendation) => (

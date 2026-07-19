@@ -48,6 +48,7 @@ export type ConnectionConfigField = {
 export type ConnectionManifest = {
   version: string;
   displayName: string;
+  productStatus: "Available" | "Preview" | "Planned" | "Requires configuration";
   requiredCapabilities: string[];
   supportedAuthMethods: string[];
   availableCapabilities: string[];
@@ -71,16 +72,16 @@ const foundationHooks: ConnectionManifest["foundationHooks"] = [
 ];
 
 const manifests: Record<ConnectionMode, ConnectionManifest> = {
-  AGENTLESS: { version: "1.1", displayName: "Generic HTTP/HTTPS monitor", requiredCapabilities: ["health_check"], supportedAuthMethods: ["NONE", "API_KEY", "BEARER", "BASIC", "CUSTOM_HEADER"], availableCapabilities: ["health_check", "latency"], configurationSchema: endpointFields, foundationHooks },
-  HEARTBEAT: { version: "1.0", displayName: "Heartbeat ingest", requiredCapabilities: ["heartbeat"], supportedAuthMethods: ["HMAC", "API_KEY"], availableCapabilities: ["heartbeat", "deployment_metadata"], configurationSchema: [], foundationHooks },
-  WEBHOOK: { version: "1.0", displayName: "Signed webhook event ingest", requiredCapabilities: ["event_ingest"], supportedAuthMethods: ["HMAC"], availableCapabilities: ["event_ingest", "deployment_events"], configurationSchema: [], foundationHooks },
-  API: { version: "1.1", displayName: "Generic REST/API check", requiredCapabilities: ["api_probe"], supportedAuthMethods: ["NONE", "API_KEY", "BEARER", "BASIC", "CUSTOM_HEADER"], availableCapabilities: ["api_probe", "discovery"], configurationSchema: [...endpointFields, { key: "discoveryPath", label: "Discovery path", type: "string", description: "Optional GET path used for real response-key discovery." }], foundationHooks },
-  SYNTHETIC: { version: "1.0", displayName: "Synthetic journey contract", requiredCapabilities: ["synthetic_run"], supportedAuthMethods: ["NONE"], availableCapabilities: ["synthetic_run"], configurationSchema: [], foundationHooks },
-  OTEL_COLLECTOR: { version: "1.0", displayName: "OpenTelemetry collector contract", requiredCapabilities: ["telemetry_ingest"], supportedAuthMethods: ["API_KEY"], availableCapabilities: ["telemetry_ingest", "traces", "metrics", "logs"], configurationSchema: [{ key: "serviceName", label: "Expected service.name", type: "string", required: true, description: "Must exactly match the Collector resource service.name." }], foundationHooks },
-  SDK: { version: "1.0", displayName: "SDK event ingest contract", requiredCapabilities: ["event_ingest"], supportedAuthMethods: ["API_KEY", "HMAC"], availableCapabilities: ["event_ingest", "traces", "deployment_metadata"], configurationSchema: [], foundationHooks },
-  CLOUD_CONNECTOR: { version: "1.0", displayName: "Cloud connector contract", requiredCapabilities: ["cloud_read"], supportedAuthMethods: ["OAUTH2", "API_KEY"], availableCapabilities: ["cloud_read"], configurationSchema: [], foundationHooks },
-  DATABASE_CONNECTOR: { version: "1.0", displayName: "Database connector contract", requiredCapabilities: ["database_probe"], supportedAuthMethods: ["BASIC", "API_KEY", "MTLS"], availableCapabilities: [], configurationSchema: [], foundationHooks },
-  CUSTOM_CONNECTOR: { version: "1.0", displayName: "Custom connector contract", requiredCapabilities: [], supportedAuthMethods: ["NONE", "API_KEY", "HMAC", "OAUTH2", "MTLS"], availableCapabilities: [], configurationSchema: [], foundationHooks }
+  AGENTLESS: { version: "1.1", displayName: "Generic HTTP/HTTPS monitor", productStatus: "Available", requiredCapabilities: ["health_check"], supportedAuthMethods: ["NONE", "API_KEY", "BEARER", "BASIC", "CUSTOM_HEADER"], availableCapabilities: ["health_check", "latency"], configurationSchema: endpointFields, foundationHooks },
+  HEARTBEAT: { version: "1.0", displayName: "Heartbeat ingest", productStatus: "Requires configuration", requiredCapabilities: ["heartbeat"], supportedAuthMethods: ["HMAC", "API_KEY"], availableCapabilities: ["heartbeat", "deployment_metadata"], configurationSchema: [], foundationHooks },
+  WEBHOOK: { version: "1.0", displayName: "Signed webhook event ingest", productStatus: "Requires configuration", requiredCapabilities: ["event_ingest"], supportedAuthMethods: ["HMAC"], availableCapabilities: ["event_ingest", "deployment_events"], configurationSchema: [], foundationHooks },
+  API: { version: "1.1", displayName: "Generic REST/API check", productStatus: "Available", requiredCapabilities: ["api_probe"], supportedAuthMethods: ["NONE", "API_KEY", "BEARER", "BASIC", "CUSTOM_HEADER"], availableCapabilities: ["api_probe", "discovery"], configurationSchema: [...endpointFields, { key: "discoveryPath", label: "Discovery path", type: "string", description: "Optional GET path used for real response-key discovery." }], foundationHooks },
+  SYNTHETIC: { version: "1.0", displayName: "Synthetic journey draft contract", productStatus: "Planned", requiredCapabilities: [], supportedAuthMethods: ["NONE"], availableCapabilities: [], configurationSchema: [], foundationHooks },
+  OTEL_COLLECTOR: { version: "1.0", displayName: "OpenTelemetry collector ingest", productStatus: "Requires configuration", requiredCapabilities: ["telemetry_ingest"], supportedAuthMethods: ["API_KEY"], availableCapabilities: ["telemetry_ingest", "traces", "metrics", "logs"], configurationSchema: [{ key: "serviceName", label: "Expected service.name", type: "string", required: true, description: "Must exactly match the Collector resource service.name." }], foundationHooks },
+  SDK: { version: "1.0", displayName: "SDK event ingest", productStatus: "Requires configuration", requiredCapabilities: ["event_ingest"], supportedAuthMethods: ["API_KEY", "HMAC"], availableCapabilities: ["event_ingest", "traces", "deployment_metadata"], configurationSchema: [], foundationHooks },
+  CLOUD_CONNECTOR: { version: "1.0", displayName: "Cloud connector contract", productStatus: "Planned", requiredCapabilities: [], supportedAuthMethods: ["OAUTH2", "API_KEY"], availableCapabilities: [], configurationSchema: [], foundationHooks },
+  DATABASE_CONNECTOR: { version: "1.0", displayName: "Database connector contract", productStatus: "Planned", requiredCapabilities: [], supportedAuthMethods: ["BASIC", "API_KEY", "MTLS"], availableCapabilities: [], configurationSchema: [], foundationHooks },
+  CUSTOM_CONNECTOR: { version: "1.0", displayName: "Custom connector contract", productStatus: "Preview", requiredCapabilities: [], supportedAuthMethods: ["NONE", "API_KEY", "HMAC", "OAUTH2", "MTLS"], availableCapabilities: [], configurationSchema: [], foundationHooks }
 };
 
 const sensitiveConfigurationKey = /(secret|password|token|credential|private.?key|api.?key|authorization|cookie)/i;

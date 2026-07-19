@@ -21,6 +21,7 @@ type ChangeEvent = {
 
 type DeploymentRow = {
   id: string;
+  projectId: string;
   summary: string;
   deployedAt: string;
   version: string | null;
@@ -50,8 +51,7 @@ export default function ProjectDeploymentsPage() {
           }))
         ]);
         setChangeEvents(events ?? []);
-        // Intelligence snapshot is org-wide; show rows correlated via change events for this project.
-        setDeployments(intelligence.deployments ?? []);
+        setDeployments((intelligence.deployments ?? []).filter((row) => row.projectId === projectId));
       } catch (err: unknown) {
         setDataError(err instanceof Error ? err.message : "Failed to load deployments");
       } finally {
@@ -100,8 +100,8 @@ export default function ProjectDeploymentsPage() {
       </PageSection>
 
       <PageSection
-        title="Deployment intelligence (org)"
-        description="Org deployment records with in-window incident/alert correlation. Empty until deploys are observed."
+        title="Calculated deployment correlation"
+        description="Application deployment records with alerts/incidents observed in the configured time window. Correlation is not causation."
       >
         {deployments.length === 0 ? (
           <EmptyState title="No deployment intelligence yet" description="Records populate from change events via the intelligence foundation." />

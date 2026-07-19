@@ -2,15 +2,15 @@ export const CONNECTION_ENVIRONMENTS = ["dev", "test", "staging", "production"] 
 export type ConnectionEnvironment = (typeof CONNECTION_ENVIRONMENTS)[number];
 
 export const CONNECTION_METHODS = [
-  { value: "REST_API", label: "REST API", mode: "API" },
-  { value: "HEARTBEAT", label: "Heartbeat", mode: "HEARTBEAT" },
-  { value: "WEBHOOK", label: "Webhook", mode: "WEBHOOK" },
-  { value: "AGENTLESS", label: "Agentless URL", mode: "AGENTLESS" },
-  { value: "SDK", label: "SDK", mode: "SDK" },
-  { value: "OTEL", label: "OpenTelemetry", mode: "OTEL_COLLECTOR" },
-  { value: "CLOUD", label: "Cloud", mode: "CLOUD_CONNECTOR" },
-  { value: "DATABASE", label: "Database", mode: "DATABASE_CONNECTOR" },
-  { value: "CUSTOM", label: "Custom", mode: "CUSTOM_CONNECTOR" }
+  { value: "REST_API", label: "REST API", mode: "API", productStatus: "Available" },
+  { value: "HEARTBEAT", label: "Heartbeat", mode: "HEARTBEAT", productStatus: "Requires configuration" },
+  { value: "WEBHOOK", label: "Webhook", mode: "WEBHOOK", productStatus: "Requires configuration" },
+  { value: "AGENTLESS", label: "Agentless URL", mode: "AGENTLESS", productStatus: "Available" },
+  { value: "SDK", label: "SDK", mode: "SDK", productStatus: "Requires configuration" },
+  { value: "OTEL", label: "OpenTelemetry", mode: "OTEL_COLLECTOR", productStatus: "Requires configuration" },
+  { value: "CLOUD", label: "Cloud", mode: "CLOUD_CONNECTOR", productStatus: "Planned" },
+  { value: "DATABASE", label: "Database", mode: "DATABASE_CONNECTOR", productStatus: "Planned" },
+  { value: "CUSTOM", label: "Custom", mode: "CUSTOM_CONNECTOR", productStatus: "Preview" }
 ] as const;
 
 export type ConnectionMethodValue = (typeof CONNECTION_METHODS)[number]["value"];

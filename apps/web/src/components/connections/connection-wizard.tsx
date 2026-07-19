@@ -18,6 +18,7 @@ import {
   isRestMethod
 } from "./connection-form-state";
 import { ConnectionWizardSummary } from "./connection-wizard-summary";
+import { StatusBadge } from "../ui/status-badge";
 import {
   AUTH_TYPES,
   CONNECTION_ENVIRONMENTS,
@@ -85,6 +86,8 @@ export function ConnectionWizard({
   };
 
   const detailsValid = Boolean(form.applicationId && form.name.trim());
+  const selectedMethod = CONNECTION_METHODS.find((row) => row.value === form.method);
+  const runtimeAvailable = selectedMethod?.productStatus === "Available";
   const configurationValid =
     !isRestMethod(form.method) ||
     (Boolean(form.baseUrl.trim()) && Boolean(form.healthPath.trim()) && (!authRequiresSecret(form.authType) || Boolean(form.authSecret.trim()) || Boolean(editingConnectionId)));
@@ -308,12 +311,25 @@ export function ConnectionWizard({
                   }
                 >
                   {CONNECTION_METHODS.map((method) => (
-                    <option key={method.value} value={method.value}>
-                      {method.label}
+                    <option key={method.value} value={method.value} disabled={method.productStatus === "Planned"}>
+                      {method.label} — {method.productStatus}
                     </option>
                   ))}
                 </select>
               </label>
+              {selectedMethod ? (
+                <p className="dashboard-subtle" data-testid="connection-catalogue-status">
+                  <StatusBadge
+                    label={selectedMethod.productStatus}
+                    tone={runtimeAvailable ? "success" : selectedMethod.productStatus === "Planned" ? "muted" : "warning"}
+                  />{" "}
+                  {runtimeAvailable
+                    ? "Complete create, test, save, and scheduled HTTP runtime path."
+                    : selectedMethod.productStatus === "Requires configuration"
+                      ? "Inbound/runtime evidence requires provider-side credentials and setup; this wizard does not prove it active."
+                      : "Manifest or draft contract only; active monitoring cannot be started here."}
+                </p>
+              ) : null}
             </fieldset>
           ) : null}
 
@@ -519,14 +535,16 @@ export function ConnectionWizard({
             <fieldset className="connection-wizard__step" data-testid="connection-step-test-save">
               <legend>Test and save</legend>
               <p className="dashboard-subtle">
-                Test against the live endpoint before monitoring. OpsWatch never fakes a successful result.
+                {runtimeAvailable
+                  ? "Test against the live endpoint before monitoring. OpsWatch never fakes a successful result."
+                  : "This mode does not have a complete test-and-runtime path in this wizard. It may only be saved as configuration."}
               </p>
               <div className="connection-wizard__actions">
                 <button
                   type="button"
                   className="secondary-button"
                   data-testid="connection-test-button"
-                  disabled={busy !== "idle"}
+                  disabled={busy !== "idle" || !runtimeAvailable}
                   onClick={() => void runUnsavedTest()}
                 >
                   {busy === "testing" ? "Testing…" : "Test connection"}
@@ -544,7 +562,7 @@ export function ConnectionWizard({
                   type="button"
                   className="primary-button"
                   data-testid="connection-save-monitor-button"
-                  disabled={busy !== "idle" || !testSucceeded}
+                  disabled={busy !== "idle" || !testSucceeded || !runtimeAvailable}
                   onClick={() => void saveAndStartMonitoring()}
                 >
                   {busy === "monitoring" ? "Starting…" : "Save and start monitoring"}

@@ -64,6 +64,7 @@ export type IntelligenceSnapshot = {
   }>;
   deployments: Array<{
     id: string;
+    projectId: string;
     summary: string;
     deployedAt: string;
     version: string | null;
@@ -438,6 +439,7 @@ export const buildIntelligenceSnapshot = async (
     })),
     deployments: deploymentRows.map((row) => ({
       id: row.id,
+      projectId: row.projectId,
       summary: row.summary,
       deployedAt: row.deployedAt.toISOString(),
       version: row.version,
