@@ -64,7 +64,7 @@ export type IntelligenceSnapshot = {
   }>;
   deployments: Array<{
     id: string;
-    projectId: string;
+    projectId: string | null;
     summary: string;
     deployedAt: string;
     version: string | null;

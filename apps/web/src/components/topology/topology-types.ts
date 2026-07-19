@@ -121,7 +121,8 @@ export const canonicalDiscoveryLabel = (
   if (!canonical) return "Discovery pending";
   if (canonical.isTestSeed) return "Test/seed data";
   if (canonical.freshness === "STALE" || canonical.freshness === "INACTIVE") return "Stale";
-  if (canonical.confirmationState.toUpperCase().includes("CONFIRM")) return "Manually confirmed";
+  const confirmation = canonical.confirmationState.toUpperCase();
+  if (confirmation === "CONFIRMED" || confirmation === "MANUALLY_CONFIRMED") return "Manually confirmed";
   const provenance = `${canonical.provenance} ${canonical.discoveryState}`.toUpperCase();
   if (provenance.includes("DISCOVER")) return "Discovered";
   if (provenance.includes("DECLAR") || canonical.legacyServiceId) return "Declared";

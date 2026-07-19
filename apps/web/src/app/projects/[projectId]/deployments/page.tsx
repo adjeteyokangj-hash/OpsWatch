@@ -21,7 +21,7 @@ type ChangeEvent = {
 
 type DeploymentRow = {
   id: string;
-  projectId: string;
+  projectId: string | null;
   summary: string;
   deployedAt: string;
   version: string | null;

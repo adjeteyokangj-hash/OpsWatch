@@ -341,4 +341,26 @@ describe("ConnectionWizard", () => {
     expect(screen.getByTestId("connection-save-monitor-button")).toBeDisabled();
     expect(within(screen.getByTestId("connection-test-result")).getByText(/test failed/i)).toBeInTheDocument();
   });
+
+  it("does not present manifest-only catalogue modes as working monitoring", () => {
+    render(
+      <ConnectionWizard
+        projects={projects}
+        initialApplicationId="app-1"
+        onCancel={() => undefined}
+        onSaved={async () => undefined}
+      />
+    );
+
+    const method = screen.getByTestId("connection-method");
+    expect(within(method).getByRole("option", { name: "REST API — Available" })).toBeEnabled();
+    expect(within(method).getByRole("option", { name: "Cloud — Planned" })).toBeDisabled();
+
+    fireEvent.change(method, { target: { value: "CUSTOM" } });
+    expect(screen.getByTestId("connection-catalogue-status")).toHaveTextContent("Preview");
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    expect(screen.getByTestId("connection-test-button")).toBeDisabled();
+    expect(screen.getByTestId("connection-save-monitor-button")).toBeDisabled();
+  });
 });
