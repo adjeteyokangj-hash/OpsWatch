@@ -9,6 +9,9 @@ vi.mock("../lib/prisma", () => ({
     incident: { findMany: vi.fn() },
     sLODefinition: { findMany: vi.fn() },
     heartbeat: { findMany: vi.fn() },
+    operationalEntity: { findMany: vi.fn() },
+    operationalRelationship: { count: vi.fn(), findMany: vi.fn() },
+    normalizedOperationalSignal: { count: vi.fn() },
     $queryRaw: vi.fn()
   }
 }));
@@ -47,6 +50,10 @@ describe("topology-loader.service", () => {
     vi.mocked(prisma.incident.findMany).mockResolvedValue([]);
     vi.mocked(prisma.sLODefinition.findMany).mockResolvedValue([]);
     vi.mocked(prisma.heartbeat.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.operationalEntity.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.operationalRelationship.count).mockResolvedValue(0);
+    vi.mocked(prisma.operationalRelationship.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.normalizedOperationalSignal.count).mockResolvedValue(0);
     vi.mocked(loadRecentCheckResultsByCheckIds).mockResolvedValue(
       new Map([
         [

@@ -169,6 +169,22 @@ describe("connection-credential.service", () => {
     expect(resolved).toHaveLength(0);
   });
 
+  it("does not fall back to legacy ciphertext when a managed family exists but is empty", async () => {
+    managedFindMany.mockResolvedValue([]);
+    const resolved = await resolveConnectionSecrets({
+      organizationId: "org-1",
+      credentialFamilyId: "family-1",
+      id: "connection-1",
+      projectId: "project-1",
+      environment: "production",
+      secretRef: "env://SHOULD_NOT_USE",
+      managedSecretCiphertext: "legacy-cipher",
+      managedSecretIv: "legacy-iv",
+      managedSecretAuthTag: "legacy-tag"
+    });
+    expect(resolved).toEqual([]);
+  });
+
   it("sanitizes probe errors that echo Authorization headers or secrets", () => {
     const sanitized = sanitizeConnectionError(
       "Request failed Authorization: Bearer leaked-secret-value",
