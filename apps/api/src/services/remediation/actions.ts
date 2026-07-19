@@ -15,7 +15,11 @@ export type RemediationAction =
   | "ROTATE_WEBHOOK_SECRET"
   | "CHECK_PROVIDER_STATUS"
   | "OPEN_RUNBOOK"
-  | "REQUEST_HUMAN_REVIEW";
+  | "REQUEST_HUMAN_REVIEW"
+  | "TEST_CONNECTION"
+  | "REFRESH_CONNECTION_STATUS"
+  | "REENABLE_CONNECTION"
+  | "REQUEST_FRESH_HEARTBEAT";
 
 export type ActionGroup = "GROUP_A_SAFE" | "GROUP_B_APPROVAL" | "GROUP_C_SUPPORT";
 export type PolicyTier = "SAFE_AUTOMATIC" | "APPROVAL_REQUIRED" | "MANUAL_ONLY";
@@ -279,6 +283,52 @@ export const REMEDIATION_REGISTRY: Record<RemediationAction, ActionDef> = {
     impactTier: "LOW",
     kind: "support",
     requiredContextFields: ["incidentId"],
+    requiredEnvVars: []
+  },
+
+  // Phase 7 — connection / heartbeat (real OpsWatch paths)
+  TEST_CONNECTION: {
+    label: "Test connection",
+    description: "Run the agentless connection probe and record health evidence.",
+    group: "GROUP_A_SAFE",
+    requiresApproval: false,
+    policyTier: "SAFE_AUTOMATIC",
+    impactTier: "LOW",
+    kind: "fix",
+    requiredContextFields: [],
+    requiredEnvVars: []
+  },
+  REFRESH_CONNECTION_STATUS: {
+    label: "Refresh connection status",
+    description: "Re-read connection health without mutating credentials.",
+    group: "GROUP_A_SAFE",
+    requiresApproval: false,
+    policyTier: "SAFE_AUTOMATIC",
+    impactTier: "LOW",
+    kind: "fix",
+    requiredContextFields: [],
+    requiredEnvVars: []
+  },
+  REENABLE_CONNECTION: {
+    label: "Re-enable connection",
+    description: "Re-activate a disabled connection and verify with a fresh probe.",
+    group: "GROUP_B_APPROVAL",
+    requiresApproval: true,
+    policyTier: "APPROVAL_REQUIRED",
+    impactTier: "MEDIUM",
+    kind: "fix",
+    requiredContextFields: [],
+    requiredEnvVars: []
+  },
+  REQUEST_FRESH_HEARTBEAT: {
+    label: "Request fresh heartbeat",
+    description: "Request fresh heartbeat evidence and verify subsequent ingest.",
+    group: "GROUP_A_SAFE",
+    requiresApproval: false,
+    policyTier: "SAFE_AUTOMATIC",
+    impactTier: "LOW",
+    kind: "fix",
+    requiredContextFields: ["projectId"],
     requiredEnvVars: []
   }
 };

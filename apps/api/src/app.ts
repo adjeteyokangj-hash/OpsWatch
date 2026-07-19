@@ -23,6 +23,7 @@ import { statusRouter } from "./routes/status.routes";
 import { settingsRouter } from "./routes/settings.routes";
 import { productInsightsRouter } from "./routes/product-insights.routes";
 import remediationRouter from "./routes/remediation.routes";
+import { ensureRemediationProvidersRegistered } from "./services/remediation/providers/register-providers";
 import { usersRouter } from "./routes/users.routes";
 import { billingRouter } from "./routes/billing.routes";
 import { subscriptionRouter } from "./routes/subscription.routes";
@@ -123,5 +124,7 @@ app.use(API_PREFIX, requireAuth, intelligenceRouter);
 app.use(API_PREFIX, requireAuth, connectionsRouter);
   app.use(API_PREFIX, requireAuth, logsApmRouter);
   app.use(`${API_PREFIX}/remediation`, requireAuth, remediationRouter);
+
+ensureRemediationProvidersRegistered();
 
 app.use(errorHandler);

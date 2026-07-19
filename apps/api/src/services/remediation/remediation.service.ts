@@ -32,6 +32,12 @@ import { executeCheckProviderStatus } from "./executors/check-provider-status.ex
 import { executeOpenRunbook } from "./executors/open-runbook.executor";
 import { executeRequestHumanReview } from "./executors/request-human-review.executor";
 import { executeReviewHttpExpectedStatus } from "./executors/review-http-expected-status.executor";
+import {
+  executeTestConnection,
+  executeRefreshConnectionStatus,
+  executeReenableConnection,
+  executeRequestFreshHeartbeat
+} from "./executors/connection-actions.executor";
 
 const AUTO_REMEDIATION_ENABLED =
   process.env.AUTO_REMEDIATION_ENABLED !== "false";
@@ -150,7 +156,11 @@ const executors: Record<RemediationAction, RemediationExecutor> = {
   CHECK_PROVIDER_STATUS: executeCheckProviderStatus,
   OPEN_RUNBOOK: executeOpenRunbook,
   REQUEST_HUMAN_REVIEW: executeRequestHumanReview,
-  REVIEW_HTTP_EXPECTED_STATUS: executeReviewHttpExpectedStatus
+  REVIEW_HTTP_EXPECTED_STATUS: executeReviewHttpExpectedStatus,
+  TEST_CONNECTION: executeTestConnection,
+  REFRESH_CONNECTION_STATUS: executeRefreshConnectionStatus,
+  REENABLE_CONNECTION: executeReenableConnection,
+  REQUEST_FRESH_HEARTBEAT: executeRequestFreshHeartbeat
 };
 
 export interface ExecuteRemediationOutput {
