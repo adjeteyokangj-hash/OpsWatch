@@ -40,6 +40,30 @@ const activeMonitoring = {
   }
 };
 
+const registerApp = async (name: string) => {
+  render(
+    <RegisterApplicationWizard
+      onClose={() => undefined}
+      onCreated={() => undefined}
+    />
+  );
+
+  await screen.findByText("Test Org");
+  fireEvent.change(screen.getByLabelText("Application name *"), {
+    target: { value: name }
+  });
+  fireEvent.change(screen.getByLabelText("Environment *"), {
+    target: { value: "testing" }
+  });
+  fireEvent.change(screen.getByLabelText(/Public application URL \(optional\)/), {
+    target: { value: "https://www.example.com" }
+  });
+  fireEvent.change(screen.getByLabelText(/Admin URL \(optional\)/), {
+    target: { value: "https://admin.example.com" }
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Register application" }));
+};
+
 describe("RegisterApplicationWizard URL-only onboarding", () => {
   afterEach(() => {
     cleanup();
@@ -77,27 +101,7 @@ describe("RegisterApplicationWizard URL-only onboarding", () => {
       throw new Error(`Unexpected API call: ${path}`);
     });
 
-    render(
-      <RegisterApplicationWizard
-        onClose={() => undefined}
-        onCreated={() => undefined}
-      />
-    );
-
-    await screen.findByText("Test Org");
-    fireEvent.change(screen.getByLabelText("Application name *"), {
-      target: { value: "Phase 1 Test App" }
-    });
-    fireEvent.change(screen.getByLabelText("Environment *"), {
-      target: { value: "testing" }
-    });
-    fireEvent.change(screen.getByLabelText(/Public application URL \(optional\)/), {
-      target: { value: "https://www.example.com" }
-    });
-    fireEvent.change(screen.getByLabelText(/Admin URL \(optional\)/), {
-      target: { value: "https://admin.example.com" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Register application" }));
+    await registerApp("Phase 1 Test App");
 
     await screen.findByText("Setting up external monitoring…");
     expect(screen.getByText("Website connection created")).toBeInTheDocument();
@@ -115,5 +119,46 @@ describe("RegisterApplicationWizard URL-only onboarding", () => {
         })
       );
     });
+  });
+
+  it("shows signing secret configured hint when reused credentials omit plaintext", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (path, options) => {
+      if (path === "/org") return { id: "org-1", name: "Test Org", slug: "test-org" } as never;
+      if (path === "/projects" && options?.method === "POST") {
+        return {
+          id: "project-2",
+          name: "Reused Secret App",
+          slug: "reused-secret-app",
+          environment: "testing",
+          status: "UNKNOWN",
+          monitoringSetup: activeMonitoring,
+          ingestCredentials: {
+            apiKey: "shown-once",
+            signingSecret: "",
+            signingSecretConfigured: true,
+            reused: true,
+            projectSlug: "reused-secret-app"
+          }
+        } as never;
+      }
+      if (path === "/projects/project-2") {
+        return {
+          id: "project-2",
+          name: "Reused Secret App",
+          slug: "reused-secret-app",
+          status: "UNKNOWN",
+          heartbeats: [],
+          monitoringSetup: activeMonitoring
+        } as never;
+      }
+      throw new Error(`Unexpected API call: ${path}`);
+    });
+
+    await registerApp("Reused Secret App");
+    await screen.findByText("Setting up external monitoring…");
+    fireEvent.click(screen.getByRole("button", { name: "Continue →" }));
+
+    expect(screen.getByTestId("signing-secret-configured")).toHaveTextContent("Signing secret already configured");
+    expect(screen.queryByLabelText("Signing secret")).not.toBeInTheDocument();
   });
 });

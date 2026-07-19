@@ -41,6 +41,13 @@ export type ConnectionRecord = {
   installationStatus?: string;
   project: ProjectOption | null;
   secretConfigured: boolean;
+  /** Managed credential lifecycle status when exposed by the API. */
+  credentialStatus?: string | null;
+  credentialType?: string | null;
+  credentialExpiresAt?: string | null;
+  credentialEnvironment?: string | null;
+  credentialVersion?: number | null;
+  credentialLastRotatedAt?: string | null;
   lastError: string | null;
   lastSuccessAt?: string | null;
   lastFailureAt?: string | null;
@@ -55,6 +62,8 @@ export type ConnectionRecord = {
   healthPath?: string | null;
   discoveryPath?: string | null;
   connectorType?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 export type GuidedConnectionForm = {

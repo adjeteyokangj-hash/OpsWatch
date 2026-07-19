@@ -10,6 +10,7 @@ import { ConnectionWizard } from "../../components/connections/connection-wizard
 import { connectionFromRecord } from "../../components/connections/connection-form-state";
 import type { ConnectionRecord, GuidedConnectionForm, ProjectOption } from "../../components/connections/types";
 import { apiFetch } from "../../lib/api";
+import { fetchSessionUser } from "../../lib/auth";
 
 const safeReturnPath = (value: string | null): string | null => {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
@@ -27,8 +28,9 @@ function ConnectionsPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showWizard, setShowWizard] = useState(Boolean(scopedProjectId));
-  const [editing, setEditing] = useState<{ id: string; form: GuidedConnectionForm } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; form: GuidedConnectionForm; secretConfigured: boolean } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   const scopedProjectName = useMemo(
     () => projects.find((row) => row.id === scopedProjectId)?.name ?? null,
@@ -56,13 +58,27 @@ function ConnectionsPageContent() {
     void load();
   }, []);
 
+  useEffect(() => {
+    void fetchSessionUser().then((user) => {
+      if (!user) {
+        setIsAdmin(null);
+        return;
+      }
+      setIsAdmin(user.role === "ADMIN");
+    });
+  }, []);
+
   const openCreate = () => {
     setEditing(null);
     setShowWizard(true);
   };
 
   const openEdit = (connection: ConnectionRecord) => {
-    setEditing({ id: connection.id, form: connectionFromRecord(connection) });
+    setEditing({
+      id: connection.id,
+      form: connectionFromRecord(connection),
+      secretConfigured: Boolean(connection.secretConfigured)
+    });
     setShowWizard(true);
   };
 
@@ -179,6 +195,7 @@ function ConnectionsPageContent() {
           initialApplicationId={editing ? editing.form.applicationId : scopedProjectId}
           initialForm={editing?.form}
           editingConnectionId={editing?.id ?? null}
+          editingSecretConfigured={editing?.secretConfigured ?? false}
           onCancel={closeWizard}
           onSaved={handleSaved}
         />
@@ -187,6 +204,7 @@ function ConnectionsPageContent() {
         connections={connections}
         loading={loading}
         busyId={busyId}
+        isAdmin={isAdmin}
         onAdd={openCreate}
         onTest={(id) => void testConnection(id)}
         onEdit={openEdit}

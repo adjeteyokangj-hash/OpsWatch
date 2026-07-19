@@ -22,6 +22,7 @@ type WizardStep = "register" | "success" | "credentials" | "verification" | "dis
 type IngestCredentials = {
   apiKey?: string;
   signingSecret?: string;
+  signingSecretConfigured?: boolean;
   projectSlug?: string;
   scopes?: string[];
   reused?: boolean;
@@ -792,6 +793,11 @@ export function RegisterApplicationWizard({
               value={credentials.signingSecret}
               warning="This signing secret is shown only once. Copy it now. You won&apos;t be able to view it again."
             />
+          ) : credentials?.signingSecretConfigured ? (
+            <div className="hint-panel" data-testid="signing-secret-configured">
+              <strong>Signing secret already configured</strong>
+              <p>The signing secret for this application was provisioned earlier and cannot be shown again.</p>
+            </div>
           ) : null}
 
           <label>

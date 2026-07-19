@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
 import { apiFetch } from "../../lib/api";
+import {
+  canRevokeApiKey,
+  canRotateApiKey,
+  credentialStatusLabel,
+  credentialStatusPillClass,
+  formatCredentialDate,
+  formatCredentialDateOrNever
+} from "../../lib/credential-status";
 
 type OrgData = {
   id: string;
@@ -48,11 +56,17 @@ type ApiKeyRow = {
   lastUsedIp: string | null;
   lastUsedUserAgent: string | null;
   expiresAt: string | null;
+  graceExpiresAt?: string | null;
   revokedAt: string | null;
   revokeReason: string | null;
+  createdAt?: string | null;
   requests24h: number;
   failedAttempts24h: number;
-  status: "ACTIVE" | "REVOKED" | "EXPIRED";
+  status: "ACTIVE" | "REVOKED" | "EXPIRED" | "EXPIRING_SOON" | "ROTATION_PENDING";
+};
+
+type RotateApiKeyResponse = CreateApiKeyResponse & {
+  graceExpiresAt?: string | null;
 };
 
 type ApiKeyUsage = {
@@ -99,6 +113,9 @@ export default function OrgPage() {
   const [createdKey, setCreatedKey] = useState<CreateApiKeyResponse | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<{ id: string; name: string } | null>(null);
   const [revokeReason, setRevokeReason] = useState("");
+  const [rotateTarget, setRotateTarget] = useState<{ id: string; name: string } | null>(null);
+  const [rotatedKey, setRotatedKey] = useState<RotateApiKeyResponse | null>(null);
+  const [rotatingKey, setRotatingKey] = useState(false);
   const [createKeyForm, setCreateKeyForm] = useState({
     name: "Sparkle production ingest",
     environment: "live" as "live" | "test",
@@ -284,6 +301,28 @@ export default function OrgPage() {
     }
   };
 
+  const handleRotateApiKey = async (id: string) => {
+    setError(null);
+    setRotatingKey(true);
+    try {
+      const rotated = await apiFetch<RotateApiKeyResponse>(`/org/api-keys/${id}/rotate`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      setRotatedKey(rotated);
+      await refreshApiKeys();
+    } catch (err: any) {
+      setError(err?.message || "Failed to rotate API key");
+    } finally {
+      setRotatingKey(false);
+    }
+  };
+
+  const closeRotateModal = () => {
+    setRotateTarget(null);
+    setRotatedKey(null);
+  };
+
   const toggleScope = (scope: string) => {
     setCreateKeyForm((prev) => {
       const nextScopes = prev.scopes.includes(scope)
@@ -299,16 +338,7 @@ export default function OrgPage() {
     setCreateKeyError(null);
   };
 
-  const formatLastUsed = (value: string | null): string => {
-    if (!value) return "Never";
-    return new Date(value).toLocaleString();
-  };
-
-  const formatStatusClass = (status: ApiKeyRow["status"]): "pass" | "warn" | "fail" => {
-    if (status === "ACTIVE") return "pass";
-    if (status === "EXPIRED") return "warn";
-    return "fail";
-  };
+  const formatLastUsed = (value: string | null): string => formatCredentialDateOrNever(value);
 
   return (
     <Shell>
@@ -488,21 +518,20 @@ export default function OrgPage() {
                         <th>Name</th>
                         <th>Prefix</th>
                         <th>Env</th>
-                        <th>Scope</th>
+                        <th>Scopes</th>
                         <th>Project</th>
+                        <th>Created</th>
+                        <th>Expires</th>
                         <th>Last used</th>
-                        <th>Route</th>
-                        <th>24h req</th>
-                        <th>24h fail</th>
                         <th>Status</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {apiKeys.map((key) => (
-                        <tr key={key.id}>
+                        <tr key={key.id} data-testid={`api-key-row-${key.id}`}>
                           <td>{key.name}</td>
-                          <td><code>{key.prefix}</code></td>
+                          <td><code data-testid={`api-key-prefix-${key.id}`}>{key.prefix}</code></td>
                           <td>
                             <span className={`result-pill ${key.environment === "live" ? "fail" : "warn"}`}>
                               {key.environment}
@@ -510,26 +539,52 @@ export default function OrgPage() {
                           </td>
                           <td>{key.scopes.join(", ")}</td>
                           <td>{key.project?.name || "All projects"}</td>
+                          <td>{formatCredentialDate(key.createdAt)}</td>
+                          <td>{formatCredentialDate(key.expiresAt)}</td>
                           <td title={key.lastUsedIp ?? undefined}>{formatLastUsed(key.lastUsedAt)}</td>
                           <td>
-                            <code title={key.lastUsedUserAgent ?? undefined}>
-                              {key.lastUsedRoute ?? "—"}
-                            </code>
-                          </td>
-                          <td>{key.requests24h}</td>
-                          <td>{key.failedAttempts24h > 0 ? <span className="result-pill fail">{key.failedAttempts24h}</span> : "0"}</td>
-                          <td>
-                            <span className={`result-pill ${formatStatusClass(key.status)}`}>{key.status}</span>
+                            <span
+                              className={`result-pill ${credentialStatusPillClass(key.status)}`}
+                              data-testid={`api-key-status-${key.id}`}
+                            >
+                              {credentialStatusLabel(key.status)}
+                            </span>
+                            {key.graceExpiresAt ? (
+                              <small title={key.graceExpiresAt}>
+                                Grace until {formatCredentialDate(key.graceExpiresAt)}
+                              </small>
+                            ) : null}
                             {key.revokeReason ? <span title={key.revokeReason}> &#9432;</span> : null}
                           </td>
                           <td>
-                            {key.status === "ACTIVE" ? (
-                              <button type="button" className="secondary-button" onClick={() => setRevokeTarget({ id: key.id, name: key.name })} data-action="local-ui">
-                                Revoke
-                              </button>
-                            ) : (
-                              <span>—</span>
-                            )}
+                            <div className="connection-registry-actions">
+                              {canRotateApiKey(key.status) ? (
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  data-testid={`api-key-rotate-${key.id}`}
+                                  onClick={() => {
+                                    setRotateTarget({ id: key.id, name: key.name });
+                                    setRotatedKey(null);
+                                  }}
+                                  data-action="local-ui"
+                                >
+                                  Rotate
+                                </button>
+                              ) : null}
+                              {canRevokeApiKey(key.status) ? (
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => setRevokeTarget({ id: key.id, name: key.name })}
+                                  data-action="local-ui"
+                                >
+                                  Revoke
+                                </button>
+                              ) : (
+                                <span>—</span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -563,6 +618,56 @@ export default function OrgPage() {
             </section>
           </section>
         </>
+      ) : null}
+
+      {rotateTarget ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Rotate API key">
+          <section className="modal-panel" style={{ maxWidth: "520px" }} data-testid="api-key-rotate-modal">
+            <div className="section-head">
+              <div>
+                <h2>Rotate key</h2>
+                <p>
+                  Rotate <strong>{rotateTarget.name}</strong>? The previous key enters a grace period, then stops working.
+                </p>
+              </div>
+              <button type="button" className="secondary-button" onClick={closeRotateModal} data-action="local-ui">
+                {rotatedKey ? "Done" : "Cancel"}
+              </button>
+            </div>
+
+            {rotatedKey ? (
+              <div className="stack-form">
+                <label>
+                  New API key
+                  <input value={rotatedKey.key} readOnly data-testid="rotated-api-key-value" />
+                </label>
+                <button
+                  type="button"
+                  className="primary-button"
+                  data-action="local-ui"
+                  onClick={() => void navigator.clipboard.writeText(rotatedKey.key)}
+                >
+                  Copy
+                </button>
+                <p className="warn-text">This key is shown only once. Store it securely now.</p>
+              </div>
+            ) : (
+              <div className="stack-form">
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={rotatingKey}
+                  data-testid="confirm-api-key-rotate"
+                  onClick={() => void handleRotateApiKey(rotateTarget.id)}
+                  data-action="api"
+                  data-endpoint="/org/api-keys/:id/rotate"
+                >
+                  {rotatingKey ? "Rotating…" : "Confirm rotate"}
+                </button>
+              </div>
+            )}
+          </section>
+        </div>
       ) : null}
 
       {revokeTarget ? (
@@ -608,7 +713,7 @@ export default function OrgPage() {
               <div className="stack-form">
                 <label>
                   Your API key
-                  <input value={createdKey.key} readOnly />
+                  <input value={createdKey.key} readOnly data-testid="created-api-key-value" />
                 </label>
                 <button
                   type="button"

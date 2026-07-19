@@ -35,6 +35,7 @@ export type ConnectionWizardProps = {
   initialApplicationId?: string;
   initialForm?: GuidedConnectionForm;
   editingConnectionId?: string | null;
+  editingSecretConfigured?: boolean;
   onCancel: () => void;
   onSaved: () => void | Promise<void>;
 };
@@ -44,6 +45,7 @@ export function ConnectionWizard({
   initialApplicationId = "",
   initialForm,
   editingConnectionId = null,
+  editingSecretConfigured = false,
   onCancel,
   onSaved
 }: ConnectionWizardProps) {
@@ -362,6 +364,11 @@ export function ConnectionWizard({
                   </label>
                   {authRequiresSecret(form.authType) ? (
                     <div className="connection-secret-field" data-testid="connection-auth-secret-field">
+                      {editingConnectionId && editingSecretConfigured && !form.authSecret ? (
+                        <p className="dashboard-subtle" data-testid="connection-secret-configured-hint">
+                          Credential already configured. Leave blank to keep the existing secret.
+                        </p>
+                      ) : null}
                       <label htmlFor={`${baseId}-auth-secret`}>
                         {form.authType === "BASIC" ? "Password / secret" : "API key / secret"}
                         <input

@@ -269,11 +269,36 @@ describe("ConnectionWizard", () => {
     const createBody = JSON.parse(String(vi.mocked(apiFetch).mock.calls[0][1]?.body));
     expect(createBody.authSecret).toBe("temporary-secret");
 
-    // Stay on step 3 after save (page normally unmounts); navigate back to confirm React state cleared the secret.
     fireEvent.click(screen.getByRole("button", { name: /^back$/i }));
     await waitFor(() => {
       expect(screen.getByTestId("connection-auth-secret")).toHaveValue("");
     });
+  });
+
+  it("shows configured hint when editing a connection with an existing secret", () => {
+    render(
+      <ConnectionWizard
+        projects={projects}
+        initialForm={{
+          ...emptyGuidedForm("app-1"),
+          name: "Acme Production",
+          applicationId: "app-1",
+          baseUrl: "https://api.example.com",
+          healthPath: "/health",
+          authType: "BEARER",
+          authPrefix: "Bearer",
+          nameManuallyEdited: true
+        }}
+        editingConnectionId="conn-existing"
+        editingSecretConfigured={true}
+        onCancel={() => undefined}
+        onSaved={async () => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    expect(screen.getByTestId("connection-secret-configured-hint")).toBeInTheDocument();
+    expect(screen.getByTestId("connection-auth-secret")).toHaveValue("");
   });
 
   it("never enables monitor-save on a failed test result", async () => {
