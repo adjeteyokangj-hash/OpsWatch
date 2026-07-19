@@ -1,0 +1,21 @@
+---
+description: Enforce the mandatory OpsWatch observability programme delivery order
+alwaysApply: true
+---
+
+# Observability programme delivery order
+
+Follow `docs/opswatch-observability-programme.md` for all product work.
+
+- Work in the documented phase order; do not skip ahead.
+- Do not begin native Datadog or Dynatrace connectors until the generic
+  synchronization and observability foundations are complete and verified.
+- Placeholders, seeded data, schemas, interfaces, and navigation do not count
+  as implemented capability.
+- Require acceptance tests, runtime evidence, and local commits before
+  progressing to the next phase.
+- Never call unverified work complete.
+- Do not push, deploy, or modify production without explicit approval.
+- Position OpsWatch as an “Agentless application-health and
+  incident-remediation platform with an advanced topology foundation.”
+- Do not describe OpsWatch as Datadog-class or Dynatrace-class.
