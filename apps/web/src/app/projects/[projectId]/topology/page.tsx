@@ -18,7 +18,6 @@ import {
   type TopologyViewMode
 } from "../../../../components/topology/topology-filter-bar";
 import { TopologyListView } from "../../../../components/topology/topology-list-view";
-import { TopologyTimeReplay } from "../../../../components/topology/topology-time-replay";
 import { TopologyLiveOpsFeed } from "../../../../components/topology/topology-live-ops-feed";
 import { TopologyApplicationPanel } from "../../../../components/topology/topology-application-panel";
 import { TopologyRefreshBanner } from "../../../../components/topology/topology-error-banner";
@@ -100,7 +99,6 @@ export default function ProjectTopologyPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [fitToken, setFitToken] = useState(0);
   const [viewMode, setViewMode] = useState<TopologyViewMode>("map");
-  const [replayMinutesAgo, setReplayMinutesAgo] = useState(0);
   const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter>("ALL");
   const [locationFilter, setLocationFilter] = useState("ALL");
   const [provenanceFilter, setProvenanceFilter] = useState("ALL");
@@ -695,7 +693,21 @@ export default function ProjectTopologyPage() {
             />
             <TopologyRelationshipSummary topology={topology} diagnostics={relationshipDiagnostics} />
             <TopologyKey />
-            <TopologyTimeReplay minutesAgo={replayMinutesAgo} onChange={setReplayMinutesAgo} />
+            <section className="panel" aria-label="Topology history availability" data-testid="topology-history-state">
+              <div className="panel-heading-row">
+                <div>
+                  <h2>Live topology</h2>
+                  <p className="dashboard-subtle">
+                    This map shows the current persisted topology. Historical topology replay is unavailable.
+                  </p>
+                </div>
+                <span className="result-pill pass" data-testid="topology-live-label">Live verified</span>
+              </div>
+              <p className="field-hint">
+                Use Operations Timeline for persisted alert, incident, check, deployment, dependency, and
+                remediation event history. Timeline events do not reconstruct an earlier graph.
+              </p>
+            </section>
             <div className={`topology-workspace${sideStackCollapsed ? " topology-workspace--side-collapsed" : ""}`}>
               {viewMode === "map" ? (
                 <TopologyCanvas
@@ -716,7 +728,6 @@ export default function ProjectTopologyPage() {
                   freshnessFilter={freshnessFilter}
                   searchQuery={searchQuery}
                   fitToken={fitToken}
-                  replayMinutesAgo={replayMinutesAgo}
                   cardsExpanded={cardsExpanded}
                   onExpandAll={() => setCardsExpanded("all")}
                   onCollapseAll={() => {

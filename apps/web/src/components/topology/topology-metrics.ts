@@ -20,13 +20,3 @@ export const edgeTrafficWeight = (edge: TopologyEdge, nodes: TopologyNode[]): nu
   const base = availability != null ? Math.max(400, availability * 18) : 800;
   return edge.critical ? base * 1.25 : base;
 };
-
-export const replayNodeStatus = (
-  node: TopologyNode,
-  replayMinutesAgo: number
-): TopologyNode["status"] => {
-  if (replayMinutesAgo <= 0) return node.status;
-  if (node.status === "CRITICAL" && replayMinutesAgo < 10) return "DEGRADED";
-  if (node.status === "CRITICAL" && replayMinutesAgo < 20) return "HEALTHY";
-  return node.status;
-};

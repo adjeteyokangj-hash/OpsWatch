@@ -236,13 +236,17 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
   return (
     <PageSection
       title="Operations Timeline"
-      description="Facts from monitoring"
+      description="Persisted and current event history; this does not replay the topology graph."
       className="topology-live-ops"
       persistKey={`project:${projectId}:topology:live-ops`}
       aria-label="Operations timeline"
       data-testid="topology-live-ops-feed"
       actions={<span className="topology-live-ops-pulse" aria-hidden="true" />}
     >
+      <p className="dashboard-subtle" data-testid="topology-timeline-truth-label">
+        <strong>Live event history.</strong>{" "}
+        {paused ? "Refresh is paused while you interact with the map." : "New operational facts refresh every 15 seconds."}
+      </p>
       {opsInsights.length > 0 ? (
         <section className="topology-ops-insights" aria-label="Ops insights" data-testid="topology-ops-insights">
           <p className="topology-ops-insights-label">Ops Insights</p>

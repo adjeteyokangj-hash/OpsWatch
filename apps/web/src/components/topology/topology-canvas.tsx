@@ -17,7 +17,7 @@ import {
   getCollapsedDescendantIds
 } from "./topology-focus";
 import { resolveDependencyDisplayLinks, resolveHierarchyDisplayLinks } from "./topology-edge-resolve";
-import { edgeTrafficWeight, replayNodeStatus } from "./topology-metrics";
+import { edgeTrafficWeight } from "./topology-metrics";
 import {
   classifyVisualLayer,
   moreLayerPlural,
@@ -57,7 +57,6 @@ type Props = {
   showCorrelatedIncidents?: boolean;
   dimUnrelated?: boolean;
   traceFocus?: boolean;
-  replayMinutesAgo?: number;
   searchQuery?: string;
   fitToken?: number;
   connectionFilter?: ConnectionFilter;
@@ -138,7 +137,6 @@ export const TopologyCanvas = ({
   showCorrelatedIncidents = true,
   dimUnrelated = false,
   traceFocus = true,
-  replayMinutesAgo = 0,
   searchQuery = "",
   fitToken = 0,
   connectionFilter = "ALL",
@@ -256,9 +254,9 @@ export const TopologyCanvas = ({
     (nodeId: string, status: TopologyHealthStatus): TopologyHealthStatus => {
       const node = topology.nodes.find((row) => row.id === nodeId);
       if (!node) return status;
-      return replayNodeStatus(node, replayMinutesAgo);
+      return node.status;
     },
-    [topology.nodes, replayMinutesAgo]
+    [topology.nodes]
   );
 
   const relationshipByNode = useMemo(() => {
@@ -739,10 +737,7 @@ export const TopologyCanvas = ({
             if (!source || !target) return null;
 
             // Paint from evidence-based edge.status (API), not source/target node colour alone.
-            const edgeHealth =
-              replayMinutesAgo === 0
-                ? link.edge.status
-                : displayStatusFor(link.edge.targetId, link.edge.status);
+            const edgeHealth = link.edge.status;
             const pathD = edgePath(
               nodeAnchor(source, "bottom", NODE_HEIGHT_COLLAPSED),
               nodeAnchor(target, "top", NODE_HEIGHT_COLLAPSED),
@@ -797,7 +792,7 @@ export const TopologyCanvas = ({
                   tone={remediating ? "degraded" : trafficTone(edgeHealth)}
                   critical={link.edge.critical}
                   dimmed={edgeDimmed}
-                  live={replayMinutesAgo === 0}
+                  live
                 />
                 <title>{edgeTooltipLines(selectedDesc)}</title>
               </g>
