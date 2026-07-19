@@ -10,6 +10,8 @@ import {
 import type { NormalizedSignalDraft, OtelSignalKind } from "./otel-normalize";
 import { isOtelTopologyDiscoveryEnabled } from "./otel-feature-flags";
 
+export { processOtelFreshness } from "./otel-freshness.service";
+
 const maxBatchRetries = (): number =>
   Number(process.env.OPSWATCH_OTEL_MAX_BATCH_RETRIES ?? 5);
 
