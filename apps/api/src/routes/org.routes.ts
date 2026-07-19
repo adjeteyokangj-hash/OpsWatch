@@ -6,9 +6,10 @@ import {
 	listStatusPages,
 	createStatusPage,
 	listApiKeys,
-	createApiKey,
-	revokeApiKey,
-	getApiKeyUsage
+  createApiKey,
+  revokeApiKey,
+  rotateApiKey,
+  getApiKeyUsage
 } from "../controllers/org.controller";
 
 export const orgRouter = Router();
@@ -22,3 +23,4 @@ orgRouter.get("/org/api-keys", listApiKeys);
 orgRouter.get("/org/api-keys/usage", getApiKeyUsage);
 orgRouter.post("/org/api-keys", createApiKey);
 orgRouter.post("/org/api-keys/:keyId/revoke", revokeApiKey);
+orgRouter.post("/org/api-keys/:keyId/rotate", rotateApiKey);

@@ -1,15 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  hasActiveProjectIngestKey,
-  projectHasProductInfo,
-  provisionProjectIngestCredentials
-} from "./project-ingest-credentials.service";
 
-const { mockFindMany, mockFindFirst, mockCreate } = vi.hoisted(() => ({
-  mockFindMany: vi.fn(),
-  mockFindFirst: vi.fn(),
-  mockCreate: vi.fn()
-}));
+const { mockFindMany, mockFindFirst, mockCreate, mockProjectFindUnique, mockManagedFindFirst } = vi.hoisted(
+  () => ({
+    mockFindMany: vi.fn(),
+    mockFindFirst: vi.fn(),
+    mockCreate: vi.fn(),
+    mockProjectFindUnique: vi.fn(),
+    mockManagedFindFirst: vi.fn()
+  })
+);
 
 vi.mock("../lib/prisma", () => ({
   prisma: {
@@ -17,9 +16,25 @@ vi.mock("../lib/prisma", () => ({
       findMany: mockFindMany,
       findFirst: mockFindFirst,
       create: mockCreate
+    },
+    project: {
+      findUnique: mockProjectFindUnique
+    },
+    managedCredential: {
+      findFirst: mockManagedFindFirst
     }
   }
 }));
+
+vi.mock("./credentials/managed-credential.service", () => ({
+  createCredentialVersion: vi.fn()
+}));
+
+import {
+  hasActiveProjectIngestKey,
+  projectHasProductInfo,
+  provisionProjectIngestCredentials
+} from "./project-ingest-credentials.service";
 
 describe("project ingest credentials", () => {
   beforeEach(() => {
@@ -52,13 +67,21 @@ describe("project ingest credentials", () => {
     expect(result.reused).toBe(false);
     expect(result.apiKey).toMatch(/^ow_[a-f0-9]+\.[A-Za-z0-9_-]+$/);
     expect(result.signingSecret).toBe("signing-secret");
+    expect(result.signingSecretConfigured).toBe(true);
     expect(result.scopes).toEqual(["events:write", "heartbeats:write"]);
     expect(mockCreate).toHaveBeenCalledOnce();
   });
 
-  it("reuses an existing active ingest key", async () => {
+  it("reuses an existing active ingest key without returning signing secret plaintext", async () => {
     mockFindMany.mockResolvedValue([{ scopes: ["events:write", "heartbeats:write"] }]);
     mockFindFirst.mockResolvedValue({ keyId: "ow_existing" });
+    mockProjectFindUnique.mockResolvedValue({
+      signingSecret: "stored-secret",
+      signingSecretRotatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      signingCredentialFamilyId: "family-1",
+      organizationId: "org-1"
+    });
+    mockManagedFindFirst.mockResolvedValue({ version: 2 });
 
     const result = await provisionProjectIngestCredentials({
       organizationId: "org-1",
@@ -70,6 +93,10 @@ describe("project ingest credentials", () => {
 
     expect(result.reused).toBe(true);
     expect(result.apiKey).toBe("");
+    expect(result.signingSecret).toBe("");
+    expect(result.signingSecretConfigured).toBe(true);
+    expect(result.lastRotatedAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(result.keyVersion).toBe(2);
     expect(mockCreate).not.toHaveBeenCalled();
   });
 

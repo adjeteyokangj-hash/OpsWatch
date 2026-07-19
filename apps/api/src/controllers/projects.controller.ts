@@ -17,6 +17,7 @@ import {
 import { createDefaultProjectBilling, updateProjectBilling } from "../services/project-billing.service";
 import {
 	provisionProjectIngestCredentials,
+	provisionProjectSigningSecret,
 	type ProvisionedIngestCredentials
 } from "../services/project-ingest-credentials.service";
 import {
@@ -131,6 +132,10 @@ const normalizeProjectRow = (row: any) => {
 	const { signingSecret: _signingSecret, apiKey: _apiKey, ...safeRow } = row;
 	return {
 		...safeRow,
+		signingSecretConfigured: Boolean(row.signingSecret?.trim?.() || row.signingCredentialFamilyId),
+		signingSecretRotatedAt: row.signingSecretRotatedAt
+			? new Date(row.signingSecretRotatedAt).toISOString()
+			: null,
 		services: row.services ?? row.Service ?? [],
 		alerts: row.alerts ?? row.Alert ?? [],
 		incidents: row.incidents ?? row.Incident ?? [],
@@ -315,6 +320,18 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 		await prisma.project.delete({ where: { id: row.id } }).catch(() => undefined);
 		sendUrlMonitoringError(res, error, "Monitoring setup failed; registration was rolled back and can be retried");
 		return;
+	}
+
+	try {
+		await provisionProjectSigningSecret({
+			organizationId: orgId,
+			projectId: row.id,
+			signingSecret: row.signingSecret,
+			environment: row.environment,
+			actorUserId: req.user?.id ?? req.user?.sub ?? null
+		});
+	} catch (error) {
+		console.error("PROJECT_SIGNING_PROVISION_ERROR", error instanceof Error ? error.message : error);
 	}
 
 	let ingestCredentials: ProvisionedIngestCredentials | { error: string };

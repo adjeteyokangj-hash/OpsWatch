@@ -4,6 +4,18 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { sha256 } from "../utils/crypto";
 import type { AuthRequest } from "../middleware/auth";
+import { recordCredentialAudit } from "../services/credentials/credential-audit.service";
+
+const ALLOWED_API_KEY_SCOPES = new Set([
+  "events:write",
+  "heartbeats:write",
+  "alerts:read",
+  "incidents:read",
+  "projects:read"
+]);
+
+const EXPIRING_SOON_MS = 14 * 24 * 60 * 60 * 1000;
+const DEFAULT_ROTATION_GRACE_MS = 24 * 60 * 60 * 1000;
 
 const orgIdOr403 = (req: AuthRequest, res: Response): string | null => {
   const orgId = req.user?.organizationId;
@@ -21,10 +33,52 @@ const asScopes = (value: unknown): string[] => {
 
 const topologyModes = new Set(["CENTRALISED", "DISTRIBUTED", "HYBRID"]);
 
-const toApiKeyStatus = (row: { revokedAt: Date | null; expiresAt: Date | null }): "ACTIVE" | "REVOKED" | "EXPIRED" => {
+type ApiKeyStatus = "ACTIVE" | "REVOKED" | "EXPIRED" | "EXPIRING_SOON" | "ROTATION_PENDING";
+
+type ApiKeyListRow = {
+  id: string;
+  revokedAt: Date | null;
+  expiresAt: Date | null;
+  graceExpiresAt: Date | null;
+  projectId: string | null;
+};
+
+const toApiKeyStatus = (row: ApiKeyListRow, siblings: ApiKeyListRow[]): ApiKeyStatus => {
+  const now = Date.now();
   if (row.revokedAt) return "REVOKED";
-  if (row.expiresAt && row.expiresAt.getTime() < Date.now()) return "EXPIRED";
+  if (row.graceExpiresAt) {
+    if (row.graceExpiresAt.getTime() > now) return "ROTATION_PENDING";
+    return "REVOKED";
+  }
+  if (row.expiresAt && row.expiresAt.getTime() <= now) return "EXPIRED";
+  if (row.expiresAt && row.expiresAt.getTime() - now <= EXPIRING_SOON_MS) return "EXPIRING_SOON";
+  const siblingInGrace = siblings.some(
+    (candidate) =>
+      candidate.id !== row.id &&
+      candidate.projectId === row.projectId &&
+      candidate.graceExpiresAt &&
+      candidate.graceExpiresAt.getTime() > now &&
+      !candidate.revokedAt
+  );
+  if (siblingInGrace) return "ROTATION_PENDING";
   return "ACTIVE";
+};
+
+const auditOrgApiKeyEvent = async (input: {
+  organizationId: string;
+  userId?: string | null;
+  action: "CREDENTIAL_CREATED" | "CREDENTIAL_REVOKED" | "CREDENTIAL_ROTATED";
+  entityId: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> => {
+  await recordCredentialAudit({
+    organizationId: input.organizationId,
+    userId: input.userId,
+    action: input.action,
+    entityType: "OrgApiKey",
+    entityId: input.entityId,
+    metadata: input.metadata
+  });
 };
 
 const isPrismaSchemaDriftError = (error: unknown): boolean => {
@@ -236,15 +290,16 @@ export const listApiKeys = async (req: AuthRequest, res: Response) => {
         environment: row.environment === "test" ? "test" : "live",
         project: row.projectId ? projectById.get(row.projectId) ?? null : null,
         lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
-        lastUsedRoute: row.lastUsedRoute,
-        lastUsedIp: row.lastUsedIp,
-        lastUsedUserAgent: row.lastUsedUserAgent,
+        lastUsedRoute: row.lastUsedRoute ?? "N/A",
+        lastUsedIp: row.lastUsedIp ?? "N/A",
+        lastUsedUserAgent: row.lastUsedUserAgent ?? "N/A",
         expiresAt: row.expiresAt?.toISOString() ?? null,
+        graceExpiresAt: row.graceExpiresAt?.toISOString() ?? null,
         revokedAt: row.revokedAt?.toISOString() ?? null,
         revokeReason: row.revokeReason,
         requests24h: 0,
         failedAttempts24h: 0,
-        status: toApiKeyStatus(row)
+        status: toApiKeyStatus(row, rows)
       }))
     );
   } catch (error) {
@@ -306,6 +361,11 @@ export const createApiKey = async (req: AuthRequest, res: Response) => {
     return;
   }
 
+  if (!scopes.every((scope) => ALLOWED_API_KEY_SCOPES.has(scope))) {
+    res.status(400).json({ error: "One or more scopes are not allowed" });
+    return;
+  }
+
   const projectId = body.projectId ? String(body.projectId) : null;
   if (projectId) {
     const project = await prisma.project.findFirst({ where: { id: projectId, organizationId: orgId }, select: { id: true } });
@@ -342,6 +402,19 @@ export const createApiKey = async (req: AuthRequest, res: Response) => {
     const project = created.projectId
       ? await prisma.project.findFirst({ where: { id: created.projectId, organizationId: orgId }, select: { id: true, name: true } })
       : null;
+
+    await auditOrgApiKeyEvent({
+      organizationId: orgId,
+      userId: req.user?.id ?? req.user?.sub ?? null,
+      action: "CREDENTIAL_CREATED",
+      entityId: created.id,
+      metadata: {
+        keyId,
+        scopes,
+        environment,
+        projectId: created.projectId ?? null
+      }
+    });
 
     res.status(201).json({
       id: created.id,
@@ -397,5 +470,108 @@ export const revokeApiKey = async (req: AuthRequest, res: Response) => {
     }
   });
 
+  await auditOrgApiKeyEvent({
+    organizationId: orgId,
+    userId: req.user?.id ?? req.user?.sub ?? null,
+    action: "CREDENTIAL_REVOKED",
+    entityId: row.id,
+    metadata: {
+      reason: req.body?.reason ? String(req.body.reason) : null
+    }
+  });
+
   res.json({ revoked: true });
+};
+
+export const rotateApiKey = async (req: AuthRequest, res: Response) => {
+  const orgId = orgIdOr403(req, res);
+  if (!orgId) return;
+
+  const existing = await prisma.orgApiKey.findFirst({
+    where: { id: req.params.keyId, organizationId: orgId }
+  });
+
+  if (!existing) {
+    res.status(404).json({ error: "API key not found" });
+    return;
+  }
+
+  if (existing.revokedAt) {
+    res.status(409).json({ error: "Cannot rotate a revoked API key" });
+    return;
+  }
+
+  const now = new Date();
+  if (existing.expiresAt && existing.expiresAt <= now) {
+    res.status(409).json({ error: "Cannot rotate an expired API key" });
+    return;
+  }
+
+  const gracePeriodMs =
+    typeof req.body?.gracePeriodMs === "number" && req.body.gracePeriodMs >= 0
+      ? req.body.gracePeriodMs
+      : DEFAULT_ROTATION_GRACE_MS;
+
+  const keyId = `ow_${randomBytes(6).toString("hex")}`;
+  const secret = randomBytes(24).toString("base64url");
+  const graceExpiresAt = new Date(now.getTime() + gracePeriodMs);
+
+  const created = await prisma.$transaction(async (tx) => {
+    await tx.orgApiKey.update({
+      where: { id: existing.id },
+      data: {
+        graceExpiresAt,
+        revokeReason: "rotated"
+      }
+    });
+
+    return tx.orgApiKey.create({
+      data: {
+        id: randomUUID(),
+        organizationId: orgId,
+        name: existing.name,
+        keyId,
+        secretHash: sha256(secret),
+        scopes: existing.scopes ?? [],
+        environment: existing.environment,
+        projectId: existing.projectId,
+        expiresAt: existing.expiresAt,
+        allowCrossEnvironment: existing.allowCrossEnvironment,
+        rotatedFromKeyId: existing.id
+      }
+    });
+  });
+
+  await auditOrgApiKeyEvent({
+    organizationId: orgId,
+    userId: req.user?.id ?? req.user?.sub ?? null,
+    action: "CREDENTIAL_ROTATED",
+    entityId: created.id,
+    metadata: {
+      previousKeyId: existing.id,
+      graceExpiresAt: graceExpiresAt.toISOString(),
+      keyId
+    }
+  });
+
+  const project = created.projectId
+    ? await prisma.project.findFirst({
+        where: { id: created.projectId, organizationId: orgId },
+        select: { id: true, name: true }
+      })
+    : null;
+
+  res.status(201).json({
+    id: created.id,
+    keyId,
+    key: `${keyId}.${secret}`,
+    prefix: keyId.slice(0, 12),
+    name: created.name,
+    scopes: asScopes(created.scopes),
+    environment: created.environment === "test" ? "test" : "live",
+    project,
+    expiresAt: created.expiresAt?.toISOString() ?? null,
+    graceExpiresAt: graceExpiresAt.toISOString(),
+    createdAt: created.createdAt.toISOString()
+  });
 };

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import type { NextFunction, Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { CSRF_HEADER } from "../config/session";
@@ -6,6 +7,7 @@ import { readCsrfToken, readSessionToken } from "../lib/session-cookie";
 import { sha256 } from "../utils/crypto";
 import { verifyJwt } from "../utils/jwt";
 import { verifySessionCsrf, validateSessionToken } from "../services/session.service";
+import { recordCredentialAudit } from "../services/credentials/credential-audit.service";
 
 export interface AuthRequest extends Request {
   user?: {
@@ -20,10 +22,160 @@ export interface AuthRequest extends Request {
   apiKeyScopes?: string[];
   apiKeyOrganizationId?: string;
   apiKeyProjectId?: string | null;
+  apiKeyEnvironment?: string;
   sessionId?: string;
   sessionAuth?: boolean;
   sessionCsrfTokenHash?: string;
 }
+
+export type ApiKeyAuthFailureReason =
+  | "invalid"
+  | "expired"
+  | "revoked"
+  | "rate_limited"
+  | "insufficient_scope"
+  | "environment_mismatch";
+
+export type ApiKeyAuthResult = { ok: true } | { ok: false; reason: ApiKeyAuthFailureReason };
+
+export const ENVIRONMENT_HEADER = "x-opswatch-environment";
+
+const API_KEY_RATE_LIMIT_WINDOW_MS = 60_000;
+const API_KEY_RATE_LIMIT_DEFAULT = 120;
+
+const apiKeyRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+export const resetApiKeyRateLimitBucketsForTests = (): void => {
+  apiKeyRateLimitMap.clear();
+};
+
+export const mapProjectEnvironmentToKeyEnvironment = (projectEnvironment: string): "live" | "test" => {
+  const normalized = projectEnvironment.trim().toLowerCase();
+  if (["development", "staging", "testing", "test"].includes(normalized)) {
+    return "test";
+  }
+  return "live";
+};
+
+export const environmentsMatch = (keyEnvironment: string, otherEnvironment: string): boolean =>
+  keyEnvironment === mapProjectEnvironmentToKeyEnvironment(otherEnvironment);
+
+const apiKeyRateLimitMax = (): number => {
+  const configured = Number(process.env.OPSWATCH_API_KEY_RATE_LIMIT_PER_MINUTE);
+  if (Number.isFinite(configured) && configured > 0) {
+    return configured;
+  }
+  return API_KEY_RATE_LIMIT_DEFAULT;
+};
+
+const checkApiKeyRateLimit = (apiKeyId: string): boolean => {
+  const now = Date.now();
+  const maxPerWindow = apiKeyRateLimitMax();
+  const bucket = apiKeyRateLimitMap.get(apiKeyId);
+  if (!bucket || now >= bucket.resetAt) {
+    apiKeyRateLimitMap.set(apiKeyId, { count: 1, resetAt: now + API_KEY_RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  if (bucket.count >= maxPerWindow) {
+    return false;
+  }
+  bucket.count += 1;
+  return true;
+};
+
+const timingSafeHashEqual = (providedSecret: string, storedHash: string | null | undefined): boolean => {
+  if (!storedHash) return false;
+  const computed = sha256(providedSecret);
+  const computedBuf = Buffer.from(computed, "hex");
+  const storedBuf = Buffer.from(storedHash, "hex");
+  if (computedBuf.length !== storedBuf.length) {
+    return false;
+  }
+  return timingSafeEqual(computedBuf, storedBuf);
+};
+
+const resolveRequestKeyEnvironment = (req: AuthRequest): "live" | "test" | null => {
+  const header = req.header(ENVIRONMENT_HEADER)?.trim().toLowerCase();
+  if (!header) return null;
+  if (header === "live" || header === "test") {
+    return header;
+  }
+  return mapProjectEnvironmentToKeyEnvironment(header);
+};
+
+const auditApiKeyFailure = async (
+  req: AuthRequest,
+  row: { id: string; organizationId: string } | null,
+  reason: ApiKeyAuthFailureReason
+): Promise<void> => {
+  if (!row) return;
+  try {
+    await recordCredentialAudit({
+      organizationId: row.organizationId,
+      action: "AUTH_FAILED",
+      entityType: "OrgApiKey",
+      entityId: row.id,
+      metadata: {
+        reason,
+        route: req.originalUrl || req.path,
+        ip: req.ip,
+        userAgent: req.header("user-agent") ?? null
+      }
+    });
+  } catch {
+    // Audit must not block auth decisions.
+  }
+};
+
+const auditApiKeySuccess = async (req: AuthRequest, row: { id: string; organizationId: string }): Promise<void> => {
+  try {
+    await recordCredentialAudit({
+      organizationId: row.organizationId,
+      action: "CREDENTIAL_USED",
+      entityType: "OrgApiKey",
+      entityId: row.id,
+      metadata: {
+        route: req.originalUrl || req.path,
+        ip: req.ip,
+        userAgent: req.header("user-agent") ?? null
+      }
+    });
+  } catch {
+    // Audit must not block auth decisions.
+  }
+};
+
+const finalizeGraceExpiredKey = (keyId: string): void => {
+  void prisma.orgApiKey
+    .updateMany({
+      where: { id: keyId, revokedAt: null },
+      data: { revokedAt: new Date(), revokeReason: "rotated" }
+    })
+    .catch(() => undefined);
+};
+
+const failureMessage = (reason: ApiKeyAuthFailureReason): string => {
+  switch (reason) {
+    case "invalid":
+      return "Invalid API key";
+    case "expired":
+      return "API key expired";
+    case "revoked":
+      return "API key revoked";
+    case "rate_limited":
+      return "API key rate limit exceeded";
+    case "insufficient_scope":
+      return "Insufficient API key scope";
+    case "environment_mismatch":
+      return "API key environment mismatch";
+  }
+};
+
+const failureStatus = (reason: ApiKeyAuthFailureReason): number => {
+  if (reason === "rate_limited") return 429;
+  if (reason === "insufficient_scope") return 403;
+  return 401;
+};
 
 const extractBearer = (req: Request): string | null => {
   const authHeader = req.header("authorization");
@@ -114,31 +266,106 @@ const validateSessionCsrfRequest = (req: AuthRequest): boolean => {
   return true;
 };
 
-const authorizeApiKey = async (req: AuthRequest, requiredScopes: string[]): Promise<boolean> => {
+type OrgApiKeyAuthRow = {
+  id: string;
+  organizationId: string;
+  secretHash: string;
+  scopes: unknown;
+  environment: string;
+  projectId: string | null;
+  expiresAt: Date | null;
+  revokedAt: Date | null;
+  graceExpiresAt: Date | null;
+  allowCrossEnvironment: boolean;
+};
+
+export const authorizeApiKey = async (
+  req: AuthRequest,
+  requiredScopes: string[]
+): Promise<ApiKeyAuthResult> => {
   const headerKey = req.header("x-api-key") || extractBearer(req);
   const parsed = parseMonitorKey(headerKey);
-  if (!parsed) return false;
+  if (!parsed) {
+    return { ok: false, reason: "invalid" };
+  }
 
-  const row = await prisma.orgApiKey.findFirst({
-    where: {
-      keyId: parsed.keyId,
-      revokedAt: null
-    }
-  });
+  const row = (await prisma.orgApiKey.findFirst({
+    where: { keyId: parsed.keyId }
+  })) as OrgApiKeyAuthRow | null;
 
-  if (!row || !row.secretHash || row.secretHash !== sha256(parsed.secret)) {
-    return false;
+  if (!row) {
+    return { ok: false, reason: "invalid" };
+  }
+
+  const now = new Date();
+
+  if (row.revokedAt) {
+    await auditApiKeyFailure(req, row, "revoked");
+    return { ok: false, reason: "revoked" };
+  }
+
+  if (row.graceExpiresAt && row.graceExpiresAt <= now) {
+    finalizeGraceExpiredKey(row.id);
+    await auditApiKeyFailure(req, row, "revoked");
+    return { ok: false, reason: "revoked" };
+  }
+
+  if (row.expiresAt && row.expiresAt <= now) {
+    await auditApiKeyFailure(req, row, "expired");
+    return { ok: false, reason: "expired" };
+  }
+
+  if (!timingSafeHashEqual(parsed.secret, row.secretHash)) {
+    await auditApiKeyFailure(req, row, "invalid");
+    return { ok: false, reason: "invalid" };
+  }
+
+  const requestEnvironment = resolveRequestKeyEnvironment(req);
+  if (
+    requestEnvironment &&
+    row.environment !== requestEnvironment &&
+    !row.allowCrossEnvironment
+  ) {
+    await auditApiKeyFailure(req, row, "environment_mismatch");
+    return { ok: false, reason: "environment_mismatch" };
   }
 
   const scopes = Array.isArray(row.scopes) ? (row.scopes as string[]) : [];
   const allowed = requiredScopes.every((scope) => scopes.includes(scope));
-  if (!allowed) return false;
+  if (!allowed) {
+    await auditApiKeyFailure(req, row, "insufficient_scope");
+    return { ok: false, reason: "insufficient_scope" };
+  }
+
+  if (!checkApiKeyRateLimit(row.id)) {
+    await auditApiKeyFailure(req, row, "rate_limited");
+    return { ok: false, reason: "rate_limited" };
+  }
 
   req.apiKeyId = row.id;
   req.apiKeyScopes = scopes;
   req.apiKeyOrganizationId = row.organizationId;
   req.apiKeyProjectId = row.projectId ?? null;
-  return true;
+  req.apiKeyEnvironment = row.environment;
+
+  const route = req.originalUrl || req.path;
+  const ip = req.ip ?? null;
+  const userAgent = req.header("user-agent") ?? null;
+  void prisma.orgApiKey
+    .update({
+      where: { id: row.id },
+      data: {
+        lastUsedAt: now,
+        lastUsedRoute: route,
+        lastUsedIp: ip,
+        lastUsedUserAgent: userAgent
+      }
+    })
+    .catch(() => undefined);
+
+  void auditApiKeySuccess(req, row);
+
+  return { ok: true };
 };
 
 export const requireAuth = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -175,11 +402,15 @@ export const requireAdmin = async (req: AuthRequest, res: Response, next: NextFu
 
 export const requireApiKeyScopes = (requiredScopes: string[]) => {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
-    if (await authorizeApiKey(req, requiredScopes)) {
+    const result = await authorizeApiKey(req, requiredScopes);
+    if (result.ok) {
       next();
       return;
     }
-    res.status(401).json({ error: "Invalid or insufficient API key" });
+    res.status(failureStatus(result.reason)).json({
+      error: failureMessage(result.reason),
+      code: result.reason.toUpperCase()
+    });
   };
 };
 
@@ -194,12 +425,16 @@ export const requireApiKeyReadScope = (requiredScopes: string[], _projectIdParam
       return;
     }
 
-    if (await authorizeApiKey(req, requiredScopes)) {
+    const result = await authorizeApiKey(req, requiredScopes);
+    if (result.ok) {
       next();
       return;
     }
 
-    res.status(401).json({ error: "Unauthorized" });
+    res.status(failureStatus(result.reason)).json({
+      error: failureMessage(result.reason),
+      code: result.reason.toUpperCase()
+    });
   };
 };
 

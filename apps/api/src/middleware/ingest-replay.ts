@@ -7,8 +7,13 @@ import {
   verifyIngestSignature
 } from "../lib/request-signature";
 import type { AuthRequest } from "./auth";
+import { environmentsMatch } from "./auth";
 import { prisma } from "../lib/prisma";
 import { acceptIngestNonce, type IngestRoute } from "../services/ingest-replay.service";
+import {
+  markCredentialSuccess,
+  resolveSigningSecretsForProject
+} from "../services/credentials/managed-credential.service";
 
 export type IngestRequest = AuthRequest & RawBodyRequest;
 
@@ -21,6 +26,7 @@ type IngestRejectionReason =
   | "timestamp_invalid"
   | "timestamp_stale"
   | "signature_invalid"
+  | "environment_mismatch"
   | "replay_detected";
 
 export const isIngestSigningRequired = (): boolean => process.env.INGEST_SIGNING_REQUIRED !== "false";
@@ -81,11 +87,38 @@ export const requireIngestReplayProtection = (route: IngestRoute) => {
         ...(req.apiKeyOrganizationId ? { organizationId: req.apiKeyOrganizationId } : {}),
         ...(req.apiKeyProjectId ? { id: req.apiKeyProjectId } : {})
       },
-      select: { id: true, signingSecret: true }
+      select: {
+        id: true,
+        organizationId: true,
+        environment: true,
+        signingSecret: true,
+        signingCredentialFamilyId: true
+      }
     });
 
-    const signingSecret = project?.signingSecret?.trim();
-    if (!project || !signingSecret) {
+    if (!project) {
+      auditIngestRejection(route, "signing_unconfigured", req);
+      res.status(503).json({
+        error: "Ingest signing is not configured",
+        code: INGEST_ERROR_CODES.SIGNING_UNAVAILABLE
+      });
+      return;
+    }
+
+    if (
+      req.apiKeyEnvironment &&
+      !environmentsMatch(req.apiKeyEnvironment, project.environment)
+    ) {
+      auditIngestRejection(route, "environment_mismatch", req);
+      res.status(401).json({
+        error: "API key environment mismatch",
+        code: INGEST_ERROR_CODES.AUTH_INVALID
+      });
+      return;
+    }
+
+    const signingSecrets = await resolveSigningSecretsForProject(project);
+    if (signingSecrets.length === 0) {
       auditIngestRejection(route, "signing_unconfigured", req);
       res.status(503).json({
         error: "Ingest signing is not configured",
@@ -122,13 +155,22 @@ export const requireIngestReplayProtection = (route: IngestRoute) => {
       return;
     }
 
-    if (!verifyIngestSignature(signingSecret, ingestReq.rawBody, { timestamp, nonce, signature })) {
+    const signatureInput = { timestamp, nonce, signature };
+    const matchedSecret = signingSecrets.find((entry) =>
+      verifyIngestSignature(entry.plaintext, ingestReq.rawBody!, signatureInput)
+    );
+
+    if (!matchedSecret) {
       auditIngestRejection(route, "signature_invalid", req);
       res.status(401).json({
         error: "Invalid ingest signature",
         code: INGEST_ERROR_CODES.AUTH_INVALID
       });
       return;
+    }
+
+    if (project.organizationId && !matchedSecret.id.startsWith("legacy:")) {
+      void markCredentialSuccess(matchedSecret.id, project.organizationId).catch(() => undefined);
     }
 
     const replayResult = await acceptIngestNonce({
