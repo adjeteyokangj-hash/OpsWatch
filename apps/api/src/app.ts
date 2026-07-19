@@ -40,6 +40,7 @@ import { webhooksRouter } from "./routes/webhooks.routes";
 import { adminBillingRouter } from "./routes/admin-billing.routes";
 import { connectionsRouter } from "./routes/connections.routes";
 import { connectionIngestRouter } from "./routes/connection-ingest.routes";
+import { logsApmRouter } from "./routes/logs-apm.routes";
 
 const webhookJsonParser = express.json({
   limit: "1mb",
@@ -120,6 +121,7 @@ app.use(API_PREFIX, requireAuth, maintenanceWindowsRouter);
 app.use(API_PREFIX, requireAuth, automationRouter);
 app.use(API_PREFIX, requireAuth, intelligenceRouter);
 app.use(API_PREFIX, requireAuth, connectionsRouter);
-app.use(`${API_PREFIX}/remediation`, requireAuth, remediationRouter);
+  app.use(API_PREFIX, requireAuth, logsApmRouter);
+  app.use(`${API_PREFIX}/remediation`, requireAuth, remediationRouter);
 
 app.use(errorHandler);

@@ -41,6 +41,15 @@ export type OrgRetentionLog = {
     timeline: number;
     replayNonces: number;
   };
+  logsApm?: {
+    logs: number;
+    groups: number;
+    spans: number;
+    traces: number;
+    serviceWindows: number;
+    endpointWindows: number;
+    dependencyWindows: number;
+  };
   skipped?: string;
 };
 
@@ -371,6 +380,150 @@ export const pruneOtelForOrg = async (
   return { batches, signals, windows, observations, timeline, replayNonces };
 };
 
+/** Phase 6: prune searchable logs/spans/APM windows; preserve evidence-linked rows. */
+export const pruneLogsApmForOrg = async (
+  organizationId: string,
+  cutoff: Date,
+  options: RetentionRunOptions = {}
+): Promise<{
+  logs: number;
+  groups: number;
+  spans: number;
+  traces: number;
+  serviceWindows: number;
+  endpointWindows: number;
+  dependencyWindows: number;
+}> => {
+  const batchOpts = {
+    batchSize: options.batchSize ?? DEFAULT_BATCH_SIZE,
+    maxRowsPerTable: options.maxRowsPerTable ?? DEFAULT_MAX_ROWS_PER_TABLE
+  };
+  const dryRun = options.dryRun ?? false;
+  const now = new Date();
+
+  const logs = await deleteBatch(
+    () =>
+      prisma.logRecord
+        .findMany({
+          where: {
+            organizationId,
+            OR: [{ retentionExpiresAt: { lt: now } }, { timestamp: { lt: cutoff } }],
+            EvidenceLinks: { none: {} }
+          },
+          select: { id: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.id)),
+    (ids) => prisma.logRecord.deleteMany({ where: { id: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  const groups = await deleteBatch(
+    () =>
+      prisma.logOccurrenceGroup
+        .findMany({
+          where: {
+            organizationId,
+            lastSeenAt: { lt: cutoff },
+            relatedAlertId: null,
+            EvidenceLinks: { none: {} },
+            LogRecords: { none: {} }
+          },
+          select: { id: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.id)),
+    (ids) =>
+      prisma.logOccurrenceGroup.deleteMany({ where: { id: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  const spans = await deleteBatch(
+    () =>
+      prisma.spanRecord
+        .findMany({
+          where: {
+            organizationId,
+            OR: [{ retentionExpiresAt: { lt: now } }, { startTimestamp: { lt: cutoff } }],
+            EvidenceLinks: { none: {} }
+          },
+          select: { id: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.id)),
+    (ids) => prisma.spanRecord.deleteMany({ where: { id: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  const traces = await deleteBatch(
+    () =>
+      prisma.traceRecord
+        .findMany({
+          where: {
+            organizationId,
+            OR: [{ retentionExpiresAt: { lt: now } }, { startAt: { lt: cutoff } }],
+            EvidenceLinks: { none: {} },
+            SpanRecords: { none: {} }
+          },
+          select: { id: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.id)),
+    (ids) => prisma.traceRecord.deleteMany({ where: { id: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  const serviceWindows = await deleteBatch(
+    () =>
+      prisma.apmServiceWindow
+        .findMany({
+          where: { organizationId, windowEnd: { lt: cutoff }, EvidenceLinks: { none: {} } },
+          select: { id: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.id)),
+    (ids) => prisma.apmServiceWindow.deleteMany({ where: { id: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  const endpointWindows = await deleteBatch(
+    () =>
+      prisma.apmEndpointWindow
+        .findMany({
+          where: { organizationId, windowEnd: { lt: cutoff }, EvidenceLinks: { none: {} } },
+          select: { id: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.id)),
+    (ids) =>
+      prisma.apmEndpointWindow.deleteMany({ where: { id: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  const dependencyWindows = await deleteBatch(
+    () =>
+      prisma.apmDependencyWindow
+        .findMany({
+          where: { organizationId, windowEnd: { lt: cutoff }, EvidenceLinks: { none: {} } },
+          select: { id: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.id)),
+    (ids) =>
+      prisma.apmDependencyWindow.deleteMany({ where: { id: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  return { logs, groups, spans, traces, serviceWindows, endpointWindows, dependencyWindows };
+};
+
 export const runRetentionSweep = async (
   options: RetentionRunOptions = {}
 ): Promise<RetentionSweepSummary> => {
@@ -455,6 +608,20 @@ export const runRetentionSweep = async (
           otel.observations +
           otel.timeline +
           otel.replayNonces;
+
+        const logsApm = await pruneLogsApmForOrg(policy.organizationId, otelCutoff, {
+          ...options,
+          dryRun
+        });
+        orgLog.logsApm = logsApm;
+        summary.otelDeleted +=
+          logsApm.logs +
+          logsApm.groups +
+          logsApm.spans +
+          logsApm.traces +
+          logsApm.serviceWindows +
+          logsApm.endpointWindows +
+          logsApm.dependencyWindows;
       }
     } catch (error) {
       summary.organizationsSkipped += 1;

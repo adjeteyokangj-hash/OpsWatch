@@ -144,6 +144,81 @@ export const processOtelBatch = async (batchId: string): Promise<{ processed: nu
         serviceId: serviceEntity.legacyServiceId
       });
 
+      // Phase 6: APM window contribution from processed spans/dependencies.
+      if (draft.traceId && draft.spanId) {
+        const { contributeSpanToApmWindows } = await import("../logs-apm/apm-aggregate.service");
+        const { maybeAlertFromApmWindow } = await import("../logs-apm/logs-apm-alert.service");
+        const durationMs =
+          typeof draft.attributes["duration_ms"] === "number"
+            ? Number(draft.attributes["duration_ms"])
+            : typeof draft.value === "number"
+              ? Math.round(draft.value)
+              : null;
+        const isError =
+          draft.healthImpact === "CRITICAL" ||
+          draft.normalizedStatus === "ERROR" ||
+          draft.signalType === "ERROR";
+        const operation =
+          (typeof draft.attributes["http.route"] === "string" && draft.attributes["http.route"]) ||
+          draft.name;
+        const targetName =
+          (typeof draft.attributes["peer.service"] === "string" && draft.attributes["peer.service"]) ||
+          (typeof draft.attributes["db.system"] === "string" && draft.attributes["db.system"]) ||
+          null;
+        await contributeSpanToApmWindows({
+          organizationId: batch.organizationId,
+          projectId: batch.projectId,
+          environment: draft.environment,
+          serviceName: draft.serviceName,
+          entityId: serviceEntity.id,
+          operation: String(operation),
+          httpMethod:
+            typeof draft.attributes["http.method"] === "string"
+              ? String(draft.attributes["http.method"])
+              : null,
+          durationMs,
+          isError,
+          isSlow: durationMs !== null && durationMs >= 1_000,
+          isTimeout:
+            typeof draft.body === "string" && /timeout/i.test(draft.body),
+          observedAt: draft.observedAt,
+          destinationEntityId: targetEntityId,
+          targetServiceName: targetName,
+          relationshipId,
+          isDependency: draft.signalType === "DEPENDENCY" || Boolean(targetName)
+        });
+
+        const latest = await prisma.apmServiceWindow.findFirst({
+          where: {
+            organizationId: batch.organizationId,
+            projectId: batch.projectId,
+            serviceName: draft.serviceName,
+            environment: draft.environment,
+            windowSize: "5m"
+          },
+          orderBy: { windowStart: "desc" }
+        });
+        if (latest && (latest.health === "DEGRADED" || latest.health === "CRITICAL")) {
+          await maybeAlertFromApmWindow({
+            organizationId: batch.organizationId,
+            projectId: batch.projectId,
+            entityId: serviceEntity.id,
+            relationshipId,
+            serviceName: draft.serviceName,
+            environment: draft.environment,
+            health: latest.health,
+            healthRule: latest.healthRule,
+            errorRate: latest.errorRate,
+            latencyP95Ms: latest.latencyP95Ms,
+            sampleCount: latest.sampleCount,
+            windowId: latest.id,
+            windowKind: "service",
+            observedAt: draft.observedAt,
+            message: `${draft.serviceName}: ${latest.healthRule ?? latest.health} (errorRate=${latest.errorRate.toFixed(3)})`
+          });
+        }
+      }
+
       if (serviceEntity.legacyServiceId && draft.healthImpact !== "UNKNOWN") {
         const status =
           draft.healthImpact === "CRITICAL"

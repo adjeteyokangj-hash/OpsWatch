@@ -235,6 +235,13 @@ export const ingestOtelBridgePayload = async (
     });
   });
 
+  // Phase 6 dual-write: first-class logs/spans (gated; failures must not reject the batch).
+  try {
+    await dualWriteLogsApmFromBatch(batchId, connection, normalized.accepted);
+  } catch {
+    // Ingest acceptance already committed; processing/retry path can reconcile.
+  }
+
   return {
     batchId,
     entityId: primaryEntityId,
@@ -243,6 +250,71 @@ export const ingestOtelBridgePayload = async (
     duplicate: false,
     status: "PENDING"
   };
+};
+
+const dualWriteLogsApmFromBatch = async (
+  batchId: string,
+  connection: OtelConnection,
+  drafts: import("./otel-normalize").NormalizedSignalDraft[]
+): Promise<void> => {
+  const { persistLogRecord } = await import("../logs-apm/log-persist.service");
+  const { persistSpanRecord } = await import("../logs-apm/span-persist.service");
+  const { maybeAlertFromLogGroup } = await import("../logs-apm/logs-apm-alert.service");
+  const signals = await prisma.normalizedOperationalSignal.findMany({
+    where: { batchId },
+    orderBy: { observedAt: "asc" }
+  });
+  for (const signal of signals) {
+    const draft =
+      drafts.find(
+        (d) =>
+          d.fingerprint === signal.fingerprint &&
+          d.observedAt.getTime() === signal.observedAt.getTime()
+      ) ?? drafts.find((d) => d.fingerprint === signal.fingerprint);
+    if (!draft) continue;
+    if (draft.kind === "LOG" || draft.signalType === "LOG" || draft.signalType === "ERROR") {
+      const persisted = await persistLogRecord({
+        organizationId: connection.organizationId,
+        projectId: connection.projectId,
+        connectionId: connection.id,
+        entityId: signal.sourceEntityId,
+        batchId,
+        signalId: signal.id,
+        draft
+      });
+      if (persisted.groupId) {
+        await maybeAlertFromLogGroup({
+          organizationId: connection.organizationId,
+          projectId: connection.projectId,
+          groupId: persisted.groupId,
+          entityId: signal.sourceEntityId,
+          logId: persisted.logId,
+          severity: draft.severity ?? null,
+          fingerprint: draft.logFingerprint ?? draft.fingerprint,
+          occurrenceCount: (
+            await prisma.logOccurrenceGroup.findUnique({
+              where: { id: persisted.groupId },
+              select: { occurrenceCount: true }
+            })
+          )?.occurrenceCount ?? 1,
+          message: draft.body ?? draft.name,
+          observedAt: draft.observedAt,
+          traceId: draft.traceId
+        });
+      }
+    }
+    if (draft.traceId && draft.spanId) {
+      await persistSpanRecord({
+        organizationId: connection.organizationId,
+        projectId: connection.projectId,
+        connectionId: connection.id,
+        serviceEntityId: signal.sourceEntityId,
+        batchId,
+        signalId: signal.id,
+        draft
+      });
+    }
+  }
 };
 
 export { parseOtelBridgePayload, hashOtelIdempotency, detectOtelProtocol };
