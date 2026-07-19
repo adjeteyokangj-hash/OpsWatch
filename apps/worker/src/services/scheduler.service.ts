@@ -10,6 +10,8 @@ import { runAutomationAutonomousJob } from "../jobs/run-automation-autonomous.jo
 import { runMaintenanceWindowTransitionsJob } from "../jobs/transition-maintenance-windows.job";
 import { pruneRetentionJob } from "../jobs/prune-retention.job";
 import { runExpireCredentialsJob } from "../jobs/expire-credentials.job";
+import { processOtelBatchesJob } from "../jobs/process-otel-batches.job";
+import { processOtelFreshnessJob } from "../jobs/process-otel-freshness.job";
 import { createExclusiveRunner } from "../lib/exclusive-job";
 import { markSchedulerSuccess } from "./worker-heartbeat.service";
 
@@ -38,6 +40,8 @@ type SchedulerOptions = {
   maintenanceWindowsMs?: number;
   retentionMs?: number;
   credentialExpiryMs?: number;
+  otelBatchesMs?: number;
+  otelFreshnessMs?: number;
 };
 
 const readInterval = (key: string, fallback: number): number => {
@@ -72,7 +76,11 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
     retentionMs:
       options.retentionMs ?? readInterval("WORKER_RETENTION_INTERVAL_MS", 6 * 60 * 60_000),
     credentialExpiryMs:
-      options.credentialExpiryMs ?? readInterval("WORKER_CREDENTIAL_EXPIRY_INTERVAL_MS", 60 * 60_000)
+      options.credentialExpiryMs ?? readInterval("WORKER_CREDENTIAL_EXPIRY_INTERVAL_MS", 60 * 60_000),
+    otelBatchesMs:
+      options.otelBatchesMs ?? readInterval("WORKER_OTEL_BATCH_INTERVAL_MS", 30_000),
+    otelFreshnessMs:
+      options.otelFreshnessMs ?? readInterval("WORKER_OTEL_FRESHNESS_INTERVAL_MS", 60_000)
   };
 
   const timers: NodeJS.Timeout[] = [];
@@ -96,6 +104,11 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
     void runSafely("runMaintenanceWindowTransitionsJob", runMaintenanceWindowTransitionsJob);
     void runSafely("pruneRetentionJob", pruneRetentionJob);
     void runSafely("runExpireCredentialsJob", runExpireCredentialsJob);
+    void runExclusive(async () => {
+      await processOtelBatchesJob();
+      markSchedulerSuccess("processOtelBatchesJob");
+    });
+    void runSafely("processOtelFreshnessJob", processOtelFreshnessJob);
   }
 
   timers.push(
@@ -174,6 +187,21 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
     setInterval(() => {
       void runSafely("runExpireCredentialsJob", runExpireCredentialsJob);
     }, intervals.credentialExpiryMs)
+  );
+
+  timers.push(
+    setInterval(() => {
+      void runExclusive(async () => {
+        await processOtelBatchesJob();
+        markSchedulerSuccess("processOtelBatchesJob");
+      });
+    }, intervals.otelBatchesMs)
+  );
+
+  timers.push(
+    setInterval(() => {
+      void runSafely("processOtelFreshnessJob", processOtelFreshnessJob);
+    }, intervals.otelFreshnessMs)
   );
 
   return () => {

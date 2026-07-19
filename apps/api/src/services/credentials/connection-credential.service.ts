@@ -251,15 +251,16 @@ export const resolveConnectionSecrets = async (
     environment?: string | null;
   }
 ): Promise<ResolvedCredentialSecret[]> => {
+  // When a managed credential family exists, never fall back to legacy ciphertext
+  // or secretRef after revocation/expiry — empty means auth must fail closed.
   if (connection.credentialFamilyId) {
-    const managed = await resolveActiveSecrets({
+    return resolveActiveSecrets({
       organizationId: connection.organizationId,
       familyId: connection.credentialFamilyId,
       connectionId: connection.id ?? null,
       projectId: connection.projectId ?? null,
       environment: connection.environment ?? null
     });
-    if (managed.length > 0) return managed;
   }
 
   const legacy = decryptLegacyManagedSecret(connection);

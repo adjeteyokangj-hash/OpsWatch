@@ -13,17 +13,22 @@ export const acceptIngestNonce = async (input: {
   route: IngestRoute;
   projectId?: string;
   apiKeyId?: string;
+  connectionId?: string;
   ttlSeconds?: number;
 }): Promise<"accepted" | "replay"> => {
   const expiresAt = new Date(Date.now() + (input.ttlSeconds ?? DEFAULT_NONCE_TTL_SECONDS) * 1000);
+  const scopedNonce = input.connectionId
+    ? `${input.route}:${input.connectionId}:${input.nonce}`
+    : input.nonce;
 
   try {
     await prisma.ingestReplayNonce.create({
       data: {
-        nonce: input.nonce,
+        nonce: scopedNonce,
         route: input.route,
         projectId: input.projectId,
         apiKeyId: input.apiKeyId,
+        connectionId: input.connectionId,
         expiresAt
       }
     });
@@ -34,4 +39,17 @@ export const acceptIngestNonce = async (input: {
     }
     throw error;
   }
+};
+
+export const pruneExpiredIngestNonces = async (limit = 1_000): Promise<number> => {
+  const expired = await prisma.ingestReplayNonce.findMany({
+    where: { expiresAt: { lt: new Date() } },
+    select: { nonce: true },
+    take: limit
+  });
+  if (expired.length === 0) return 0;
+  const result = await prisma.ingestReplayNonce.deleteMany({
+    where: { nonce: { in: expired.map((row) => row.nonce) } }
+  });
+  return result.count;
 };
