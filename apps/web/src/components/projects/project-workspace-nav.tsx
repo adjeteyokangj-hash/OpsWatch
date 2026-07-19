@@ -33,6 +33,8 @@ export const buildProjectNavGroups = (projectId: string): ProjectNavGroup[] => [
       { label: "Checks", href: `/projects/${projectId}/checks` },
       { label: "Alerts", href: `/projects/${projectId}/alerts` },
       { label: "Incidents", href: `/projects/${projectId}/incidents` },
+      { label: "Logs", href: `/projects/${projectId}/log-streams` },
+      { label: "Performance", href: `/projects/${projectId}/performance` },
       { label: "Dependencies & SLOs", href: `/projects/${projectId}/reliability` }
     ]
   },

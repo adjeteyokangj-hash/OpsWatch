@@ -51,6 +51,8 @@ describe("buildProjectNavGroups", () => {
       "Checks",
       "Alerts",
       "Incidents",
+      "Logs",
+      "Performance",
       "Dependencies & SLOs",
       "Automation",
       "Intelligence",
