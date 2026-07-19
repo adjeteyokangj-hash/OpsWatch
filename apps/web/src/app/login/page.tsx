@@ -1,32 +1,32 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { APP_NAME, API_BASE_URL } from "../../lib/constants";
 import { SESSION_FETCH_TIMEOUT_MS } from "../../lib/auth";
 
 const DEV_LOGIN_EMAIL =
   process.env.NODE_ENV === "development" ? "admin@opswatch.local" : "";
 
+function SessionExpiredNotice() {
+  const searchParams = useSearchParams();
+  if (searchParams.get("reason") !== "session_expired") return null;
+  return (
+    <p className="dashboard-subtle" role="status" data-testid="login-session-notice">
+      Your session expired. Sign in again to continue.
+    </p>
+  );
+}
+
 export default function LoginPage() {
-  const [mounted, setMounted] = useState(false);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(DEV_LOGIN_EMAIL);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [logoMissing, setLogoMissing] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-    if (typeof window === "undefined") return;
-    const reason = new URLSearchParams(window.location.search).get("reason");
-    if (reason === "session_expired") {
-      setSessionNotice("Your session expired. Sign in again to continue.");
-    }
-  }, []);
-
-  // Prefill only when the field is still empty so automation fill() is not raced.
+  // Keep automation-friendly: if something cleared the field before paint, restore the local default once.
   useEffect(() => {
     if (!DEV_LOGIN_EMAIL) return;
     setEmail((current) => (current ? current : DEV_LOGIN_EMAIL));
@@ -96,8 +96,58 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="auth-shell">
-      <section className="auth-hero">
+    <main className="auth-shell" suppressHydrationWarning>
+      <section className="auth-panel">
+        <div className="auth-card">
+          <h2>Sign in</h2>
+          <p className="dashboard-subtle">Use your OpsWatch platform account.</p>
+          <Suspense fallback={null}>
+            <SessionExpiredNotice />
+          </Suspense>
+          <form onSubmit={onSubmit} data-testid="login-form">
+            <label>
+              Email
+              <input
+                type="email"
+                name="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                data-testid="login-email"
+              />
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                data-testid="login-password"
+              />
+            </label>
+            {error ? (
+              <div className="error-chip" role="alert" data-testid="login-error">
+                {error}
+              </div>
+            ) : null}
+            <button
+              type="submit"
+              className="primary-button auth-submit"
+              disabled={submitting}
+              data-action="api"
+              data-endpoint="/auth/login"
+              data-testid="login-submit"
+            >
+              {submitting ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+        </div>
+      </section>
+      <section className="auth-hero" aria-label="OpsWatch overview">
         <div className="auth-hero-content">
           <div className="auth-logo">
             {logoMissing ? (
@@ -117,66 +167,14 @@ export default function LoginPage() {
             )}
           </div>
           <h1>Command Center</h1>
-          <p>Central monitoring for every client application — health, alerts, incidents, and automation in one place.</p>
+          <p>
+            Central monitoring for every client application — health, alerts, incidents, and automation in one place.
+          </p>
           <ul className="auth-feature-list">
             <li>Four-layer health across apps, modules, workflows, and components</li>
             <li>Incident response with causal graphs and remediation</li>
             <li>Automation playbooks with operator safeguards</li>
           </ul>
-        </div>
-      </section>
-      <section className="auth-panel">
-        <div className="auth-card">
-          <h2>Sign in</h2>
-          <p className="dashboard-subtle">Use your OpsWatch platform account.</p>
-          {sessionNotice ? (
-            <p className="dashboard-subtle" role="status" data-testid="login-session-notice">
-              {sessionNotice}
-            </p>
-          ) : null}
-          {mounted ? (
-            <form onSubmit={onSubmit} data-testid="login-form">
-              <label>
-                Email
-                <input
-                  type="email"
-                  name="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  data-testid="login-email"
-                />
-              </label>
-              <label>
-                Password
-                <input
-                  type="password"
-                  name="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  data-testid="login-password"
-                />
-              </label>
-              {error ? <div className="error-chip" role="alert" data-testid="login-error">{error}</div> : null}
-              <button
-                type="submit"
-                className="primary-button auth-submit"
-                disabled={submitting}
-                data-action="api"
-                data-endpoint="/auth/login"
-                data-testid="login-submit"
-              >
-                {submitting ? "Signing in…" : "Sign in"}
-              </button>
-            </form>
-          ) : (
-            <div className="dashboard-subtle" aria-live="polite" data-testid="login-hydrating">
-              Loading sign-in…
-            </div>
-          )}
         </div>
       </section>
     </main>
