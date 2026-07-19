@@ -28,6 +28,11 @@ export type TopologyEdge = {
   type: "HIERARCHY" | "DEPENDENCY";
   critical: boolean;
   status: TopologyHealthStatus;
+  provenance?: string;
+  confidence?: number | null;
+  discoveryState?: string;
+  freshness?: "FRESH" | "STALE" | "INACTIVE" | "UNKNOWN";
+  confirmationState?: string;
   otel?: {
     source: string;
     health: string | null;
@@ -44,6 +49,20 @@ export type TopologyNodeContext = {
   unresolvedIncidents: Array<{ id: string; title: string; severity: string; status: string }>;
   upstreamIds: string[];
   downstreamIds: string[];
+  canonical?: {
+    environment: string;
+    entityType: string;
+    provenance: string;
+    discoverySource: string | null;
+    discoveryState: string;
+    freshness: "FRESH" | "STALE" | "INACTIVE" | "UNKNOWN";
+    confidence: number | null;
+    confirmationState: string;
+    sharedScope: string;
+    isTestSeed: boolean;
+    legacyServiceId: string | null;
+    location: { id: string; name: string; type: string } | null;
+  };
   otel?: {
     connected: boolean;
     discoveryState: string | null;

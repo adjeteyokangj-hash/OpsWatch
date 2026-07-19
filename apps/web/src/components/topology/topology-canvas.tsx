@@ -61,6 +61,9 @@ type Props = {
   searchQuery?: string;
   fitToken?: number;
   connectionFilter?: ConnectionFilter;
+  locationFilter?: string;
+  provenanceFilter?: string;
+  freshnessFilter?: "ALL" | "FRESH" | "STALE" | "INACTIVE" | "UNKNOWN";
   cardsExpanded?: "none" | "selected" | "all";
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
@@ -139,6 +142,9 @@ export const TopologyCanvas = ({
   searchQuery = "",
   fitToken = 0,
   connectionFilter = "ALL",
+  locationFilter = "ALL",
+  provenanceFilter = "ALL",
+  freshnessFilter = "ALL",
   cardsExpanded = "selected",
   onExpandAll,
   onCollapseAll
@@ -290,6 +296,27 @@ export const TopologyCanvas = ({
         const status = displayStatusFor(node.id, node.status);
         if (typeFilter !== "ALL" && node.type !== typeFilter) return false;
         if (healthFilter !== "ALL" && status !== healthFilter) return false;
+        const canonical = topology.nodeContext[node.id]?.canonical;
+        if (
+          locationFilter !== "ALL" &&
+          (locationFilter === "UNBOUND"
+            ? canonical?.location != null
+            : canonical?.location?.id !== locationFilter)
+        ) {
+          return false;
+        }
+        if (
+          provenanceFilter !== "ALL" &&
+          canonical?.provenance !== provenanceFilter
+        ) {
+          return false;
+        }
+        if (
+          freshnessFilter !== "ALL" &&
+          canonical?.freshness !== freshnessFilter
+        ) {
+          return false;
+        }
         if (searchQuery.trim()) {
           const query = searchQuery.trim().toLowerCase();
           if (!node.name.toLowerCase().includes(query) && !node.type.toLowerCase().includes(query)) {
@@ -314,7 +341,11 @@ export const TopologyCanvas = ({
       displayStatusFor,
       layoutVisibleIds,
       relationshipByNode,
-      connectionFilter
+      connectionFilter,
+      locationFilter,
+      provenanceFilter,
+      freshnessFilter,
+      topology.nodeContext
     ]
   );
 

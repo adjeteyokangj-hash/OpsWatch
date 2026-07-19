@@ -62,6 +62,36 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
     { label: "Child components", value: String(childComponents) },
     { label: "Open alerts", value: String(node.risk.openAlerts) },
     { label: "SLO state", value: context?.sloStatus ?? "—" },
+    ...(context?.canonical
+      ? [
+          { label: "Environment", value: context.canonical.environment },
+          {
+            label: "Discovery source",
+            value:
+              context.canonical.discoverySource ??
+              context.canonical.provenance
+          },
+          { label: "Provenance", value: context.canonical.provenance },
+          { label: "Freshness", value: context.canonical.freshness },
+          {
+            label: "Location",
+            value: context.canonical.location?.name ?? "Unbound / global"
+          },
+          {
+            label: "Scope",
+            value:
+              context.canonical.sharedScope === "ORGANIZATION"
+                ? "Shared service"
+                : "Project"
+          },
+          {
+            label: "Entity state",
+            value: context.canonical.isTestSeed
+              ? "Seeded test data"
+              : context.canonical.confirmationState
+          }
+        ]
+      : []),
     ...(context?.otel
       ? [
           { label: "OTEL source", value: context.otel.source ?? "OTEL collector" },
@@ -88,16 +118,18 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
     { label: "Monitoring", value: context?.monitoringState?.replaceAll("_", " ").toLowerCase() ?? "—" }
   ];
 
+  const compatibilityServiceId =
+    context?.canonical?.legacyServiceId ?? node.id;
   const quickActions = [
-    { label: "View checks", href: `/checks?projectId=${projectId}&serviceId=${node.id}`, primary: true },
-    { label: "Run check", href: `/checks?projectId=${projectId}&serviceId=${node.id}`, primary: false },
+    { label: "View checks", href: `/checks?projectId=${projectId}&serviceId=${compatibilityServiceId}`, primary: true },
+    { label: "Run check", href: `/checks?projectId=${projectId}&serviceId=${compatibilityServiceId}`, primary: false },
     node.type === "WORKFLOW" || node.type === "MODULE"
       ? { label: "View workflows", href: `/projects/${projectId}/workflows`, primary: false }
       : null,
     node.type === "MODULE"
       ? { label: "Edit module", href: `/projects/${projectId}/modules`, primary: false }
       : null,
-    { label: "View alerts", href: `/alerts?projectId=${projectId}&serviceId=${node.id}`, primary: false }
+    { label: "View alerts", href: `/alerts?projectId=${projectId}&entityId=${node.id}`, primary: false }
   ].filter(Boolean) as Array<{ label: string; href: string; primary: boolean }>;
 
   const tabs: Array<{ id: DetailTab; label: string }> = [

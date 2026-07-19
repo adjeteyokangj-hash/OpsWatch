@@ -432,6 +432,7 @@ export function TopologyRelationshipDrawer({
   const targetDiag = buildNodeRelationshipDiagnostics(topology).find((row) => row.moduleId === edge.targetId);
   const sourceNode = topology.nodes.find((node) => node.id === edge.sourceId);
   const targetNode = topology.nodes.find((node) => node.id === edge.targetId);
+  const canonicalEdge = topology.edges.find((row) => row.id === edge.id);
   const sourceCtx = topology.nodeContext[edge.sourceId];
   const targetCtx = topology.nodeContext[edge.targetId];
   const responseTimeMs = targetNode?.metrics.latencyMs ?? sourceNode?.metrics.latencyMs ?? null;
@@ -637,12 +638,20 @@ export function TopologyRelationshipDrawer({
         <div>
           <dt>Discovery source</dt>
           <dd data-testid="topology-edge-discovery-source">
-            {edge.otel?.source === "OTEL_COLLECTOR" ? "OTEL collector" : "Declared"}
+            {(canonicalEdge?.provenance ?? edge.otel?.source ?? "DECLARED").replaceAll("_", " ")}
           </dd>
         </div>
         <div>
           <dt>Discovery confidence</dt>
-          <dd>Confirmed</dd>
+          <dd>
+            {canonicalEdge?.confidence != null
+              ? `${Math.round(canonicalEdge.confidence * 100)}%`
+              : canonicalEdge?.confirmationState ?? "Confirmed"}
+          </dd>
+        </div>
+        <div>
+          <dt>Freshness</dt>
+          <dd>{canonicalEdge?.freshness ?? "Unknown"}</dd>
         </div>
         <div>
           <dt>Source connectivity</dt>

@@ -70,6 +70,11 @@ export const loadCanonicalProjectTopology = async (input: {
         lifecycle: "ACTIVE",
         entityType: { not: "PROJECT" }
       },
+      include: {
+        OperationalLocation: {
+          select: { id: true, name: true, type: true }
+        }
+      },
       orderBy: [{ entityType: "asc" }, { name: "asc" }]
     }),
     prisma.operationalRelationship.findMany({
@@ -273,6 +278,20 @@ export const loadCanonicalProjectTopology = async (input: {
     node.status = topologyHealthFor(entity.health);
     topology.nodeContext[node.id] = {
       ...topology.nodeContext[node.id]!,
+      canonical: {
+        environment: entity.environment,
+        entityType: entity.entityType,
+        provenance: entity.provenance,
+        discoverySource: entity.discoverySource,
+        discoveryState: entity.discoveryState,
+        freshness: freshnessFor(entity),
+        confidence: entity.healthConfidence,
+        confirmationState: entity.confirmationState,
+        sharedScope: entity.sharedScope,
+        isTestSeed: entity.isTestSeed,
+        legacyServiceId: entity.legacyServiceId,
+        location: entity.OperationalLocation
+      },
       otel:
         entity.discoverySource === "OTEL_BRIDGE"
           ? {
@@ -296,6 +315,11 @@ export const loadCanonicalProjectTopology = async (input: {
     const relationship = relationshipById.get(edge.id);
     if (!relationship) continue;
     edge.status = topologyHealthFor(relationship.health);
+    edge.provenance = relationship.provenance;
+    edge.confidence = relationship.confidence;
+    edge.discoveryState = relationship.discoveryState;
+    edge.freshness = freshnessFor(relationship);
+    edge.confirmationState = relationship.confirmationState;
     if (relationship.provenance === "OTEL_COLLECTOR") {
       edge.otel = {
         source: relationship.provenance,

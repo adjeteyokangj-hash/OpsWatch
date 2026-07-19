@@ -12,7 +12,11 @@ import type { ProjectIntegration } from "../../../../lib/integrations";
 import { TopologyCanvas } from "../../../../components/topology/topology-canvas";
 import { TopologyNodeDrawer } from "../../../../components/topology/topology-node-drawer";
 import { TopologySummaryCards } from "../../../../components/topology/topology-summary-cards";
-import { TopologyFilterBar, type TopologyViewMode } from "../../../../components/topology/topology-filter-bar";
+import {
+  TopologyFilterBar,
+  type TopologyFreshnessFilter,
+  type TopologyViewMode
+} from "../../../../components/topology/topology-filter-bar";
 import { TopologyListView } from "../../../../components/topology/topology-list-view";
 import { TopologyTimeReplay } from "../../../../components/topology/topology-time-replay";
 import { TopologyLiveOpsFeed } from "../../../../components/topology/topology-live-ops-feed";
@@ -98,6 +102,10 @@ export default function ProjectTopologyPage() {
   const [viewMode, setViewMode] = useState<TopologyViewMode>("map");
   const [replayMinutesAgo, setReplayMinutesAgo] = useState(0);
   const [connectionFilter, setConnectionFilter] = useState<ConnectionFilter>("ALL");
+  const [locationFilter, setLocationFilter] = useState("ALL");
+  const [provenanceFilter, setProvenanceFilter] = useState("ALL");
+  const [freshnessFilter, setFreshnessFilter] =
+    useState<TopologyFreshnessFilter>("ALL");
   const [selectedEdge, setSelectedEdge] = useState<SelectedTopologyEdge | null>(null);
   const [cardsExpanded, setCardsExpanded] = useState<"none" | "selected" | "all">("selected");
   const [fixActing, setFixActing] = useState(false);
@@ -135,6 +143,27 @@ export default function ProjectTopologyPage() {
     () => (topology ? buildNodeRelationshipDiagnostics(topology) : []),
     [topology]
   );
+  const canonicalFilterOptions = useMemo(() => {
+    const locations = new Map<string, string>();
+    const provenances = new Set<string>();
+    for (const context of Object.values(topology?.nodeContext ?? {})) {
+      if (context.canonical?.location) {
+        locations.set(
+          context.canonical.location.id,
+          context.canonical.location.name
+        );
+      }
+      if (context.canonical?.provenance) {
+        provenances.add(context.canonical.provenance);
+      }
+    }
+    return {
+      locations: [...locations.entries()]
+        .map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      provenances: [...provenances].sort()
+    };
+  }, [topology]);
 
   const hasRemediationCapability = useMemo(
     () => (projectId ? projectHasRemediationCapability(integrations, projectId) : false),
@@ -606,11 +635,19 @@ export default function ProjectTopologyPage() {
               typeFilter={typeFilter}
               healthFilter={healthFilter}
               connectionFilter={connectionFilter}
+              locationFilter={locationFilter}
+              provenanceFilter={provenanceFilter}
+              freshnessFilter={freshnessFilter}
+              locations={canonicalFilterOptions.locations}
+              provenances={canonicalFilterOptions.provenances}
               searchQuery={searchQuery}
               viewMode={viewMode}
               onTypeFilterChange={setTypeFilter}
               onHealthFilterChange={setHealthFilter}
               onConnectionFilterChange={setConnectionFilter}
+              onLocationFilterChange={setLocationFilter}
+              onProvenanceFilterChange={setProvenanceFilter}
+              onFreshnessFilterChange={setFreshnessFilter}
               onSearchQueryChange={setSearchQuery}
               onViewModeChange={setViewMode}
             />
@@ -632,6 +669,9 @@ export default function ProjectTopologyPage() {
                   typeFilter={typeFilter}
                   healthFilter={healthFilter}
                   connectionFilter={connectionFilter}
+                  locationFilter={locationFilter}
+                  provenanceFilter={provenanceFilter}
+                  freshnessFilter={freshnessFilter}
                   searchQuery={searchQuery}
                   fitToken={fitToken}
                   replayMinutesAgo={replayMinutesAgo}
@@ -651,6 +691,9 @@ export default function ProjectTopologyPage() {
                   onSelectNode={setSelectedNodeId}
                   typeFilter={typeFilter}
                   healthFilter={healthFilter}
+                  locationFilter={locationFilter}
+                  provenanceFilter={provenanceFilter}
+                  freshnessFilter={freshnessFilter}
                   searchQuery={searchQuery}
                 />
               )}

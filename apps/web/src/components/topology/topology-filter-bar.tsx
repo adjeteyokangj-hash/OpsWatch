@@ -2,16 +2,30 @@ import type { TopologyHealthStatus, TopologyNodeType } from "./topology-types";
 import type { ConnectionFilter } from "./topology-relationship";
 
 export type TopologyViewMode = "map" | "list";
+export type TopologyFreshnessFilter =
+  | "ALL"
+  | "FRESH"
+  | "STALE"
+  | "INACTIVE"
+  | "UNKNOWN";
 
 type Props = {
   typeFilter: TopologyNodeType | "ALL";
   healthFilter: TopologyHealthStatus | "ALL";
   connectionFilter: ConnectionFilter;
+  locationFilter: string;
+  provenanceFilter: string;
+  freshnessFilter: TopologyFreshnessFilter;
+  locations: Array<{ id: string; name: string }>;
+  provenances: string[];
   searchQuery: string;
   viewMode: TopologyViewMode;
   onTypeFilterChange: (value: TopologyNodeType | "ALL") => void;
   onHealthFilterChange: (value: TopologyHealthStatus | "ALL") => void;
   onConnectionFilterChange: (value: ConnectionFilter) => void;
+  onLocationFilterChange: (value: string) => void;
+  onProvenanceFilterChange: (value: string) => void;
+  onFreshnessFilterChange: (value: TopologyFreshnessFilter) => void;
   onSearchQueryChange: (value: string) => void;
   onViewModeChange: (value: TopologyViewMode) => void;
 };
@@ -20,11 +34,19 @@ export function TopologyFilterBar({
   typeFilter,
   healthFilter,
   connectionFilter,
+  locationFilter,
+  provenanceFilter,
+  freshnessFilter,
+  locations,
+  provenances,
   searchQuery,
   viewMode,
   onTypeFilterChange,
   onHealthFilterChange,
   onConnectionFilterChange,
+  onLocationFilterChange,
+  onProvenanceFilterChange,
+  onFreshnessFilterChange,
   onSearchQueryChange,
   onViewModeChange
 }: Props) {
@@ -38,6 +60,55 @@ export function TopologyFilterBar({
           <option value="MODULE">Module</option>
           <option value="WORKFLOW">Workflow</option>
           <option value="COMPONENT">Component</option>
+        </select>
+      </label>
+      <label className="topology-filter-field">
+        <span>Location</span>
+        <select
+          value={locationFilter}
+          onChange={(event) => onLocationFilterChange(event.target.value)}
+          data-testid="topology-location-filter"
+        >
+          <option value="ALL">All locations</option>
+          <option value="UNBOUND">Unbound / global</option>
+          {locations.map((location) => (
+            <option key={location.id} value={location.id}>
+              {location.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="topology-filter-field">
+        <span>Source</span>
+        <select
+          value={provenanceFilter}
+          onChange={(event) => onProvenanceFilterChange(event.target.value)}
+          data-testid="topology-provenance-filter"
+        >
+          <option value="ALL">All sources</option>
+          {provenances.map((provenance) => (
+            <option key={provenance} value={provenance}>
+              {provenance.replaceAll("_", " ")}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="topology-filter-field">
+        <span>Freshness</span>
+        <select
+          value={freshnessFilter}
+          onChange={(event) =>
+            onFreshnessFilterChange(
+              event.target.value as TopologyFreshnessFilter
+            )
+          }
+          data-testid="topology-freshness-filter"
+        >
+          <option value="ALL">All freshness</option>
+          <option value="FRESH">Fresh</option>
+          <option value="STALE">Stale</option>
+          <option value="INACTIVE">Inactive</option>
+          <option value="UNKNOWN">Unknown</option>
         </select>
       </label>
       <label className="topology-filter-field">

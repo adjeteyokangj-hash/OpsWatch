@@ -7,6 +7,9 @@ type Props = {
   onSelectNode: (nodeId: string) => void;
   typeFilter: TopologyNodeType | "ALL";
   healthFilter: TopologyHealthStatus | "ALL";
+  locationFilter: string;
+  provenanceFilter: string;
+  freshnessFilter: "ALL" | "FRESH" | "STALE" | "INACTIVE" | "UNKNOWN";
   searchQuery: string;
 };
 
@@ -16,11 +19,35 @@ export function TopologyListView({
   onSelectNode,
   typeFilter,
   healthFilter,
+  locationFilter,
+  provenanceFilter,
+  freshnessFilter,
   searchQuery
 }: Props) {
   const rows = topology.nodes.filter((node) => {
     if (typeFilter !== "ALL" && node.type !== typeFilter) return false;
     if (healthFilter !== "ALL" && node.status !== healthFilter) return false;
+    const canonical = topology.nodeContext[node.id]?.canonical;
+    if (
+      locationFilter !== "ALL" &&
+      (locationFilter === "UNBOUND"
+        ? canonical?.location != null
+        : canonical?.location?.id !== locationFilter)
+    ) {
+      return false;
+    }
+    if (
+      provenanceFilter !== "ALL" &&
+      canonical?.provenance !== provenanceFilter
+    ) {
+      return false;
+    }
+    if (
+      freshnessFilter !== "ALL" &&
+      canonical?.freshness !== freshnessFilter
+    ) {
+      return false;
+    }
     if (searchQuery.trim()) {
       const query = searchQuery.trim().toLowerCase();
       if (!node.name.toLowerCase().includes(query) && !node.type.toLowerCase().includes(query)) return false;
@@ -36,6 +63,8 @@ export function TopologyListView({
             <th>Name</th>
             <th>Layer</th>
             <th>Health</th>
+            <th>Location</th>
+            <th>Source</th>
             <th>Alerts</th>
             <th>Incidents</th>
           </tr>
@@ -52,6 +81,8 @@ export function TopologyListView({
               <td>
                 <span className={`topology-list-pill ${healthClassName(node.status)}`}>{healthLabel(node.status)}</span>
               </td>
+              <td>{topology.nodeContext[node.id]?.canonical?.location?.name ?? "Unbound"}</td>
+              <td>{topology.nodeContext[node.id]?.canonical?.provenance ?? "Legacy"}</td>
               <td>{node.risk.openAlerts}</td>
               <td>{node.risk.unresolvedIncidents}</td>
             </tr>
