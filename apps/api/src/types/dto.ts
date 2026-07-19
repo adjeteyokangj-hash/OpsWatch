@@ -316,6 +316,17 @@ export type TopologyNodeContext = {
   unresolvedIncidents: Array<{ id: string; title: string; severity: string; status: string }>;
   upstreamIds: string[];
   downstreamIds: string[];
+  /** Phase 3 OTEL adapter overlay (optional; absent when no OTEL evidence). */
+  otel?: {
+    connected: boolean;
+    discoveryState: string | null;
+    health: string | null;
+    confidence: number | null;
+    freshness: "FRESH" | "STALE" | "INACTIVE" | "UNKNOWN";
+    signalCount: number;
+    lastSeenAt: string | null;
+    source: string | null;
+  };
 };
 
 export type ProjectTopologyResponse = {
@@ -329,4 +340,11 @@ export type ProjectTopologyResponse = {
   edges: TopologyEdge[];
   summary: TopologySummary;
   nodeContext: Record<string, TopologyNodeContext>;
+  otelOverlay?: {
+    enabled: boolean;
+    entities: number;
+    relationships: number;
+    freshSignals: number;
+    staleEntities: number;
+  };
 };

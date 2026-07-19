@@ -22,9 +22,16 @@ export type MonitoringSetup = {
       events: "CONNECTED" | "NOT_CONFIGURED";
     };
     advancedMonitoring: {
-      logs: "NOT_CONNECTED";
-      traces: "NOT_CONNECTED";
-      infrastructure: "NOT_CONNECTED";
+      logs: string;
+      traces: string;
+      infrastructure: string;
+      otel?: {
+        connections: number;
+        ingestionEnabled: boolean;
+        topologyDiscoveryEnabled: boolean;
+        alertGenerationEnabled: boolean;
+        label: string;
+      };
     };
   };
 };
@@ -111,17 +118,27 @@ export function MonitoringDepthSummary({
           <strong>{stateLabel(setup.depth.applicationMonitoring.events)}</strong>
         </div>
         <div className="register-monitoring-row">
-          <span>Advanced · Logs</span>
-          <strong>Not connected</strong>
+          <span>Advanced · Logs (Foundation/Preview)</span>
+          <strong data-testid="monitoring-depth-logs">{stateLabel(setup.depth.advancedMonitoring.logs)}</strong>
         </div>
         <div className="register-monitoring-row">
-          <span>Advanced · Traces</span>
-          <strong>Not connected</strong>
+          <span>Advanced · Traces (Foundation/Preview)</span>
+          <strong data-testid="monitoring-depth-traces">{stateLabel(setup.depth.advancedMonitoring.traces)}</strong>
         </div>
         <div className="register-monitoring-row">
           <span>Advanced · Infrastructure</span>
-          <strong>Not connected</strong>
+          <strong>{stateLabel(setup.depth.advancedMonitoring.infrastructure)}</strong>
         </div>
+        {setup.depth.advancedMonitoring.otel ? (
+          <div className="register-monitoring-row" data-testid="monitoring-depth-otel">
+            <span>OTEL collector</span>
+            <strong>
+              {setup.depth.advancedMonitoring.otel.connections} connection
+              {setup.depth.advancedMonitoring.otel.connections === 1 ? "" : "s"}
+              {setup.depth.advancedMonitoring.otel.ingestionEnabled ? " · ingest on" : " · ingest off"}
+            </strong>
+          </div>
+        ) : null}
       </div>
     </div>
   );

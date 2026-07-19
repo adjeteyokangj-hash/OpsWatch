@@ -33,6 +33,14 @@ export type OrgRetentionLog = {
   telemetry: { checkResults: number; events: number; heartbeats: number };
   incidents: { incidents: number; alerts: number };
   incidentMemory: number;
+  otel?: {
+    batches: number;
+    signals: number;
+    windows: number;
+    observations: number;
+    timeline: number;
+    replayNonces: number;
+  };
   skipped?: string;
 };
 
@@ -46,6 +54,7 @@ export type RetentionSweepSummary = {
   incidentsDeleted: number;
   alertsDeleted: number;
   incidentMemoryDeleted: number;
+  otelDeleted: number;
   organizationLogs: OrgRetentionLog[];
 };
 
@@ -234,6 +243,134 @@ export const pruneIncidentMemoryForOrg = async (
     options.dryRun ?? false
   );
 
+/** Plan-aware OTEL cleanup; preserves rows linked from alert/incident evidence. */
+export const pruneOtelForOrg = async (
+  organizationId: string,
+  cutoff: Date,
+  options: RetentionRunOptions = {}
+): Promise<{
+  batches: number;
+  signals: number;
+  windows: number;
+  observations: number;
+  timeline: number;
+  replayNonces: number;
+}> => {
+  const batchOpts = {
+    batchSize: options.batchSize ?? DEFAULT_BATCH_SIZE,
+    maxRowsPerTable: options.maxRowsPerTable ?? DEFAULT_MAX_ROWS_PER_TABLE
+  };
+  const dryRun = options.dryRun ?? false;
+
+  const windows = await deleteBatch(
+    () =>
+      prisma.otelMetricWindow
+        .findMany({
+          where: { organizationId, windowEnd: { lt: cutoff } },
+          select: { id: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.id)),
+    (ids) => prisma.otelMetricWindow.deleteMany({ where: { id: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  const signals = await deleteBatch(
+    () =>
+      prisma.normalizedOperationalSignal
+        .findMany({
+          where: {
+            organizationId,
+            observedAt: { lt: cutoff },
+            AlertEvidence: { none: {} },
+            IncidentEvidence: { none: {} }
+          },
+          select: { id: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.id)),
+    (ids) =>
+      prisma.normalizedOperationalSignal.deleteMany({ where: { id: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  const batches = await deleteBatch(
+    () =>
+      prisma.otelIngestBatch
+        .findMany({
+          where: {
+            organizationId,
+            OR: [{ expiresAt: { lt: new Date() } }, { receivedAt: { lt: cutoff } }],
+            AlertEvidence: { none: {} },
+            IncidentEvidence: { none: {} },
+            Signals: { none: {} }
+          },
+          select: { id: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.id)),
+    (ids) => prisma.otelIngestBatch.deleteMany({ where: { id: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  const observations = await deleteBatch(
+    () =>
+      prisma.operationalObservation
+        .findMany({
+          where: {
+            organizationId,
+            sourceType: "OTEL_COLLECTOR",
+            observedAt: { lt: cutoff }
+          },
+          select: { id: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.id)),
+    (ids) =>
+      prisma.operationalObservation.deleteMany({ where: { id: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  const timeline = await deleteBatch(
+    () =>
+      prisma.operationsTimelineEvent
+        .findMany({
+          where: {
+            organizationId,
+            sourceType: "OTEL_COLLECTOR",
+            occurredAt: { lt: cutoff }
+          },
+          select: { id: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.id)),
+    (ids) =>
+      prisma.operationsTimelineEvent.deleteMany({ where: { id: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  const replayNonces = await deleteBatch(
+    () =>
+      prisma.ingestReplayNonce
+        .findMany({
+          where: { expiresAt: { lt: new Date() }, route: "otel-bridge" },
+          select: { nonce: true },
+          take: batchOpts.batchSize
+        })
+        .then((rows) => rows.map((row) => row.nonce)),
+    (ids) => prisma.ingestReplayNonce.deleteMany({ where: { nonce: { in: ids } } }).then((r) => r.count),
+    batchOpts,
+    dryRun
+  );
+
+  return { batches, signals, windows, observations, timeline, replayNonces };
+};
+
 export const runRetentionSweep = async (
   options: RetentionRunOptions = {}
 ): Promise<RetentionSweepSummary> => {
@@ -258,6 +395,7 @@ export const runRetentionSweep = async (
     incidentsDeleted: 0,
     alertsDeleted: 0,
     incidentMemoryDeleted: 0,
+    otelDeleted: 0,
     organizationLogs: []
   };
 
@@ -301,6 +439,22 @@ export const runRetentionSweep = async (
         });
         orgLog.incidentMemory = deleted;
         summary.incidentMemoryDeleted += deleted;
+      }
+
+      const otelCutoff = computeCutoff(now, policy.telemetryDays);
+      if (otelCutoff) {
+        const otel = await pruneOtelForOrg(policy.organizationId, otelCutoff, {
+          ...options,
+          dryRun
+        });
+        orgLog.otel = otel;
+        summary.otelDeleted +=
+          otel.batches +
+          otel.signals +
+          otel.windows +
+          otel.observations +
+          otel.timeline +
+          otel.replayNonces;
       }
     } catch (error) {
       summary.organizationsSkipped += 1;

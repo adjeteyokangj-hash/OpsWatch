@@ -39,6 +39,16 @@ export type TopologyNodeContext = {
   unresolvedIncidents: Array<{ id: string; title: string; severity: string; status: string }>;
   upstreamIds: string[];
   downstreamIds: string[];
+  otel?: {
+    connected: boolean;
+    discoveryState: string | null;
+    health: string | null;
+    confidence: number | null;
+    freshness: "FRESH" | "STALE" | "INACTIVE" | "UNKNOWN";
+    signalCount: number;
+    lastSeenAt: string | null;
+    source: string | null;
+  };
 };
 
 export type ProjectTopologyResponse = {
@@ -56,6 +66,13 @@ export type ProjectTopologyResponse = {
     openIncidents: number;
   };
   nodeContext: Record<string, TopologyNodeContext>;
+  otelOverlay?: {
+    enabled: boolean;
+    entities: number;
+    relationships: number;
+    freshSignals: number;
+    staleEntities: number;
+  };
 };
 
 export const LAYER_ORDER: TopologyNodeType[] = ["APP", "MODULE", "WORKFLOW", "COMPONENT"];

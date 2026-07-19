@@ -196,6 +196,126 @@ export const loadProjectTopology = async (
     heartbeats
   });
 
+  const otelEntities = await prisma.operationalEntity.findMany({
+    where: {
+      organizationId,
+      projectId,
+      discoverySource: "OTEL_BRIDGE",
+      entityType: "SERVICE"
+    },
+    select: {
+      id: true,
+      name: true,
+      legacyServiceId: true,
+      health: true,
+      healthConfidence: true,
+      discoveryState: true,
+      signalCount: true,
+      lastSeenAt: true,
+      freshUntil: true,
+      provenance: true
+    }
+  });
+  const otelRelationships = await prisma.operationalRelationship.count({
+    where: { organizationId, projectId, provenance: "OTEL_COLLECTOR" }
+  });
+  const freshSignals = await prisma.normalizedOperationalSignal.count({
+    where: {
+      organizationId,
+      projectId,
+      freshUntil: { gt: new Date() }
+    }
+  });
+
+  const now = Date.now();
+  for (const entity of otelEntities) {
+    const serviceId = entity.legacyServiceId;
+    if (!serviceId || !topology.nodeContext[serviceId]) continue;
+    const freshness =
+      entity.discoveryState === "INACTIVE"
+        ? "INACTIVE"
+        : entity.discoveryState === "STALE" || (entity.freshUntil && entity.freshUntil.getTime() < now)
+          ? "STALE"
+          : entity.freshUntil
+            ? "FRESH"
+            : "UNKNOWN";
+    topology.nodeContext[serviceId] = {
+      ...topology.nodeContext[serviceId]!,
+      otel: {
+        connected: true,
+        discoveryState: entity.discoveryState,
+        health: entity.health,
+        confidence: entity.healthConfidence,
+        freshness,
+        signalCount: entity.signalCount,
+        lastSeenAt: entity.lastSeenAt?.toISOString() ?? null,
+        source: entity.provenance
+      }
+    };
+    // Overlay health onto product nodes without replacing the Service model.
+    if (entity.health === "CRITICAL" || entity.health === "DEGRADED" || entity.health === "UNKNOWN") {
+      const node = topology.nodes.find((row) => row.id === serviceId);
+      if (node) {
+        const mapped =
+          entity.health === "CRITICAL"
+            ? ("CRITICAL" as const)
+            : entity.health === "DEGRADED"
+              ? ("DEGRADED" as const)
+              : ("UNKNOWN" as const);
+        if (mapped === "CRITICAL") {
+          node.status = "CRITICAL";
+        } else if (mapped === "DEGRADED" && node.status !== "CRITICAL") {
+          node.status = "DEGRADED";
+        } else if (mapped === "UNKNOWN" && (node.status === "HEALTHY" || node.status === "UNKNOWN")) {
+          node.status = "UNKNOWN";
+        }
+      }
+    }
+  }
+
+  // Feed relationship health into existing green/amber/red/grey edge semantics.
+  const otelEdges = await prisma.operationalRelationship.findMany({
+    where: {
+      organizationId,
+      projectId,
+      provenance: "OTEL_COLLECTOR",
+      discoveryState: { in: ["DISCOVERED", "ACTIVE", "STALE"] }
+    },
+    select: {
+      sourceEntityId: true,
+      targetEntityId: true,
+      health: true,
+      Source: { select: { legacyServiceId: true } },
+      Target: { select: { legacyServiceId: true } }
+    }
+  });
+  for (const edge of otelEdges) {
+    const sourceId = edge.Source.legacyServiceId;
+    const targetId = edge.Target.legacyServiceId;
+    if (!sourceId || !targetId) continue;
+    const topologyEdge = topology.edges.find(
+      (row) =>
+        row.type === "DEPENDENCY" &&
+        ((row.sourceId === sourceId && row.targetId === targetId) ||
+          (row.sourceId === targetId && row.targetId === sourceId))
+    );
+    if (!topologyEdge) continue;
+    if (edge.health === "CRITICAL") topologyEdge.status = "CRITICAL";
+    else if (edge.health === "DEGRADED" && topologyEdge.status !== "CRITICAL") {
+      topologyEdge.status = "DEGRADED";
+    } else if (edge.health === "UNKNOWN" && topologyEdge.status === "HEALTHY") {
+      topologyEdge.status = "UNKNOWN";
+    }
+  }
+
+  topology.otelOverlay = {
+    enabled: otelEntities.length > 0 || freshSignals > 0,
+    entities: otelEntities.length,
+    relationships: otelRelationships,
+    freshSignals,
+    staleEntities: otelEntities.filter((row) => row.discoveryState === "STALE").length
+  };
+
   topologyCache.set(cacheKey, {
     expiresAt: Date.now() + TOPOLOGY_CACHE_TTL_MS,
     value: topology

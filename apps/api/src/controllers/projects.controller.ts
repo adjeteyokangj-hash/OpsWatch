@@ -119,11 +119,36 @@ const buildMonitoringSummary = (row: any) => {
 				heartbeat: heartbeats.length > 0 ? "CONNECTED" : "NOT_CONFIGURED",
 				events: events.length > 0 ? "CONNECTED" : "NOT_CONFIGURED"
 			},
-			advancedMonitoring: {
-				logs: "NOT_CONNECTED",
-				traces: "NOT_CONNECTED",
-				infrastructure: "NOT_CONNECTED"
-			}
+			advancedMonitoring: (() => {
+				const otelConnections = connections.filter(
+					(connection: any) => connection?.mode === "OTEL_COLLECTOR" && connection?.isActive !== false
+				);
+				const healthyOtel = otelConnections.some(
+					(connection: any) =>
+						connection.health === "HEALTHY" || connection.installationStatus === "ACTIVE"
+				);
+				const connected = otelConnections.length > 0;
+				// Logs/traces are Foundation/Preview — not full explorers.
+				const foundationState = !connected
+					? "NOT_CONNECTED"
+					: healthyOtel
+						? "FOUNDATION_CONNECTED"
+						: "CONNECTION_DEGRADED";
+				return {
+					logs: foundationState,
+					traces: foundationState,
+					infrastructure: "NOT_CONNECTED",
+					otel: {
+						connections: otelConnections.length,
+						ingestionEnabled: process.env.OPSWATCH_OTEL_INGESTION_ENABLED === "true",
+						topologyDiscoveryEnabled:
+							process.env.OPSWATCH_OTEL_TOPOLOGY_DISCOVERY_ENABLED === "true",
+						alertGenerationEnabled:
+							process.env.OPSWATCH_OTEL_ALERT_GENERATION_ENABLED === "true",
+						label: "Foundation/Preview"
+					}
+				};
+			})()
 		}
 	};
 };
