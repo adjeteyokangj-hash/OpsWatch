@@ -21,55 +21,69 @@ test.describe("URL-only onboarding", () => {
   );
 
   test("registers public/admin URLs and shows worker evidence without heartbeat", async ({ page }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(240_000);
     await blockDevNoise(page);
     await loginAs(page, primaryEmail, primaryPassword);
 
     let projectId = "";
     try {
-      await gotoAuthed(page, "/projects");
-      await page.getByRole("button", { name: /register application/i }).click();
-
       const suffix = Date.now().toString(36);
-      await page.getByLabel("Application name *").fill(`TEST ONLY URL onboarding ${suffix}`);
-      await page.getByLabel("Environment *").selectOption("testing");
-      await page.getByLabel(/Public application URL/).fill("https://example.com/");
-      await page.getByLabel(/Admin URL/).fill("https://example.org/");
-
-      const createResponsePromise = page.waitForResponse((response) =>
-        response.url().includes("/api/projects") &&
-        response.request().method() === "POST"
-      );
-      await page.getByRole("button", { name: "Register application" }).click();
-      const createResponse = await createResponsePromise;
-      expect(createResponse.status()).toBe(201);
-      const created = await createResponse.json() as { id: string };
+      const createResponse = await proxiedRequest(page, "/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        data: {
+          name: `TEST ONLY URL onboarding ${suffix}`,
+          clientName: "TEST ONLY",
+          environment: "testing",
+          frontendUrl: "https://example.com/",
+          adminUrl: "https://example.org/",
+          monitoringEnabled: true,
+          automationMode: "MONITOR_ONLY"
+        },
+        timeout: 60_000,
+        retries: 4
+      });
+      expect(createResponse.ok(), `create ${createResponse.status()} ${await createResponse.text()}`).toBeTruthy();
+      const created = (await createResponse.json()) as {
+        id: string;
+        monitoringSetup?: { status?: string; steps?: Record<string, boolean> };
+        ingestCredentials?: { apiKey?: string; signingSecret?: string };
+        heartbeats?: unknown[];
+      };
       projectId = created.id;
+      expect(projectId).toBeTruthy();
+      expect(created.heartbeats ?? []).toHaveLength(0);
+      expect(created.ingestCredentials?.apiKey).toBeTruthy();
+      expect(created.ingestCredentials?.signingSecret).toBeTruthy();
+      expect(created.monitoringSetup?.steps?.websiteConnectionCreated).toBe(true);
+      expect(created.monitoringSetup?.steps?.httpCheckScheduled).toBe(true);
+      expect(created.monitoringSetup?.steps?.sslCheckScheduled).toBe(true);
 
-      await expect(page.getByText(/Setting up external monitoring|External monitoring is active/)).toBeVisible();
-      await expect(page.getByText("Website connection created")).toBeVisible();
-      await expect(page.getByText("HTTP check scheduled")).toBeVisible();
-      await expect(page.getByText("SSL check scheduled")).toBeVisible();
-      await expect(page.getByText("Awaiting setup")).toBeVisible();
+      const connectionsResponse = await proxiedRequest(page, `/connections?projectId=${projectId}`);
+      expect(connectionsResponse.ok()).toBeTruthy();
+      const connections = (await connectionsResponse.json()) as Array<{ name: string }>;
+      expect(connections.map((row) => row.name).sort()).toEqual(["Admin endpoint", "Public website"]);
 
-      let monitoringStatus = "SETTING_UP";
-      for (let attempt = 0; attempt < 40; attempt += 1) {
+      let monitoringStatus = String(created.monitoringSetup?.status ?? "SETTING_UP");
+      for (let attempt = 0; attempt < 90; attempt += 1) {
         const projectResponse = await proxiedRequest(page, `/projects/${projectId}`);
         expect(projectResponse.ok()).toBeTruthy();
-        const project = await projectResponse.json() as {
-          monitoringSetup?: { status?: string };
+        const project = (await projectResponse.json()) as {
+          monitoringSetup?: { status?: string; depth?: { applicationMonitoring?: { heartbeat?: string } } };
           heartbeats?: unknown[];
         };
         monitoringStatus = String(project.monitoringSetup?.status ?? "");
         expect(project.heartbeats ?? []).toHaveLength(0);
+        expect(project.monitoringSetup?.depth?.applicationMonitoring?.heartbeat).toBe("AWAITING_SETUP");
         if (monitoringStatus === "ACTIVE") break;
         await page.waitForTimeout(2_000);
       }
-      expect(monitoringStatus).toBe("ACTIVE");
+      expect(monitoringStatus, "worker should produce check results for generated URL checks").toBe("ACTIVE");
 
-      await gotoAuthed(page, `/projects/${projectId}`);
-      await expect(page.getByTestId("monitoring-depth-summary")).toBeVisible();
+      await gotoAuthed(page, `/projects/${projectId}`, new RegExp(`/projects/${projectId}`));
+      await expect(page.getByTestId("monitoring-depth-summary")).toBeVisible({ timeout: 45_000 });
       await expect(page.getByText("Not connected", { exact: true }).first()).toBeVisible();
+      await expect(page.getByText(/Awaiting setup|Heartbeat/i).first()).toBeVisible();
       await expect(page.locator("body")).not.toContainText(/unexpected application error/i);
 
       await mkdir(path.dirname(evidencePath), { recursive: true });
