@@ -7,6 +7,7 @@ import {
 	ownershipFromBody,
 	updateServiceOwnership
 } from "../services/ownership.service";
+import { canonicalGraph } from "../services/canonical-graph.service";
 
 const requireOrg = (req: AuthRequest, res: Response): string | null => {
 	const orgId = req.user?.organizationId;
@@ -34,7 +35,10 @@ export const createService = async (req: AuthRequest, res: Response) => {
 	const body = req.body ?? {};
 	const projectId = String(body.projectId || "");
 
-	const project = await prisma.project.findFirst({ where: { id: projectId, organizationId: orgId }, select: { id: true } });
+	const project = await prisma.project.findFirst({
+		where: { id: projectId, organizationId: orgId },
+		select: { id: true, environment: true }
+	});
 	if (!project) {
 		res.status(404).json({ error: "Project not found" });
 		return;
@@ -62,6 +66,29 @@ export const createService = async (req: AuthRequest, res: Response) => {
 			...ownership,
 			updatedAt: new Date()
 		}
+	});
+	const entity = await canonicalGraph.upsertEntity({
+		organizationId: orgId,
+		projectId,
+		environment: project.environment,
+		entityType: row.type,
+		stableKey: `legacy-service:${row.id}`,
+		name: row.name,
+		source: "MANUAL_SERVICE",
+		sourceKey: row.id,
+		provenance: "DECLARED",
+		criticality: row.criticality,
+		health: row.status,
+		confirmationState: "CONFIRMED",
+		manuallyManaged: true,
+		metadata: { legacyServiceId: row.id }
+	});
+	await canonicalGraph.mapLegacyService({
+		organizationId: orgId,
+		projectId,
+		environment: project.environment,
+		legacyServiceId: row.id,
+		entityId: entity.id
 	});
 	res.status(201).json(row);
 };

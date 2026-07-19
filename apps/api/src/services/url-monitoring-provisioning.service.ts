@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
-import { parseSafeExternalHttpUrl } from "@opswatch/shared";
+import { createCanonicalGraphService, parseSafeExternalHttpUrl } from "@opswatch/shared";
 import { prisma } from "../lib/prisma";
 import { assertSafeConnectionTarget } from "./agentless-connection.service";
 import {
@@ -23,6 +23,7 @@ export type ProvisionUrlMonitoringInput = {
 export type ProvisionedUrlMonitoring = {
   connectionId: string;
   serviceId: string;
+  operationalEntityId: string;
   httpCheckId: string;
   sslCheckId: string;
   url: string;
@@ -299,7 +300,42 @@ const provisionRoleInTransaction = async (
     where: { id: connection.id },
     data: { linkedServiceId: serviceId, linkedCheckId: httpCheckId, updatedAt: now }
   });
-  return { connectionId: connection.id, serviceId, httpCheckId, sslCheckId, url: input.url };
+  const graph = createCanonicalGraphService(tx);
+  const entity = await graph.upsertEntity({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    environment: input.environment,
+    entityType: input.role === "PUBLIC" ? "WEBSITE" : "ADMIN_PORTAL",
+    stableKey: `${input.role.toLowerCase()}:${new URL(input.url).origin}`,
+    name,
+    source: "URL_ONBOARDING",
+    sourceKey: new URL(input.url).origin,
+    provenance: "DECLARED",
+    criticality: input.role === "PUBLIC" ? "HIGH" : "MEDIUM",
+    health: "UNKNOWN",
+    healthReason: "Waiting for first check",
+    confirmationState: "CONFIRMED",
+    metadata: {
+      monitoringRole: input.role,
+      urlOrigin: new URL(input.url).origin,
+      connectionId: connection.id
+    }
+  });
+  await graph.mapLegacyService({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    environment: input.environment,
+    legacyServiceId: serviceId,
+    entityId: entity.id
+  });
+  return {
+    connectionId: connection.id,
+    serviceId,
+    operationalEntityId: entity.id,
+    httpCheckId,
+    sslCheckId,
+    url: input.url
+  };
 };
 
 export const provisionUrlMonitoring = async (

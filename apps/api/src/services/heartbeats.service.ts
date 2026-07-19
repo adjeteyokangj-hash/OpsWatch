@@ -8,6 +8,7 @@ import {
 } from "./intelligence/observation.service";
 import { OBSERVATION_SOURCE, TIMELINE_EVENT } from "./intelligence/intelligence-constants";
 import { progressHeartbeatAlertRecovery } from "./alert-automation-evaluation.service";
+import { canonicalGraph } from "./canonical-graph.service";
 
 export const ingestHeartbeat = async (projectId: string, body: any): Promise<void> => {
   await prisma.heartbeat.create({
@@ -28,11 +29,27 @@ export const ingestHeartbeat = async (projectId: string, body: any): Promise<voi
     data: {
       status: body.status === "DOWN" ? ProjectStatus.DOWN : ProjectStatus.HEALTHY
     },
-    select: { id: true, organizationId: true }
+    select: { id: true, name: true, organizationId: true }
   });
 
   if (project.organizationId) {
     const isDown = body.status === "DOWN";
+    await canonicalGraph.upsertEntity({
+      organizationId: project.organizationId,
+      projectId,
+      environment: body.environment || "unknown",
+      entityType: "APP",
+      stableKey: projectId,
+      name: project.name,
+      source: "HEARTBEAT",
+      sourceKey: projectId,
+      provenance: "DISCOVERED",
+      health: isDown ? "DOWN" : "HEALTHY",
+      healthReason: body.message || `Heartbeat reports ${body.status}`,
+      observedAt: new Date(),
+      freshUntil: new Date(Date.now() + 5 * 60_000),
+      confirmationState: "CONFIRMED"
+    });
     try {
       await recordObservation({
         organizationId: project.organizationId,

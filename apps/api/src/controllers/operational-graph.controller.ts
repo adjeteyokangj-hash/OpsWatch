@@ -13,6 +13,7 @@ import {
   observeOperationalRelationship,
   recalculateAndPersistOperationalGraphHealth
 } from "../services/operational-health-persist.service";
+import { canonicalGraph } from "../services/canonical-graph.service";
 
 const HEALTH_VALUES = new Set(["HEALTHY", "DEGRADED", "AT_RISK", "DOWN", "UNKNOWN", "MAINTENANCE", "DISABLED"]);
 const PROVENANCE_VALUES = new Set(["DECLARED", "DISCOVERED", "LEARNED"]);
@@ -184,7 +185,13 @@ export const createOperationalEntity = async (req: AuthRequest, res: Response) =
   }
   const projectId = body.projectId ? String(body.projectId) : null;
   const operationalLocationId = body.operationalLocationId ? String(body.operationalLocationId) : null;
-  if (projectId && !(await prisma.project.findFirst({ where: { id: projectId, organizationId: orgId }, select: { id: true } }))) {
+  const project = projectId
+    ? await prisma.project.findFirst({
+        where: { id: projectId, organizationId: orgId },
+        select: { id: true, environment: true }
+      })
+    : null;
+  if (projectId && !project) {
     res.status(400).json({ error: "projectId is not in your organization" });
     return;
   }
@@ -202,20 +209,39 @@ export const createOperationalEntity = async (req: AuthRequest, res: Response) =
     res.status(400).json({ error: "invalid health value" });
     return;
   }
-  const row = await prisma.operationalEntity.create({
-    data: {
-      id: randomUUID(), organizationId: orgId, projectId, operationalLocationId, name, entityType,
-      externalId: body.externalId ? String(body.externalId) : null,
-      criticality: typeof body.criticality === "string" ? body.criticality : "MEDIUM",
-      health, healthOverride: body.healthOverride && HEALTH_VALUES.has(String(body.healthOverride)) ? String(body.healthOverride) : null,
-      healthReason: body.healthReason ? String(body.healthReason) : null,
-      healthConfidence: typeof body.healthConfidence === "number" ? body.healthConfidence : null,
-      provenance, discoverySource: body.discoverySource ? String(body.discoverySource) : null,
-      discoveredAt: provenance === "DECLARED" ? null : new Date(),
-      ...(Array.isArray(body.tags) ? { tagsJson: body.tags.filter((tag: unknown): tag is string => typeof tag === "string") } : {}),
-      ...(recordOrNull(body.metadata) ? { metadataJson: recordOrNull(body.metadata) as Prisma.InputJsonValue } : {}),
-      updatedAt: new Date()
-    }
+  const row = await canonicalGraph.upsertEntity({
+    organizationId: orgId,
+    projectId,
+    environment:
+      project?.environment ??
+      (typeof body.environment === "string" ? body.environment : "unknown"),
+    entityType,
+    stableKey:
+      typeof body.stableKey === "string"
+        ? body.stableKey
+        : typeof body.externalId === "string"
+          ? body.externalId
+          : name,
+    name,
+    source: typeof body.discoverySource === "string" ? body.discoverySource : "MANUAL",
+    sourceKey:
+      typeof body.externalId === "string"
+        ? body.externalId
+        : typeof body.stableKey === "string"
+          ? body.stableKey
+          : name,
+    provenance,
+    operationalLocationId,
+    criticality: typeof body.criticality === "string" ? body.criticality : "MEDIUM",
+    health,
+    healthReason: body.healthReason ? String(body.healthReason) : null,
+    healthConfidence: typeof body.healthConfidence === "number" ? body.healthConfidence : null,
+    confirmationState: "CONFIRMED",
+    manuallyManaged: true,
+    tags: Array.isArray(body.tags)
+      ? body.tags.filter((tag: unknown): tag is string => typeof tag === "string")
+      : undefined,
+    metadata: recordOrNull(body.metadata) as Prisma.InputJsonValue | undefined
   });
   res.status(201).json(row);
 };
@@ -233,7 +259,7 @@ export const createOperationalRelationship = async (req: AuthRequest, res: Respo
   }
   const entities = await prisma.operationalEntity.findMany({
     where: { organizationId: orgId, id: { in: [sourceEntityId, targetEntityId] } },
-    select: { id: true, projectId: true }
+    select: { id: true, projectId: true, environment: true }
   });
   if (entities.length !== 2) {
     res.status(400).json({ error: "relationship entities must belong to your organization" });
@@ -256,22 +282,30 @@ export const createOperationalRelationship = async (req: AuthRequest, res: Respo
     res.status(400).json({ error: "LEARNED relationships cannot be auto-approved" });
     return;
   }
-  const row = await prisma.operationalRelationship.create({
-    data: {
-      id: randomUUID(),
-      organizationId: orgId,
-      projectId: sourceEntity.projectId === targetEntity.projectId ? sourceEntity.projectId : null,
-      sourceEntityId, targetEntityId, relationshipType, provenance,
-      approvalStatus: isLearned ? "PENDING" : "APPROVED",
-      requiresApproval: isLearned,
-      impactRole: normalizeImpactRole(typeof body.impactRole === "string" ? body.impactRole : undefined),
-      observationCount: typeof body.observationCount === "number" && body.observationCount >= 0 ? Math.floor(body.observationCount) : 0,
-      criticality: typeof body.criticality === "string" ? body.criticality : "MEDIUM",
-      confidence: typeof body.confidence === "number" ? body.confidence : null,
-      ...(recordOrNull(body.evidence) ? { evidenceJson: recordOrNull(body.evidence) as Prisma.InputJsonValue } : {}),
-      discoveredAt: provenance === "DECLARED" ? null : new Date(),
-      updatedAt: new Date()
-    }
+  if (sourceEntity.environment !== targetEntity.environment) {
+    res.status(409).json({ error: "relationship entities must use the same environment" });
+    return;
+  }
+  const row = await canonicalGraph.upsertRelationship({
+    organizationId: orgId,
+    projectId:
+      sourceEntity.projectId === targetEntity.projectId ? sourceEntity.projectId : null,
+    environment: sourceEntity.environment,
+    sourceEntityId,
+    targetEntityId,
+    relationshipType,
+    source: "MANUAL",
+    provenance,
+    approvalStatus: isLearned ? "PENDING" : "APPROVED",
+    requiresApproval: isLearned,
+    impactRole: normalizeImpactRole(
+      typeof body.impactRole === "string" ? body.impactRole : undefined
+    ),
+    criticality: typeof body.criticality === "string" ? body.criticality : "MEDIUM",
+    confidence: typeof body.confidence === "number" ? body.confidence : null,
+    confirmationState: isLearned ? "CANDIDATE" : "CONFIRMED",
+    manuallyManaged: provenance === "DECLARED",
+    evidence: recordOrNull(body.evidence) as Prisma.InputJsonValue | undefined
   });
   res.status(201).json(row);
 };
