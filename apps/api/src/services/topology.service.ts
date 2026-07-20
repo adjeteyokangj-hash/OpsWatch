@@ -299,6 +299,14 @@ export const buildProjectTopologyResponse = (input: TopologyBuildInput): Project
       lastCheckAt: latestCheck?.checkedAt.toISOString() ?? latestHeartbeat?.receivedAt.toISOString() ?? null,
       lastCheckStatus: latestCheck?.status ?? latestHeartbeat?.status ?? null,
       sloStatus: slo?.latestWindow?.status ?? null,
+      recoveryState:
+        signals.openAlerts > 0
+          ? latestCheck?.status === "PASS"
+            ? "VERIFYING"
+            : "RECOVERING"
+          : signals.unresolvedIncidents > 0
+            ? "RECOVERING"
+            : null,
       openAlerts: input.alerts
         .filter((row) => row.serviceId === service.id)
         .map((row) => ({ id: row.id, title: row.title, severity: row.severity, status: row.status })),

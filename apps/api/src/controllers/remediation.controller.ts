@@ -78,8 +78,18 @@ export const getRemediationLogs = async (req: AuthRequest, res: Response) => {
 	const orgId = orgIdOr403(req, res);
 	if (!orgId) return;
 
+	const where: { organizationId: string; incidentId?: string; alertId?: string } = {
+		organizationId: orgId
+	};
+	if (typeof req.query.incidentId === "string" && req.query.incidentId.trim()) {
+		where.incidentId = req.query.incidentId.trim();
+	}
+	if (typeof req.query.alertId === "string" && req.query.alertId.trim()) {
+		where.alertId = req.query.alertId.trim();
+	}
+
 	const rows = await prisma.remediationLog.findMany({
-		where: { organizationId: orgId },
+		where,
 		orderBy: { createdAt: "desc" },
 		take: 200
 	});

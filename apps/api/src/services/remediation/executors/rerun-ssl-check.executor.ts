@@ -3,8 +3,9 @@ import { randomUUID } from "crypto";
 import { URL } from "url";
 import { prisma } from "../../../lib/prisma";
 import type { RemediationExecutor } from "../types";
-import { createAlert, resolveAlertsBySourceType } from "../../alerting.service";
+import { createAlert } from "../../alerting.service";
 import { completed, failed } from "./_common";
+import { propagateCheckRecovery } from "../check-recovery-propagation.service";
 
 const SSL_WARN_DAYS = 30;
 const SSL_CRIT_DAYS = 7;
@@ -31,7 +32,7 @@ const getCertExpiryDays = (hostname: string, port: number, timeoutMs: number): P
     socket.on("error", reject);
   });
 
-export const executeRerunSslCheck: RemediationExecutor = async ({ context }) => {
+export const executeRerunSslCheck: RemediationExecutor = async ({ context, executedBy }) => {
   const check = await prisma.check.findFirst({
     where: {
       isActive: true,
@@ -75,9 +76,10 @@ export const executeRerunSslCheck: RemediationExecutor = async ({ context }) => 
     message = `SSL check failed: ${String(error)}`;
   }
 
+  const resultId = randomUUID();
   await prisma.checkResult.create({
     data: {
-      id: randomUUID(),
+      id: resultId,
       checkId: check.id,
       status,
       message,
@@ -85,9 +87,31 @@ export const executeRerunSslCheck: RemediationExecutor = async ({ context }) => 
     }
   });
 
+  const recovery = await propagateCheckRecovery({
+    organizationId: context.organizationId,
+    projectId: check.Service.projectId,
+    checkId: check.id,
+    alertId: context.alertId,
+    incidentId: context.incidentId,
+    serviceId: check.serviceId,
+    correlationId: `ssl-rerun:${resultId}`,
+    recoveryCause: executedBy && executedBy !== "auto-heal" ? "administrator-approved" : "automatic",
+    actorUserId: executedBy && executedBy !== "auto-heal" ? executedBy : null,
+    checkFailed: status !== "PASS",
+    rootCauseHint: `${check.name} SSL certificate verification failed or was near expiry.`
+  });
+
   if (status === "PASS") {
-    await resolveAlertsBySourceType(check.Service.projectId, "CHECK", `${check.name} SSL expiry warning`);
-    return completed(`SSL check rerun passed (${check.name}).`, { checkId: check.id, daysLeft });
+    return completed(`SSL check rerun passed (${check.name}). ${recovery.uiLabel}`, {
+      checkId: check.id,
+      daysLeft,
+      recovery,
+      verificationProgress: recovery.verification,
+      recoveryUiState: recovery.uiState,
+      recoveryUiLabel: recovery.uiLabel,
+      executedAt: new Date().toISOString(),
+      triggeredBy: executedBy ?? "system"
+    });
   }
 
   await createAlert({
@@ -104,6 +128,12 @@ export const executeRerunSslCheck: RemediationExecutor = async ({ context }) => 
   return failed(`SSL check rerun not healthy (${check.name}): ${message}`, {
     checkId: check.id,
     daysLeft,
-    status
+    status,
+    recovery,
+    verificationProgress: recovery.verification,
+    recoveryUiState: recovery.uiState,
+    recoveryUiLabel: recovery.uiLabel,
+    executedAt: new Date().toISOString(),
+    triggeredBy: executedBy ?? "system"
   });
 };

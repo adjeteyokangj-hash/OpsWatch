@@ -26,6 +26,7 @@ import {
 } from "./remediator-signing";
 import type { RemediationContext, RemediationExecutionResult } from "./types";
 import { completed, failed, misconfigured } from "./executors/_common";
+import { propagateCheckRecovery } from "./check-recovery-propagation.service";
 
 const asJson = (value: Record<string, unknown> | null | undefined): Prisma.InputJsonValue =>
   (value ?? {}) as Prisma.InputJsonValue;
@@ -832,7 +833,7 @@ export const executeRemediatorRepair = async (input: {
           organizationId: input.context.organizationId,
           projectId,
           eventType: TIMELINE_EVENT.RECOVERY_VERIFIED,
-          summary: `Recovery verified after ${remediatorAction.replaceAll("_", " ")}`,
+          summary: `Remediator repair completed: ${remediatorAction.replaceAll("_", " ")} — evaluating check recovery threshold`,
           sourceType: "REMEDIATOR_REPAIR",
           sourceId: attemptId,
           severity: "info",
@@ -843,16 +844,56 @@ export const executeRemediatorRepair = async (input: {
       }
       await resetCircuitOnSuccess(integration);
 
-      return completed(`Remediator repair completed: ${remediatorAction}`, {
-        attemptId,
-        remediatorAction,
-        httpStatus,
-        verification: verification.details,
-        response: {
-          accepted: true,
-          verified: true
+      // Repair COMPLETED is not enough to close alerts — require Check.recoveryThreshold.
+      let recovery: Awaited<ReturnType<typeof propagateCheckRecovery>> | null = null;
+      const checkId =
+        input.context.checkId ??
+        (
+          await prisma.check.findFirst({
+            where: {
+              isActive: true,
+              ...(input.context.serviceId ? { serviceId: input.context.serviceId } : {}),
+              Service: { projectId }
+            },
+            orderBy: { updatedAt: "desc" },
+            select: { id: true }
+          })
+        )?.id;
+
+      if (checkId) {
+        recovery = await propagateCheckRecovery({
+          organizationId: input.context.organizationId,
+          projectId,
+          checkId,
+          alertId: input.context.alertId,
+          incidentId: input.context.incidentId,
+          serviceId: input.context.serviceId,
+          correlationId: `remediator:${attemptId}`,
+          recoveryCause: "administrator-approved",
+          actorUserId: null,
+          checkFailed: false
+        });
+      }
+
+      return completed(
+        recovery
+          ? `Remediator repair completed: ${remediatorAction}. ${recovery.uiLabel}`
+          : `Remediator repair completed: ${remediatorAction}`,
+        {
+          attemptId,
+          remediatorAction,
+          httpStatus,
+          verification: verification.details,
+          recovery,
+          verificationProgress: recovery?.verification ?? null,
+          recoveryUiState: recovery?.uiState ?? "REPAIR_COMPLETED_VERIFICATION_PENDING",
+          recoveryUiLabel: recovery?.uiLabel ?? "Repair completed — verification pending",
+          response: {
+            accepted: true,
+            verified: true
+          }
         }
-      });
+      );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       const timedOut = message.toLowerCase().includes("abort");

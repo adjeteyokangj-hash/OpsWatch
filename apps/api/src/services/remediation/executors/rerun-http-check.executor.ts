@@ -2,10 +2,11 @@ import { classifyHttpCheckFailure, formatFailureMessage } from "@opswatch/shared
 import { prisma } from "../../../lib/prisma";
 import { randomUUID } from "crypto";
 import type { RemediationExecutor } from "../types";
-import { createAlert, resolveAlertsBySourceType } from "../../alerting.service";
+import { createAlert } from "../../alerting.service";
 import { completed, failed } from "./_common";
+import { propagateCheckRecovery } from "../check-recovery-propagation.service";
 
-export const executeRerunHttpCheck: RemediationExecutor = async ({ context }) => {
+export const executeRerunHttpCheck: RemediationExecutor = async ({ context, executedBy }) => {
   const check = await prisma.check.findFirst({
     where: {
       isActive: true,
@@ -83,9 +84,10 @@ export const executeRerunHttpCheck: RemediationExecutor = async ({ context }) =>
         })
       : null;
 
+  const resultId = randomUUID();
   await prisma.checkResult.create({
     data: {
-      id: randomUUID(),
+      id: resultId,
       checkId: check.id,
       status,
       responseCode: responseCode ?? undefined,
@@ -106,9 +108,40 @@ export const executeRerunHttpCheck: RemediationExecutor = async ({ context }) =>
     }
   });
 
+  const correlationId = `check-rerun:${resultId}`;
+  const rootCauseHint =
+    failureMeta?.diagnosis ??
+    (check.type === "KEYWORD"
+      ? `${check.name} failed because the expected payload keyword was temporarily missing or unavailable.`
+      : `${check.name} failed verification against the monitored endpoint.`);
+
+  const recovery = await propagateCheckRecovery({
+    organizationId: context.organizationId,
+    projectId: check.Service.projectId,
+    checkId: check.id,
+    alertId: context.alertId,
+    incidentId: context.incidentId,
+    serviceId: check.serviceId,
+    correlationId,
+    recoveryCause: executedBy && executedBy !== "auto-heal" ? "administrator-approved" : "automatic",
+    actorUserId: executedBy && executedBy !== "auto-heal" ? executedBy : null,
+    checkFailed: status !== "PASS",
+    rootCauseHint: status === "PASS" ? rootCauseHint : failureMeta?.diagnosis ?? rootCauseHint
+  });
+
   if (status === "PASS") {
-    await resolveAlertsBySourceType(check.Service.projectId, "CHECK", `${check.name} failing`);
-    return completed(`Check rerun passed (${check.name}).`, { checkId: check.id, status, responseTimeMs });
+    return completed(`Check rerun passed (${check.name}). ${recovery.uiLabel}`, {
+      checkId: check.id,
+      status,
+      responseTimeMs,
+      checkResultId: resultId,
+      recovery,
+      verificationProgress: recovery.verification,
+      recoveryUiState: recovery.uiState,
+      recoveryUiLabel: recovery.uiLabel,
+      executedAt: new Date().toISOString(),
+      triggeredBy: executedBy ?? "system"
+    });
   }
 
   const category = check.type === "RESPONSE_TIME" ? "PERFORMANCE" : check.type === "KEYWORD" ? "RELIABILITY" : "AVAILABILITY";
@@ -127,6 +160,13 @@ export const executeRerunHttpCheck: RemediationExecutor = async ({ context }) =>
     checkId: check.id,
     status,
     responseCode,
-    responseTimeMs
+    responseTimeMs,
+    checkResultId: resultId,
+    recovery,
+    verificationProgress: recovery.verification,
+    recoveryUiState: recovery.uiState,
+    recoveryUiLabel: recovery.uiLabel,
+    executedAt: new Date().toISOString(),
+    triggeredBy: executedBy ?? "system"
   });
 };

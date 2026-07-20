@@ -13,6 +13,18 @@ export type RecoveryCause =
   | "manual-external"
   | "natural";
 
+export type RecoveryResolutionResult = {
+  alertResolved: boolean;
+  incidentResolved: boolean;
+  incidentStillOpenReason: string | null;
+  remainingOpenAlertCount: number | null;
+  linkedAlertTotal: number | null;
+  rootCauseUpdated: boolean;
+};
+
+const DEFAULT_AUTO_RESOLVE_REASON =
+  "Automatically resolved after successful recovery verification";
+
 export const applyVerifiedRecoveryResolution = async (input: {
   organizationId: string;
   projectId?: string | null;
@@ -22,39 +34,41 @@ export const applyVerifiedRecoveryResolution = async (input: {
   recoveryCause: RecoveryCause;
   verificationState: "VERIFIED_HEALTHY" | "PARTIALLY_RECOVERED" | "VERIFICATION_FAILED";
   actorUserId?: string | null;
-}): Promise<{
-  alertResolved: boolean;
-  incidentResolved: boolean;
-  incidentStillOpenReason: string | null;
-}> => {
+  verificationProgress?: {
+    checkId?: string;
+    passed: number;
+    required: number;
+    met?: boolean;
+  } | null;
+  autoResolveReason?: string;
+  rootCauseHint?: string | null;
+}): Promise<RecoveryResolutionResult> => {
+  const autoResolveReason = input.autoResolveReason ?? DEFAULT_AUTO_RESOLVE_REASON;
+
   if (input.verificationState !== "VERIFIED_HEALTHY") {
-    if (input.incidentId) {
-      if (!input.projectId) {
-        return {
-          alertResolved: false,
-          incidentResolved: false,
-          incidentStillOpenReason:
-            input.verificationState === "VERIFICATION_FAILED"
-              ? "Verification failed"
-              : "Only partial recovery observed"
-        };
-      }
+    const progressLabel = input.verificationProgress
+      ? `Verification ${input.verificationProgress.passed} of ${input.verificationProgress.required} passed`
+      : null;
+    const summary =
+      input.verificationState === "VERIFICATION_FAILED"
+        ? "Verification failed — incident remains open"
+        : progressLabel ?? "Partial recovery — alert kept open pending full verification";
+
+    if (input.incidentId && input.projectId) {
       await prisma.incidentTimelineEvent.create({
         data: {
           id: randomUUID(),
           incidentId: input.incidentId,
           projectId: input.projectId,
           eventType: "REMEDIATION",
-          summary:
-            input.verificationState === "VERIFICATION_FAILED"
-              ? "Remediation verification failed — alert kept open; escalation recommended"
-              : "Partial recovery — alert kept open pending full verification",
+          summary,
           sourceType: "REMEDIATION_EXECUTION_RUN",
           sourceId: input.correlationId,
           payloadJson: redactUnknown({
             correlationId: input.correlationId,
             verificationState: input.verificationState,
-            recoveryCause: input.recoveryCause
+            recoveryCause: input.recoveryCause,
+            verificationProgress: input.verificationProgress ?? null
           }) as object
         }
       }).catch(() => undefined);
@@ -64,8 +78,11 @@ export const applyVerifiedRecoveryResolution = async (input: {
       incidentResolved: false,
       incidentStillOpenReason:
         input.verificationState === "VERIFICATION_FAILED"
-          ? "Verification failed"
-          : "Only partial recovery observed"
+          ? "Verification failed — incident remains open"
+          : progressLabel ?? "Only partial recovery observed",
+      remainingOpenAlertCount: null,
+      linkedAlertTotal: null,
+      rootCauseUpdated: false
     };
   }
 
@@ -78,12 +95,15 @@ export const applyVerifiedRecoveryResolution = async (input: {
       }
     });
     if (alert && alert.status !== AlertStatus.RESOLVED) {
+      const stampedMessage = `${autoResolveReason} (cause=${input.recoveryCause}; correlationId=${input.correlationId})`;
       await prisma.alert.update({
         where: { id: alert.id },
         data: {
           status: AlertStatus.RESOLVED,
           resolvedAt: new Date(),
-          message: `${alert.message} [auto-resolved: verified remediation recovery; cause=${input.recoveryCause}; correlationId=${input.correlationId}]`
+          message: alert.message?.includes(autoResolveReason)
+            ? alert.message
+            : `${alert.message ? `${alert.message} — ` : ""}${stampedMessage}`
         }
       });
       alertResolved = true;
@@ -96,7 +116,9 @@ export const applyVerifiedRecoveryResolution = async (input: {
           entityId: alert.id,
           metadataJson: redactUnknown({
             correlationId: input.correlationId,
-            recoveryCause: input.recoveryCause
+            recoveryCause: input.recoveryCause,
+            verificationProgress: input.verificationProgress ?? null,
+            reason: autoResolveReason
           }) as object
         }
       });
@@ -105,20 +127,31 @@ export const applyVerifiedRecoveryResolution = async (input: {
 
   let incidentResolved = false;
   let incidentStillOpenReason: string | null = null;
+  let remainingOpenAlertCount: number | null = null;
+  let linkedAlertTotal: number | null = null;
+  let rootCauseUpdated = false;
+
   if (input.incidentId) {
     const incident = await prisma.incident.findFirst({
       where: { id: input.incidentId, Project: { organizationId: input.organizationId } },
       include: { IncidentAlert: { include: { Alert: true } } }
     });
     if (incident) {
-      const openAlerts = incident.IncidentAlert.filter(
-        (row) => row.Alert.status !== AlertStatus.RESOLVED && row.Alert.id !== input.alertId
-      );
-      // If we just resolved the target alert, exclude it from remaining open set.
+      linkedAlertTotal = incident.IncidentAlert.length;
       const remainingOpen = incident.IncidentAlert.filter((row) => {
         if (row.Alert.id === input.alertId && alertResolved) return false;
         return row.Alert.status !== AlertStatus.RESOLVED;
       });
+      remainingOpenAlertCount = remainingOpen.length;
+      const recoveredCount = linkedAlertTotal - remainingOpenAlertCount;
+
+      if (!incident.rootCause && input.rootCauseHint?.trim()) {
+        await prisma.incident.update({
+          where: { id: incident.id },
+          data: { rootCause: input.rootCauseHint.trim() }
+        });
+        rootCauseUpdated = true;
+      }
 
       await prisma.incidentTimelineEvent.create({
         data: {
@@ -127,14 +160,19 @@ export const applyVerifiedRecoveryResolution = async (input: {
           projectId: incident.projectId,
           eventType: "REMEDIATION",
           summary: alertResolved
-            ? `Contributing alert resolved after verified recovery (${input.recoveryCause})`
+            ? remainingOpen.length === 0
+              ? "Recovery verified — incident automatically resolved"
+              : `Partial recovery — ${recoveredCount} of ${linkedAlertTotal} alerts resolved`
             : "Verified recovery recorded",
           sourceType: "REMEDIATION_EXECUTION_RUN",
           sourceId: input.correlationId,
           payloadJson: redactUnknown({
             correlationId: input.correlationId,
             recoveryCause: input.recoveryCause,
-            remainingOpenAlerts: remainingOpen.length
+            remainingOpenAlerts: remainingOpen.length,
+            linkedAlertTotal,
+            verificationProgress: input.verificationProgress ?? null,
+            rootCauseUpdated
           }) as object
         }
       });
@@ -145,22 +183,34 @@ export const applyVerifiedRecoveryResolution = async (input: {
           data: {
             status: "RESOLVED",
             resolvedAt: new Date(),
-            resolutionNotes: `Resolved after verified remediation recovery (${input.recoveryCause}); correlationId=${input.correlationId}`
+            resolutionNotes: `${autoResolveReason} (${input.recoveryCause}); correlationId=${input.correlationId}`
           }
         });
         incidentResolved = true;
-      } else if (remainingOpen.length > 0) {
-        incidentStillOpenReason = `${remainingOpen.length} contributing alert(s) remain open`;
-        await prisma.incident.update({
-          where: { id: incident.id },
+        await prisma.incidentTimelineEvent.create({
           data: {
-            // Keep open / investigating; impact note via timeline only.
+            id: randomUUID(),
+            incidentId: incident.id,
+            projectId: incident.projectId,
+            eventType: "INCIDENT_RESOLVED",
+            summary: "Recovery verified — incident automatically resolved",
+            sourceType: "REMEDIATION_EXECUTION_RUN",
+            sourceId: input.correlationId,
+            occurredAt: new Date()
           }
-        });
-        void openAlerts;
+        }).catch(() => undefined);
+      } else if (remainingOpen.length > 0) {
+        incidentStillOpenReason = `Partial recovery — ${recoveredCount} of ${linkedAlertTotal} alerts resolved`;
       }
     }
   }
 
-  return { alertResolved, incidentResolved, incidentStillOpenReason };
+  return {
+    alertResolved,
+    incidentResolved,
+    incidentStillOpenReason,
+    remainingOpenAlertCount,
+    linkedAlertTotal,
+    rootCauseUpdated
+  };
 };

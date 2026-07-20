@@ -16,6 +16,7 @@ import {
   tripCircuitBreaker
 } from "../services/remediation/circuit-breaker.service";
 import { applyVerifiedRecoveryResolution } from "../services/remediation/recovery-resolution.service";
+import { propagateCheckRecovery } from "../services/remediation/check-recovery-propagation.service";
 import { ensureRemediationProvidersRegistered } from "../services/remediation/providers/register-providers";
 import { prisma } from "../lib/prisma";
 import { redactUnknown } from "../lib/redact-secrets";
@@ -192,21 +193,74 @@ export const executePhase7Governed = async (req: AuthRequest, res: Response) => 
       forceRollbackOnVerificationFailure: body.forceRollback !== false
     });
 
+    const recoveryCause =
+      automationMode === "AUTONOMOUS" ? "automatic" : "administrator-approved";
+    const actorUserId = typeof req.user?.sub === "string" ? req.user.sub : null;
+    const checkId =
+      typeof body.extra?.checkId === "string"
+        ? body.extra.checkId
+        : typeof (outcome.providerResult?.details as { checkId?: string } | undefined)?.checkId ===
+            "string"
+          ? (outcome.providerResult!.details as { checkId: string }).checkId
+          : null;
+
+    let recoveryPropagation = null as Awaited<ReturnType<typeof propagateCheckRecovery>> | null;
+
     if (
       outcome.verification?.state === "VERIFIED_HEALTHY" ||
       outcome.run.status === "VERIFIED_HEALTHY"
     ) {
-      await applyVerifiedRecoveryResolution({
-        organizationId: orgId,
-        projectId: body.projectId,
-        alertId: body.alertId,
-        incidentId: body.incidentId,
-        correlationId: outcome.run.correlationId,
-        recoveryCause:
-          automationMode === "AUTONOMOUS" ? "automatic" : "administrator-approved",
-        verificationState: "VERIFIED_HEALTHY",
-        actorUserId: typeof req.user?.sub === "string" ? req.user.sub : null
-      });
+      if (checkId) {
+        recoveryPropagation = await propagateCheckRecovery({
+          organizationId: orgId,
+          projectId: body.projectId,
+          checkId,
+          alertId: body.alertId,
+          incidentId: body.incidentId,
+          serviceId: body.serviceId,
+          correlationId: outcome.run.correlationId,
+          recoveryCause,
+          actorUserId,
+          checkFailed: false
+        });
+      } else {
+        await applyVerifiedRecoveryResolution({
+          organizationId: orgId,
+          projectId: body.projectId,
+          alertId: body.alertId,
+          incidentId: body.incidentId,
+          correlationId: outcome.run.correlationId,
+          recoveryCause,
+          verificationState: "VERIFIED_HEALTHY",
+          actorUserId
+        });
+      }
+    } else if (outcome.verification?.state === "PARTIALLY_RECOVERED") {
+      if (checkId) {
+        recoveryPropagation = await propagateCheckRecovery({
+          organizationId: orgId,
+          projectId: body.projectId,
+          checkId,
+          alertId: body.alertId,
+          incidentId: body.incidentId,
+          serviceId: body.serviceId,
+          correlationId: outcome.run.correlationId,
+          recoveryCause,
+          actorUserId,
+          checkFailed: false
+        });
+      } else {
+        await applyVerifiedRecoveryResolution({
+          organizationId: orgId,
+          projectId: body.projectId,
+          alertId: body.alertId,
+          incidentId: body.incidentId,
+          correlationId: outcome.run.correlationId,
+          recoveryCause,
+          verificationState: "PARTIALLY_RECOVERED",
+          actorUserId
+        });
+      }
     } else if (outcome.verification?.state === "VERIFICATION_FAILED") {
       await applyVerifiedRecoveryResolution({
         organizationId: orgId,
@@ -214,10 +268,9 @@ export const executePhase7Governed = async (req: AuthRequest, res: Response) => 
         alertId: body.alertId,
         incidentId: body.incidentId,
         correlationId: outcome.run.correlationId,
-        recoveryCause:
-          automationMode === "AUTONOMOUS" ? "automatic" : "administrator-approved",
+        recoveryCause,
         verificationState: "VERIFICATION_FAILED",
-        actorUserId: typeof req.user?.sub === "string" ? req.user.sub : null
+        actorUserId
       });
     }
 
@@ -225,7 +278,8 @@ export const executePhase7Governed = async (req: AuthRequest, res: Response) => 
       run: redactUnknown(outcome.run),
       providerResult: redactUnknown(outcome.providerResult),
       verification: outcome.verification ? redactUnknown(outcome.verification) : null,
-      rollback: outcome.rollback ? redactUnknown(outcome.rollback) : null
+      rollback: outcome.rollback ? redactUnknown(outcome.rollback) : null,
+      recovery: recoveryPropagation ? redactUnknown(recoveryPropagation) : null
     });
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Execution failed" });
