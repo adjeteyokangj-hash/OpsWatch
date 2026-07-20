@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Shell } from "../../../components/layout/shell";
 import { Header } from "../../../components/layout/header";
 import { PageSection } from "../../../components/ui/page-section";
 import { apiFetch } from "../../../lib/api";
 import { StatCard } from "../../../components/dashboard/stat-card";
+import { ConfigureSetupReturnBanner } from "../../../components/ui/configure-setup-return-banner";
 
 type CheckDetail = {
   id: string;
@@ -86,6 +87,9 @@ export default function CheckDetailPage() {
   if (loading) {
     return (
       <Shell>
+          <Suspense fallback={null}>
+            <ConfigureSetupReturnBanner />
+          </Suspense>
         <Header title="Check" />
         <section className="panel">Loading check...</section>
       </Shell>
@@ -104,6 +108,9 @@ export default function CheckDetailPage() {
 
   return (
     <Shell>
+      <Suspense fallback={null}>
+        <ConfigureSetupReturnBanner />
+      </Suspense>
       <Header title={`Check: ${check.name}`} />
 
       <section className="three-col">

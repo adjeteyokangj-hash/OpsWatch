@@ -406,7 +406,7 @@ export function RegisterApplicationWizard({
           frontendUrl: form.publicUrl.trim() || undefined,
           adminUrl: form.adminUrl.trim() || undefined,
           monitoringEnabled: true,
-          automationMode: "MONITOR_ONLY"
+          automationMode: "AUTO_HEAL_SAFE"
         })
       });
 

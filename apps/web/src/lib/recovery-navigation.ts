@@ -48,6 +48,21 @@ export const topologyLinkKindForRecovery = (input: {
  * Map remediation blockers to the exact configuration destination.
  * Never expose secret values — only names / types.
  */
+
+const appendConfigureQuery = (
+  href: string,
+  opts: { incidentId?: string | null; missingNames?: string[] }
+): string => {
+  const url = new URL(href, "http://opswatch.local");
+  if (opts.incidentId) {
+    url.searchParams.set("returnTo", `/incidents/${opts.incidentId}`);
+  }
+  if (opts.missingNames && opts.missingNames.length > 0) {
+    url.searchParams.set("highlight", opts.missingNames.join(","));
+  }
+  return `${url.pathname}${url.search}`;
+};
+
 export type ConfigureSetupTarget = {
   href: string;
   label: string;
@@ -71,18 +86,26 @@ export const resolveConfigureSetupTarget = (input: {
     ...(input.missingEnvVars ?? []),
     ...(input.missingFields ?? [])
   ].filter(Boolean);
+  const withReturn = (href: string) =>
+    appendConfigureQuery(href, { incidentId: input.incidentId, missingNames });
 
   if (input.state === "APPROVAL_REQUIRED" && input.incidentId) {
     return {
-      href: `/incidents/${input.incidentId}?approval=1`,
+      href: withReturn(`/incidents/${input.incidentId}?approval=1`),
       label: "Open approval",
-      banner: "This action requires approval before it can run."
+      banner: "This action requires approval before it can run.",
+      missingNames
     };
   }
 
-  if (input.checkId && (input.action.includes("CHECK") || input.action.includes("HTTP") || input.action === "CONFIGURE_CHECK")) {
+  if (
+    input.checkId &&
+    (input.action.includes("CHECK") ||
+      input.action.includes("HTTP") ||
+      input.action === "CONFIGURE_CHECK")
+  ) {
     return {
-      href: `/checks/${input.checkId}`,
+      href: withReturn(`/checks/${input.checkId}`),
       label: "Configure required setup →",
       banner: "Check configuration needs correction before this action can run.",
       missingNames
@@ -97,7 +120,9 @@ export const resolveConfigureSetupTarget = (input: {
   ) {
     if (projectId && input.serviceId) {
       return {
-        href: `/projects/${projectId}/topology?entityId=${encodeURIComponent(input.serviceId)}&panel=remediation`,
+        href: withReturn(
+          `/projects/${projectId}/topology?entityId=${encodeURIComponent(input.serviceId)}&panel=remediation`
+        ),
         label: "Configure required setup →",
         banner: "Remediation setup is incomplete for this service.",
         missingNames
@@ -105,7 +130,7 @@ export const resolveConfigureSetupTarget = (input: {
     }
     if (projectId) {
       return {
-        href: `/projects/${projectId}/automation`,
+        href: withReturn(`/projects/${projectId}/automation`),
         label: "Configure required setup →",
         banner: "Open remediation setup for this application.",
         missingNames
@@ -119,7 +144,7 @@ export const resolveConfigureSetupTarget = (input: {
     missingNames.some((name) => /connection|integration|heartbeat/i.test(name))
   ) {
     return {
-      href: projectId ? `/projects/${projectId}/integrations` : "/connections",
+      href: withReturn(projectId ? `/integrations/${projectId}` : "/connections"),
       label: "Configure required setup →",
       banner: "A monitoring connection must be configured for this action.",
       missingNames
@@ -128,9 +153,12 @@ export const resolveConfigureSetupTarget = (input: {
 
   if (missingNames.length > 0 && projectId) {
     return {
-      href: `/projects/${projectId}/settings?highlight=${encodeURIComponent(missingNames.join(","))}`,
+      href: withReturn(
+        `/projects/${projectId}/settings?highlight=${encodeURIComponent(missingNames.join(","))}`
+      ),
       label: "Configure required setup →",
-      banner: "Required configuration is missing. Only setting names are shown — never secret values.",
+      banner:
+        "Required configuration is missing. Only setting names are shown — never secret values.",
       missingNames
     };
   }
@@ -138,18 +166,20 @@ export const resolveConfigureSetupTarget = (input: {
   if (input.state === "MISCONFIGURED_ENV" || input.state === "MISSING_CONTEXT") {
     if (projectId && input.serviceId) {
       return {
-        href: buildTopologyDeepLink({
-          projectId,
-          entityId: input.serviceId,
-          incidentId: input.incidentId
-        }),
+        href: withReturn(
+          buildTopologyDeepLink({
+            projectId,
+            entityId: input.serviceId,
+            incidentId: input.incidentId
+          })
+        ),
         label: "Configure required setup →",
         banner: "Open the affected service in Topology to complete remediation setup."
       };
     }
     if (projectId) {
       return {
-        href: `/projects/${projectId}/settings`,
+        href: withReturn(`/projects/${projectId}/settings`),
         label: "Configure required setup →",
         banner: "Open application settings to complete the required setup."
       };

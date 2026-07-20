@@ -41,24 +41,39 @@ describe("recovery-navigation", () => {
     ).toBe("Confirm recovery in Topology");
   });
 
-  it("routes Not configured blockers to specific setup destinations", () => {
-    expect(
-      resolveConfigureSetupTarget({
-        action: "RESTART_SERVICE",
-        projectId: "proj-1",
-        serviceId: "svc-1",
-        state: "MISCONFIGURED_ENV",
-        missingEnvVars: ["REMEDIATOR_URL"]
-      })?.href
-    ).toContain("/topology?entityId=svc-1");
+  it("routes Not configured blockers to specific setup destinations with returnTo", () => {
+    const remediator = resolveConfigureSetupTarget({
+      action: "RESTART_SERVICE",
+      projectId: "proj-1",
+      serviceId: "svc-1",
+      incidentId: "inc-1",
+      state: "MISCONFIGURED_ENV",
+      missingEnvVars: ["REMEDIATOR_URL"]
+    });
+    expect(remediator?.href).toContain("/topology?entityId=svc-1");
+    expect(remediator?.href).toContain("panel=remediation");
+    expect(remediator?.href).toContain("returnTo=%2Fincidents%2Finc-1");
+    expect(remediator?.href).toContain("highlight=REMEDIATOR_URL");
 
-    expect(
-      resolveConfigureSetupTarget({
-        action: "RERUN_HTTP_CHECK",
-        checkId: "check-9",
-        state: "MISSING_CONTEXT"
-      })?.href
-    ).toBe("/checks/check-9");
+    const check = resolveConfigureSetupTarget({
+      action: "RERUN_HTTP_CHECK",
+      checkId: "check-1",
+      incidentId: "inc-1",
+      state: "MISSING_CONTEXT"
+    });
+    expect(check?.href).toContain("/checks/check-1");
+    expect(check?.href).toContain("returnTo=%2Fincidents%2Finc-1");
+
+    const settings = resolveConfigureSetupTarget({
+      action: "SOME_OTHER_ACTION",
+      projectId: "proj-1",
+      incidentId: "inc-9",
+      state: "MISCONFIGURED_ENV",
+      missingEnvVars: ["FOO_TOKEN"]
+    });
+    expect(settings?.href).toContain("/projects/proj-1/settings");
+    expect(settings?.href).toContain("highlight=FOO_TOKEN");
+    expect(settings?.href).toContain("returnTo=%2Fincidents%2Finc-9");
   });
 
   it("uses non-repair labels for review and check actions", () => {

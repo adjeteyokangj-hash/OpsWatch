@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
 import { PageSection } from "../../../../components/ui/page-section";
 import { apiFetch } from "../../../../lib/api";
+import { ConfigureSetupReturnBanner } from "../../../../components/ui/configure-setup-return-banner";
 
 export default function ProjectSettingsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -66,6 +67,9 @@ export default function ProjectSettingsPage() {
 
       {project ? (
         <>
+          <Suspense fallback={null}>
+            <ConfigureSetupReturnBanner />
+          </Suspense>
           <PageSection
             title="Project details"
             description="Environment, ownership, and monitoring posture."
