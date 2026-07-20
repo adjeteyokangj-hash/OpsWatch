@@ -54,20 +54,19 @@ describe("evaluatePredictionGate", () => {
     expect(gate.emitToProduct).toBe(false);
   });
 
-  it("ignores the reserved environment flag with insufficient confidence", () => {
-    process.env.OPSWATCH_PREDICTIONS_ENABLED = "true";
-    const gate = evaluatePredictionGate(lowConfidence());
-    expect(gate.enabled).toBe(false);
-    expect(gate.status).toBe(PREDICTION_STATUS.DISABLED);
-    expect(gate.emitToProduct).toBe(false);
-    expect(gate.reason).toMatch(/disabled/i);
-  });
-
-  it("does not allow product emission when the reserved flag is on", () => {
+  it("allows READY emission when flag is on and confidence meets threshold", () => {
     process.env.OPSWATCH_PREDICTIONS_ENABLED = "true";
     const gate = evaluatePredictionGate(highConfidence());
-    expect(gate.enabled).toBe(false);
-    expect(gate.status).toBe(PREDICTION_STATUS.DISABLED);
+    expect(gate.enabled).toBe(true);
+    expect(gate.status).toBe(PREDICTION_STATUS.READY);
+    expect(gate.emitToProduct).toBe(true);
+  });
+
+  it("keeps insufficient confidence gated when flag is on", () => {
+    process.env.OPSWATCH_PREDICTIONS_ENABLED = "true";
+    const gate = evaluatePredictionGate(lowConfidence());
+    expect(gate.enabled).toBe(true);
+    expect(gate.status).toBe(PREDICTION_STATUS.INSUFFICIENT_DATA);
     expect(gate.emitToProduct).toBe(false);
   });
 

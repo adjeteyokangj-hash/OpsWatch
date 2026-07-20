@@ -1,10 +1,12 @@
 /**
  * Intelligence foundation constants.
- * Phase 5 keeps prediction product emission disabled. The environment variable
- * is reserved for a future Phase 9 release gate and is intentionally ignored.
+ * Phase 9: prediction product emission is gated by OPSWATCH_PREDICTIONS_ENABLED
+ * (default off). Other learning stages use separate env flags.
  */
 
-export const isPredictionsEnabled = (): boolean => false;
+import { isPredictionGenerationEnabled } from "../learning/learning-flags";
+
+export const isPredictionsEnabled = (): boolean => isPredictionGenerationEnabled();
 
 /** Patterns / insights must meet this before UI may show them as actionable. */
 export const MIN_DISPLAY_CONFIDENCE = Number(

@@ -25,9 +25,10 @@ export const listFeatureGates = (): FeatureGateStatus[] => [
   {
     key: "PREDICTIONS",
     envVar: "OPSWATCH_PREDICTIONS_ENABLED",
-    enabled: false,
+    enabled: envTrue("OPSWATCH_PREDICTIONS_ENABLED"),
     defaultEnabled: false,
-    description: "Feature disabled until the Phase 9 learning and prediction gate is implemented"
+    description:
+      "Evidence-backed prediction candidates (Phase 9). Default off; requires review for high-impact items."
   },
   {
     key: "LEARNED_TOPOLOGY",
