@@ -27,8 +27,16 @@ export const getIntelligenceSnapshotHandler = async (
   }
 
   const harvest = req.query.harvest !== "false";
-  const snapshot = await buildIntelligenceSnapshot(orgId, { harvest });
-  res.json(snapshot);
+  try {
+    const snapshot = await buildIntelligenceSnapshot(orgId, { harvest });
+    res.json(snapshot);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Intelligence snapshot failed";
+    res.status(503).json({
+      error: "Intelligence temporarily unavailable",
+      detail: message.includes("Can't reach database") ? "database_unreachable" : "snapshot_failed"
+    });
+  }
 };
 
 export const getOperationsTimelineHandler = async (

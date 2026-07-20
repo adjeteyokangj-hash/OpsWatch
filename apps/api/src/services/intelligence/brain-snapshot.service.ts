@@ -13,6 +13,25 @@ import { listLearningStages } from "../learning/learning-flags";
 import { syncDeploymentsFromChangeEvents } from "./deployment-intelligence.service";
 import { randomUUID } from "crypto";
 
+const emptyPhase9Section = async (): Promise<Phase9IntelligenceSection> => ({
+  learningStages: listLearningStages(),
+  metricBaselines: [],
+  anomalies: [],
+  deterioration: [],
+  incidentPatterns: [],
+  predictionCandidates: [],
+  preventiveRecommendations: [],
+  outcomeLearning: {
+    evaluated: 0,
+    materialised: 0,
+    prevented: 0,
+    falsePositiveRate: null,
+    precision: null,
+    note: "Phase 9 section unavailable for this request."
+  },
+  securityRiskPatterns: []
+});
+
 export type IntelligenceSnapshot = {
   learningState: "EMPTY" | "LEARNING" | "ACTIVE";
   predictions: {
@@ -298,64 +317,49 @@ export const buildIntelligenceSnapshot = async (
     }
   }
 
-  const [
-    observations,
-    baselines,
-    patterns,
-    incidentMemories,
-    deployments,
-    timelineEvents,
-    automationRuns,
-    auditEntries,
-    predictionAccuracyLogs,
-    recentTimeline,
-    patternRows,
-    baselineRows,
-    deploymentRows,
-    automationRows,
-    memoryRows
-  ] = await Promise.all([
-    prisma.operationalObservation.count({ where: { organizationId } }),
-    prisma.learningBaseline.count({ where: { organizationId } }),
-    prisma.operationalPattern.count({ where: { organizationId } }),
-    prisma.incidentMemoryEntry.count({ where: { organizationId } }),
-    prisma.deploymentRecord.count({ where: { organizationId } }),
-    prisma.operationsTimelineEvent.count({ where: { organizationId } }),
-    prisma.automationRun.count({ where: { organizationId } }),
-    prisma.aiDecisionAudit.count({ where: { organizationId } }),
-    prisma.predictionAccuracyLog.count({ where: { organizationId } }),
-    prisma.operationsTimelineEvent.findMany({
-      where: { organizationId },
-      orderBy: { occurredAt: "desc" },
-      take: 40
-    }),
-    prisma.operationalPattern.findMany({
-      where: { organizationId },
-      orderBy: [{ displayEligible: "desc" }, { confidenceScore: "desc" }],
-      take: 30
-    }),
-    prisma.learningBaseline.findMany({
-      where: { organizationId },
-      orderBy: { updatedAt: "desc" },
-      take: 30
-    }),
-    prisma.deploymentRecord.findMany({
-      where: { organizationId },
-      orderBy: { deployedAt: "desc" },
-      take: 20
-    }),
-    prisma.automationRun.findMany({
-      where: { organizationId },
-      orderBy: { createdAt: "desc" },
-      take: 25,
-      include: { Outcomes: { orderBy: { createdAt: "desc" }, take: 1 } }
-    }),
-    prisma.incidentMemoryEntry.findMany({
-      where: { organizationId },
-      orderBy: { updatedAt: "desc" },
-      take: 20
-    })
-  ]);
+  // Keep snapshot reads sequential to avoid local Postgres connection storms.
+  const observations = await prisma.operationalObservation.count({ where: { organizationId } });
+  const baselines = await prisma.learningBaseline.count({ where: { organizationId } });
+  const patterns = await prisma.operationalPattern.count({ where: { organizationId } });
+  const incidentMemories = await prisma.incidentMemoryEntry.count({ where: { organizationId } });
+  const deployments = await prisma.deploymentRecord.count({ where: { organizationId } });
+  const timelineEvents = await prisma.operationsTimelineEvent.count({ where: { organizationId } });
+  const automationRuns = await prisma.automationRun.count({ where: { organizationId } });
+  const auditEntries = await prisma.aiDecisionAudit.count({ where: { organizationId } });
+  const predictionAccuracyLogs = await prisma.predictionAccuracyLog.count({
+    where: { organizationId }
+  });
+  const recentTimeline = await prisma.operationsTimelineEvent.findMany({
+    where: { organizationId },
+    orderBy: { occurredAt: "desc" },
+    take: 40
+  });
+  const patternRows = await prisma.operationalPattern.findMany({
+    where: { organizationId },
+    orderBy: [{ displayEligible: "desc" }, { confidenceScore: "desc" }],
+    take: 30
+  });
+  const baselineRows = await prisma.learningBaseline.findMany({
+    where: { organizationId },
+    orderBy: { updatedAt: "desc" },
+    take: 30
+  });
+  const deploymentRows = await prisma.deploymentRecord.findMany({
+    where: { organizationId },
+    orderBy: { deployedAt: "desc" },
+    take: 20
+  });
+  const automationRows = await prisma.automationRun.findMany({
+    where: { organizationId },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+    include: { Outcomes: { orderBy: { createdAt: "desc" }, take: 1 } }
+  });
+  const memoryRows = await prisma.incidentMemoryEntry.findMany({
+    where: { organizationId },
+    orderBy: { updatedAt: "desc" },
+    take: 20
+  });
 
   const baselinesReady = baselineRows.filter(
     (row) => row.sampleCount >= MIN_BASELINE_SAMPLES
@@ -389,7 +393,12 @@ export const buildIntelligenceSnapshot = async (
     learningState = "ACTIVE";
   else learningState = "LEARNING";
 
-  const phase9 = await buildPhase9IntelligenceSection(organizationId);
+  let phase9;
+  try {
+    phase9 = await buildPhase9IntelligenceSection(organizationId);
+  } catch {
+    phase9 = await emptyPhase9Section();
+  }
   const stages = listLearningStages();
   const enabledStageLabels = stages.filter((s) => s.enabled).map((s) => s.key);
 

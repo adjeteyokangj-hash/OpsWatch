@@ -83,8 +83,7 @@ export const buildPhase9IntelligenceSection = async (
   const stages = listLearningStages();
   const now = Date.now();
 
-  const [metricBaselines, anomalies, patterns, predictions, deteriorationResult] =
-    await Promise.all([
+  const [metricBaselines, anomalies, patterns, predictions] = await Promise.all([
       prisma.metricBaseline.findMany({
         where: {
           organizationId,
@@ -113,9 +112,11 @@ export const buildPhase9IntelligenceSection = async (
         },
         orderBy: { computedAt: "desc" },
         take: 40
-      }),
-      detectDeteriorationForOrg(organizationId)
+      })
     ]);
+
+  // Deterioration is stage-gated and can be expensive — only when enabled.
+  const deteriorationResult = await detectDeteriorationForOrg(organizationId);
 
   const preventiveRecommendations = await recommendActionsForPattern({ organizationId });
   const outcomeLearning = await summariseOutcomeMetrics(organizationId);

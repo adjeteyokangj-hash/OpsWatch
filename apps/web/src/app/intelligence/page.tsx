@@ -230,8 +230,9 @@ export default function IntelligencePage() {
     setLoading(true);
     setError(null);
     try {
+      // Skip on-read harvest — worker learning cycle owns writes; keeps UI reads light.
       const [snapshot, gatePayload] = await Promise.all([
-        apiFetch<IntelligenceSnapshot>("/intelligence"),
+        apiFetch<IntelligenceSnapshot>("/intelligence?harvest=false"),
         apiFetch<{ gates: FeatureGate[]; learningStages?: LearningStage[] }>(
           "/intelligence/feature-gates"
         ).catch(() => ({ gates: [], learningStages: [] }))
@@ -314,7 +315,7 @@ export default function IntelligencePage() {
                 <span className="snapshot-label">Product state</span>
                 <strong>
                   <ProductTruthStatus
-                    state={predictionsOff ? "Feature disabled" : "Gated enabled"}
+                    state={predictionsOff ? "Feature disabled" : "Preview"}
                   />
                 </strong>
               </div>
