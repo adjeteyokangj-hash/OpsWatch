@@ -43,6 +43,28 @@ const topologyHealthFor = (health: string): TopologyHealthStatus =>
         ? "HEALTHY"
         : "UNKNOWN";
 
+
+/** Map CONTAINS / PROJECT endpoints onto visible APP hierarchy edges. */
+const topologyDependencyTypeFor = (relationshipType: string): string => {
+  const normalized = relationshipType.trim().toUpperCase();
+  if (normalized === "CONTAINS" || normalized === "HIERARCHY") return "HIERARCHY";
+  if (normalized === "RUNTIME" || normalized === "DEPENDENCY" || normalized === "DEPENDS_ON") {
+    return "DEPENDENCY";
+  }
+  return normalized;
+};
+
+const resolveTopologyEndpointId = (
+  entityId: string,
+  entityById: Map<string, { entityType: string }>,
+  appEntityId: string | null
+): string | null => {
+  const entity = entityById.get(entityId);
+  if (!entity) return null;
+  if (entity.entityType === "PROJECT") return appEntityId;
+  return entityId;
+};
+
 const freshnessFor = (entity: {
   discoveryState: string;
   freshUntil: Date | null;
@@ -75,8 +97,7 @@ export const loadCanonicalProjectTopology = async (input: {
       where: {
         organizationId,
         projectId: project.id,
-        lifecycle: "ACTIVE",
-        entityType: { not: "PROJECT" }
+        lifecycle: "ACTIVE"
       },
       include: {
         OperationalLocation: {
@@ -209,7 +230,15 @@ export const loadCanonicalProjectTopology = async (input: {
   );
   const checkResults = await loadRecentCheckResultsByCheckIds(checkIds, 12);
 
-  const services: TopologyServiceRecord[] = entities.map((entity) => ({
+  const entityById = new Map(entities.map((entity) => [entity.id, entity]));
+  const appEntityId =
+    entities.find((entity) => entity.lifecycle === "ACTIVE" && entity.entityType === "APP")?.id ??
+    null;
+  const nodeEntities = entities.filter(
+    (entity) => entity.lifecycle === "ACTIVE" && entity.entityType !== "PROJECT"
+  );
+
+  const services: TopologyServiceRecord[] = nodeEntities.map((entity) => ({
     id: entity.id,
     name: entity.name,
     type: nodeTypeFor(entity.entityType) as ServiceType,
@@ -226,12 +255,36 @@ export const loadCanonicalProjectTopology = async (input: {
     )
   }));
 
-  const entityIds = new Set(entities.map((entity) => entity.id));
-  const visibleRelationships = relationships.filter(
-    (relationship) =>
-      entityIds.has(relationship.sourceEntityId) &&
-      entityIds.has(relationship.targetEntityId)
-  );
+  const entityIds = new Set(nodeEntities.map((entity) => entity.id));
+  const visibleRelationships = relationships.flatMap((relationship) => {
+    const sourceId = resolveTopologyEndpointId(
+      relationship.sourceEntityId,
+      entityById,
+      appEntityId
+    );
+    const targetId = resolveTopologyEndpointId(
+      relationship.targetEntityId,
+      entityById,
+      appEntityId
+    );
+    if (!sourceId || !targetId || sourceId === targetId) return [];
+    if (!entityIds.has(sourceId) || !entityIds.has(targetId)) return [];
+
+    const dependencyType = topologyDependencyTypeFor(relationship.relationshipType);
+    // CONTAINS is stored parent→child; topology HIERARCHY edges are child→parent.
+    const isContains = relationship.relationshipType.trim().toUpperCase() === "CONTAINS";
+    const fromServiceId = isContains ? targetId : sourceId;
+    const toServiceId = isContains ? sourceId : targetId;
+
+    return [
+      {
+        ...relationship,
+        sourceEntityId: fromServiceId,
+        targetEntityId: toServiceId,
+        relationshipType: dependencyType
+      }
+    ];
+  });
 
   let legacyFallbackCount = 0;
   let unresolvedCanonicalReferences = 0;
@@ -300,7 +353,6 @@ export const loadCanonicalProjectTopology = async (input: {
     heartbeats
   });
 
-  const entityById = new Map(entities.map((entity) => [entity.id, entity]));
   for (const node of topology.nodes) {
     const entity = entityById.get(node.id);
     if (!entity) continue;
