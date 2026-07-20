@@ -118,10 +118,13 @@ export function PageSection({
           onClick={toggle}
         >
           <span className="page-section-chevron" aria-hidden="true" />
-          <div>
-            <h2 id={titleId}>{title}</h2>
-            {description ? <p className="dashboard-subtle">{description}</p> : null}
-          </div>
+          <span className="page-section-summary-copy">
+            {/* Use span, not h2/p — headings inside <button> get reparented by browsers and break hydration. */}
+            <span id={titleId} className="page-section-title">
+              {title}
+            </span>
+            {description ? <span className="dashboard-subtle page-section-description">{description}</span> : null}
+          </span>
         </button>
         {actions ? <div className="section-actions">{actions}</div> : null}
       </div>

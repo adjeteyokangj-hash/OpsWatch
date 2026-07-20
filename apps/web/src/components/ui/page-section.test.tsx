@@ -41,6 +41,20 @@ describe("PageSection", () => {
     expect(details?.querySelector(".page-section-chevron")).toBeTruthy();
   });
 
+  it("keeps phrasing-only content inside the summary button (no headings)", () => {
+    render(
+      <PageSection title="Overview" description="Primary panel">
+        <p>Body content</p>
+      </PageSection>
+    );
+
+    const summary = screen.getByText("Overview").closest("button.page-section-summary");
+    expect(summary).toBeTruthy();
+    expect(summary?.querySelector("h1, h2, h3, h4, h5, h6, p")).toBeNull();
+    expect(summary?.querySelector(".page-section-title")?.tagName).toBe("SPAN");
+    expect(summary?.querySelector(".page-section-description")?.tagName).toBe("SPAN");
+  });
+
   it("starts collapsed when defaultCollapsed is set", () => {
     render(
       <PageSection title="Timeline" defaultCollapsed>
