@@ -1,7 +1,8 @@
 import { AlertStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { listAvailableActionsForContext } from "./remediation/availability.service";
+import { listAvailableActionsForContext, type ActionAvailabilityResult } from "./remediation/availability.service";
 import { getUniversalAction } from "./remediation/action-registry";
+import { diagnose } from "./ai/incident-ai.service";
 
 export type AlertAutomationEvaluationStatus =
   | "NOT_EVALUATED"
@@ -20,6 +21,14 @@ export type AlertAutomationEvaluationStatus =
   | "OBSERVE_ONLY"
   | "SETUP_REQUIRED"
   | "BLOCKED";
+
+export type AlertPrimaryCtaKind =
+  | "EXECUTE"
+  | "CONFIGURE_CHECK"
+  | "REQUEST_APPROVAL"
+  | "OBSERVE_BLOCKED"
+  | "SETUP_REQUIRED"
+  | "NONE";
 
 export type AlertAutomationEvaluationDto = {
   alertId: string;
@@ -44,12 +53,25 @@ export type AlertAutomationEvaluationDto = {
   runId: string | null;
   correlationId: string | null;
   timeline: Array<{ stage: string; at: string | null; detail: string }>;
+  failureClass: string | null;
+  diagnosisSummary: string | null;
+  recommendedActionLabel: string | null;
+  primaryCtaKind: AlertPrimaryCtaKind;
+  checkId: string | null;
+  configureHref: string | null;
+  projectId: string | null;
+  verificationPassed: boolean;
 };
 
 /** Minimum consecutive healthy heartbeats before auto-resolve. */
 export const HEARTBEAT_RECOVERY_MIN_COUNT = 3;
 /** Minimum age gap (seconds) across those heartbeats for stable recovery. */
 export const HEARTBEAT_RECOVERY_STABLE_SECONDS = 180;
+
+const PRIVATE_TARGET_BLOCK =
+  /local,\s*private,\s*and\s*metadata\s*targets\s*are\s*not\s*allowed|private[- ]network|metadata\s+targets?\s+are\s+not\s+allowed/i;
+
+const NOTIFICATION_RETRY_ACTIONS = new Set(["RETRY_WEBHOOKS", "RETRY_EMAILS"]);
 
 const mapAvailabilityToStatus = (state: string): AlertAutomationEvaluationStatus => {
   switch (state) {
@@ -66,6 +88,62 @@ const mapAvailabilityToStatus = (state: string): AlertAutomationEvaluationStatus
     default:
       return "NO_ACTION_AVAILABLE";
   }
+};
+
+export const isPrivateTargetMonitoringBlock = (message: string | null | undefined): boolean =>
+  Boolean(message && PRIVATE_TARGET_BLOCK.test(message));
+
+const stateRank = (state: string): number => {
+  switch (state) {
+    case "READY":
+      return 0;
+    case "APPROVAL_REQUIRED":
+      return 1;
+    case "SETUP_REQUIRED":
+      return 2;
+    case "OBSERVE_ONLY":
+      return 3;
+    case "BLOCKED":
+      return 4;
+    default:
+      return 5;
+  }
+};
+
+export const rankAlertRemediationCandidates = (input: {
+  candidates: ActionAvailabilityResult[];
+  suggestedActions: string[];
+  excludeNotificationRetries: boolean;
+}): ActionAvailabilityResult | null => {
+  let pool = input.candidates.filter((row) => row.state !== "NO_AUTOMATED_FIX");
+  if (input.excludeNotificationRetries) {
+    pool = pool.filter((row) => !NOTIFICATION_RETRY_ACTIONS.has(row.actionKey));
+  }
+  if (pool.length === 0) return null;
+
+  const suggestionIndex = new Map(input.suggestedActions.map((key, index) => [key, index]));
+  const sorted = [...pool].sort((a, b) => {
+    const stateDiff = stateRank(a.state) - stateRank(b.state);
+    if (stateDiff !== 0) return stateDiff;
+    const ai = suggestionIndex.has(a.actionKey) ? suggestionIndex.get(a.actionKey)! : 999;
+    const bi = suggestionIndex.has(b.actionKey) ? suggestionIndex.get(b.actionKey)! : 999;
+    if (ai !== bi) return ai - bi;
+    return a.actionKey.localeCompare(b.actionKey);
+  });
+  return sorted[0] ?? null;
+};
+
+const resolvePrimaryCtaKind = (input: {
+  preferred: ActionAvailabilityResult | null;
+  configureCheck: boolean;
+}): AlertPrimaryCtaKind => {
+  if (input.configureCheck) return "CONFIGURE_CHECK";
+  if (!input.preferred) return "NONE";
+  if (input.preferred.state === "OBSERVE_ONLY") return "OBSERVE_BLOCKED";
+  if (input.preferred.state === "SETUP_REQUIRED") return "SETUP_REQUIRED";
+  if (input.preferred.state === "APPROVAL_REQUIRED") return "REQUEST_APPROVAL";
+  if (input.preferred.state === "READY") return "EXECUTE";
+  return "NONE";
 };
 
 export const evaluateAlertAutomation = async (input: {
@@ -90,10 +168,66 @@ export const evaluateAlertAutomation = async (input: {
     /heartbeat/i.test(alert.title) ||
     /heartbeat/i.test(alert.message);
 
+  const checkId =
+    alert.sourceType === "CHECK" && typeof alert.sourceId === "string" && alert.sourceId
+      ? alert.sourceId
+      : null;
+
+  let latestCheckResult: {
+    message: string | null;
+    responseCode: number | null;
+    rawJson: unknown;
+  } | null = null;
+
+  if (checkId) {
+    latestCheckResult = await prisma.checkResult.findFirst({
+      where: { checkId },
+      orderBy: { checkedAt: "desc" },
+      select: { message: true, responseCode: true, rawJson: true }
+    });
+  }
+
+  const rawFailureClass =
+    latestCheckResult?.rawJson &&
+    typeof latestCheckResult.rawJson === "object" &&
+    latestCheckResult.rawJson !== null &&
+    "failureClass" in (latestCheckResult.rawJson as Record<string, unknown>)
+      ? String((latestCheckResult.rawJson as Record<string, unknown>).failureClass)
+      : undefined;
+
+  const configureCheck = isPrivateTargetMonitoringBlock(alert.message);
+  const diagnosis = diagnose({
+    alertType: alert.category || alert.sourceType,
+    title: alert.title,
+    message: alert.message,
+    failureClass: rawFailureClass,
+    actualStatusCode: latestCheckResult?.responseCode ?? undefined
+  });
+
+  const suggestedActions = configureCheck
+    ? ["RERUN_HTTP_CHECK", "TEST_CONNECTION", "REQUEST_HUMAN_REVIEW"].filter((key) =>
+        !NOTIFICATION_RETRY_ACTIONS.has(key)
+      )
+    : diagnosis.suggestedActions;
+
+  const diagnosisSummary = configureCheck
+    ? "Monitoring configuration is blocking this check: OpsWatch will not contact local, private, or metadata targets. Review the check URL or use an authorised private-network worker / public health endpoint."
+    : diagnosis.diagnosis;
+
+  const failureClass = configureCheck
+    ? "MONITORING_TARGET_BLOCKED"
+    : diagnosis.failureClass ?? rawFailureClass ?? null;
+
   const baseTimeline = [
     { stage: "Detected", at: alert.firstSeenAt.toISOString(), detail: alert.title },
-    { stage: "Diagnosed", at: alert.lastSeenAt.toISOString(), detail: alert.message }
+    { stage: "Diagnosed", at: alert.lastSeenAt.toISOString(), detail: diagnosisSummary }
   ];
+
+  const projectFields = {
+    checkId,
+    configureHref: checkId ? `/checks/${checkId}` : alert.projectId ? `/projects/${alert.projectId}/checks` : null,
+    projectId: alert.projectId
+  };
 
   const latestRun = await prisma.remediationExecutionRun.findFirst({
     where: {
@@ -133,7 +267,13 @@ export const evaluateAlertAutomation = async (input: {
           at: alert.resolvedAt?.toISOString() ?? now,
           detail: "Resolved after verified recovery evidence"
         }
-      ]
+      ],
+      failureClass,
+      diagnosisSummary,
+      recommendedActionLabel: null,
+      primaryCtaKind: "NONE",
+      ...projectFields,
+      verificationPassed: true
     };
   }
 
@@ -167,7 +307,13 @@ export const evaluateAlertAutomation = async (input: {
           at: latestRun.startedAt?.toISOString() ?? now,
           detail: `${latestRun.actionKey} is ${latestRun.status}`
         }
-      ]
+      ],
+      failureClass,
+      diagnosisSummary,
+      recommendedActionLabel: getUniversalAction(latestRun.actionKey)?.displayName ?? latestRun.actionKey,
+      primaryCtaKind: "EXECUTE",
+      ...projectFields,
+      verificationPassed: false
     };
   }
 
@@ -183,22 +329,43 @@ export const evaluateAlertAutomation = async (input: {
       projectId: alert.projectId,
       alertId: alert.id,
       serviceId: alert.serviceId ?? undefined,
+      checkId: checkId ?? undefined,
       integrationId: connection?.id,
-      extra: connection?.id ? { connectionId: connection.id } : {}
+      extra: {
+        ...(connection?.id ? { connectionId: connection.id } : {}),
+        ...(checkId ? { checkId } : {})
+      }
     },
     automationMode,
     entityType: "ALERT"
-  }).filter((row) => row.state !== "NO_AUTOMATED_FIX");
+  });
 
-  const preferred =
-    candidates.find((row) => row.state === "READY") ||
-    candidates.find((row) => row.state === "APPROVAL_REQUIRED") ||
-    candidates.find((row) => row.state === "SETUP_REQUIRED") ||
-    candidates.find((row) => row.state === "OBSERVE_ONLY") ||
-    candidates.find((row) => row.state === "BLOCKED") ||
-    null;
+  const networkConfigClasses = new Set([
+    "NETWORK_UNREACHABLE",
+    "CONNECTION_REFUSED",
+    "DNS_FAILURE",
+    "TLS_FAILURE",
+    "MONITORING_TARGET_BLOCKED"
+  ]);
 
-  if (!preferred) {
+  const preferred = rankAlertRemediationCandidates({
+    candidates,
+    suggestedActions,
+    excludeNotificationRetries:
+      configureCheck || Boolean(failureClass && networkConfigClasses.has(failureClass))
+  });
+
+  // For private-target config issues, still exclude notification retries even if diagnosis ranked them.
+  const preferredSafe =
+    preferred && configureCheck && NOTIFICATION_RETRY_ACTIONS.has(preferred.actionKey)
+      ? rankAlertRemediationCandidates({
+          candidates,
+          suggestedActions: ["RERUN_HTTP_CHECK", "TEST_CONNECTION", "REQUEST_HUMAN_REVIEW"],
+          excludeNotificationRetries: true
+        })
+      : preferred;
+
+  if (!preferredSafe) {
     return {
       alertId: alert.id,
       evaluationStatus: "NO_ACTION_AVAILABLE",
@@ -211,9 +378,11 @@ export const evaluateAlertAutomation = async (input: {
         ? ["remediation:execute", "connector:heartbeat-worker"]
         : [],
       approvalRequired: false,
-      reasonNoAction: isHeartbeat
-        ? "OpsWatch detected this problem, but no approved automated repair is currently configured for heartbeat-stale without a worker remediator or heartbeat request path."
-        : "No safe supported remediation action is registered for this alert.",
+      reasonNoAction: configureCheck
+        ? diagnosisSummary
+        : isHeartbeat
+          ? "OpsWatch detected this problem, but no approved automated repair is currently configured for heartbeat-stale without a worker remediator or heartbeat request path."
+          : "No safe supported remediation action is registered for this alert.",
       executionStatus: "NOT_ATTEMPTED",
       verificationStatus: null,
       finalOutcome: null,
@@ -221,38 +390,70 @@ export const evaluateAlertAutomation = async (input: {
       autoResolutionReason: null,
       remediationCausedRecovery: null,
       availabilityState: "NO_AUTOMATED_FIX",
-      availabilityReason: "No registry action matched this alert context",
+      availabilityReason: configureCheck
+        ? diagnosisSummary
+        : "No registry action matched this alert context",
       riskLevel: null,
       runId: latestRun?.id ?? null,
       correlationId: latestRun?.correlationId ?? null,
-      timeline: baseTimeline
+      timeline: baseTimeline,
+      failureClass,
+      diagnosisSummary,
+      recommendedActionLabel: configureCheck ? "Review check configuration" : null,
+      primaryCtaKind: configureCheck ? "CONFIGURE_CHECK" : "NONE",
+      ...projectFields,
+      verificationPassed: false
     };
   }
 
-  const def = getUniversalAction(preferred.actionKey);
+  const def = getUniversalAction(preferredSafe.actionKey);
+  const primaryCtaKind = resolvePrimaryCtaKind({
+    preferred: preferredSafe,
+    configureCheck
+  });
+
+  const rankedAvailable = [...candidates]
+    .filter((row) => row.state !== "NO_AUTOMATED_FIX")
+    .filter((row) => !(configureCheck && NOTIFICATION_RETRY_ACTIONS.has(row.actionKey)))
+    .sort((a, b) => {
+      const suggestionIndex = new Map(suggestedActions.map((key, index) => [key, index]));
+      const stateDiff = stateRank(a.state) - stateRank(b.state);
+      if (stateDiff !== 0) return stateDiff;
+      const ai = suggestionIndex.has(a.actionKey) ? suggestionIndex.get(a.actionKey)! : 999;
+      const bi = suggestionIndex.has(b.actionKey) ? suggestionIndex.get(b.actionKey)! : 999;
+      return ai - bi;
+    })
+    .map((row) => row.actionKey);
+
   return {
     alertId: alert.id,
-    evaluationStatus: mapAvailabilityToStatus(preferred.state),
+    evaluationStatus: mapAvailabilityToStatus(preferredSafe.state),
     evaluationTimestamp: now,
     automationMode,
-    matchingPolicy: "phase7-universal-registry",
-    availableActions: candidates.map((row) => row.actionKey),
-    selectedAction: preferred.actionKey,
-    requiredPermissions: preferred.requiredScopes,
-    approvalRequired: preferred.state === "APPROVAL_REQUIRED" || preferred.requiresApproval,
+    matchingPolicy: configureCheck
+      ? "monitoring-target-policy"
+      : failureClass
+        ? "diagnosis-ranked-registry"
+        : "phase7-universal-registry",
+    availableActions: rankedAvailable,
+    selectedAction: preferredSafe.actionKey,
+    requiredPermissions: preferredSafe.requiredScopes,
+    approvalRequired: preferredSafe.state === "APPROVAL_REQUIRED" || preferredSafe.requiresApproval,
     reasonNoAction:
-      preferred.state === "READY" || preferred.state === "APPROVAL_REQUIRED"
-        ? null
-        : preferred.reason,
+      preferredSafe.state === "READY" || preferredSafe.state === "APPROVAL_REQUIRED"
+        ? configureCheck
+          ? diagnosisSummary
+          : null
+        : preferredSafe.reason,
     executionStatus: latestRun?.status ?? "NOT_ATTEMPTED",
     verificationStatus: null,
     finalOutcome: null,
     recoveryTimestamp: null,
     autoResolutionReason: null,
     remediationCausedRecovery: null,
-    availabilityState: preferred.state,
-    availabilityReason: preferred.reason,
-    riskLevel: preferred.riskLevel,
+    availabilityState: preferredSafe.state,
+    availabilityReason: configureCheck ? diagnosisSummary : preferredSafe.reason,
+    riskLevel: preferredSafe.riskLevel,
     runId: latestRun?.id ?? null,
     correlationId: latestRun?.correlationId ?? null,
     timeline: [
@@ -260,14 +461,24 @@ export const evaluateAlertAutomation = async (input: {
       {
         stage: "Action selected",
         at: now,
-        detail: `${preferred.displayName} → ${preferred.state}: ${preferred.reason}`
+        detail: `${preferredSafe.displayName} → ${preferredSafe.state}: ${
+          configureCheck ? "monitoring configuration review recommended" : preferredSafe.reason
+        }`
       },
       {
         stage: "Verification method",
         at: null,
         detail: def?.verificationStrategy ?? "NONE"
       }
-    ]
+    ],
+    failureClass,
+    diagnosisSummary,
+    recommendedActionLabel: configureCheck
+      ? "Review check configuration"
+      : preferredSafe.displayName,
+    primaryCtaKind,
+    ...projectFields,
+    verificationPassed: latestRun?.status === "VERIFIED_HEALTHY"
   };
 };
 

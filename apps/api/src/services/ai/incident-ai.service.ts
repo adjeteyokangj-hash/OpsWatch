@@ -34,9 +34,10 @@ const actionsForFailure = (classification: FailureClassification): RemediationAc
     case "CONNECTION_REFUSED":
     case "DNS_FAILURE":
     case "TLS_FAILURE":
-      return ["RERUN_HTTP_CHECK", "CHECK_PROVIDER_STATUS", "RESTART_SERVICE", "REQUEST_HUMAN_REVIEW"];
+      // Check-oriented first — never default to webhook/email retries for connectivity failures.
+      return ["RERUN_HTTP_CHECK", "TEST_CONNECTION", "CHECK_PROVIDER_STATUS", "REQUEST_HUMAN_REVIEW"];
     case "TIMEOUT":
-      return ["RERUN_HTTP_CHECK", "RESTART_SERVICE", "REQUEST_HUMAN_REVIEW"];
+      return ["RERUN_HTTP_CHECK", "REQUEST_HUMAN_REVIEW"];
     case "KEYWORD_MISMATCH":
       return ["RERUN_HTTP_CHECK", "ADD_INCIDENT_NOTE", "REQUEST_HUMAN_REVIEW"];
     case "LATENCY_THRESHOLD":

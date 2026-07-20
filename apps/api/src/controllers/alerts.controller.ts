@@ -162,19 +162,68 @@ export const resolveAlert = async (req: AuthRequest, res: Response) => {
 
 	const row = await prisma.alert.findFirst({
 		where: { id: req.params.alertId, Project: { organizationId: orgId } },
-		select: { id: true }
+		select: { id: true, message: true, status: true }
 	});
 	if (!row) {
 		res.status(404).json({ error: "Alert not found" });
 		return;
 	}
 
+	if (row.status === "RESOLVED") {
+		const existing = await prisma.alert.findFirst({
+			where: { id: row.id },
+			include: {
+				Project: { select: { id: true, name: true, organizationId: true } },
+				Service: { select: { id: true, name: true } },
+				User: { select: { id: true, name: true, email: true } },
+				IncidentAlert: {
+					include: {
+						Incident: {
+							select: { id: true, title: true, severity: true, status: true, openedAt: true }
+						}
+					}
+				}
+			}
+		});
+		res.json(mapAlertDetail(existing as any));
+		return;
+	}
+
+	const body = (req.body ?? {}) as { reason?: string; force?: boolean };
+	const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+
+	const verifiedRun = await prisma.remediationExecutionRun.findFirst({
+		where: {
+			organizationId: orgId,
+			alertId: row.id,
+			status: "VERIFIED_HEALTHY"
+		},
+		orderBy: { createdAt: "desc" },
+		select: { id: true, status: true }
+	});
+
+	const verificationPassed = Boolean(verifiedRun);
+	if (!verificationPassed && !reason) {
+		res.status(400).json({
+			error:
+				"Manual resolution requires a reason unless OpsWatch has verified recovery. Provide { reason } or wait for a successful repair verification."
+		});
+		return;
+	}
+
+	const resolutionNote = verificationPassed
+		? reason
+			? `[manual-note: ${reason}]`
+			: "[resolved: verified recovery]"
+		: `[manual-resolve: ${reason}]`;
+
 	const updated = await prisma.alert.update({
 		where: { id: row.id },
 		data: {
 			status: "RESOLVED",
 			resolvedAt: new Date(),
-			lastSeenAt: new Date()
+			lastSeenAt: new Date(),
+			message: `${row.message.replace(/\s*\[manual-resolve:.*?\]/g, "").replace(/\s*\[manual-note:.*?\]/g, "").replace(/\s*\[resolved: verified recovery\]/g, "")} ${resolutionNote}`.trim()
 		},
 		include: {
 			Project: { select: { id: true, name: true, organizationId: true } },
