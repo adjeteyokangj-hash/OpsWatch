@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
 import { PageSection } from "../../components/ui/page-section";
@@ -17,9 +18,13 @@ type PolicyRow = {
 
 type AllowlistEntry = {
   action: string;
-  cooldownMs: number | null;
+  label?: string;
+  cooldownMs?: number | null;
+  cooldownMinutes?: number;
   impactTier: string;
   policyTier: string;
+  autoRunEnabled?: boolean;
+  approvalRequired?: boolean;
 };
 
 type PolicyData = {
@@ -37,7 +42,11 @@ const COOLDOWN_LABEL: Record<number, string> = {
   1800000: "30 min",
 };
 
-function formatCooldown(ms: number | null): string {
+function formatCooldown(entry: AllowlistEntry): string {
+  if (entry.cooldownMinutes != null) {
+    return `${entry.cooldownMinutes} min`;
+  }
+  const ms = entry.cooldownMs ?? null;
   if (!ms) return "—";
   return COOLDOWN_LABEL[ms] ?? `${Math.round(ms / 60000)} min`;
 }
@@ -108,9 +117,14 @@ export default function AutoRunPolicyPage() {
   const globalPolicy  = getPolicy("GLOBAL", "");
   const globalEnabled = globalPolicy?.enabled ?? false;
 
+  const allowlist = data?.allowlist ?? [];
+
   return (
     <Shell>
       <Header title="Auto-Run Policy" />
+      <p className="dashboard-subtle">
+        <Link href="/settings/ai-automation-policies">Open AI &amp; Automation Policies →</Link>
+      </p>
 
       {/* ── Explainer ──────────────────────────────────────────────── */}
       <PageSection
@@ -128,6 +142,12 @@ export default function AutoRunPolicyPage() {
             </p>
           </div>
         </div>
+        <p className="metric-label" style={{ marginTop: "12px" }}>
+          Organisation-wide AI operating profile, readiness, and ceiling controls live in the{" "}
+          <Link href="/settings/ai-automation-policies">AI &amp; Automation Policy Centre</Link>.
+          Dataset honesty and executed success rates are on the{" "}
+          <Link href="/accuracy">Remediation Accuracy</Link> page, not here.
+        </p>
       </PageSection>
 
       {/* ── Global switch ──────────────────────────────────────────── */}
@@ -158,6 +178,12 @@ export default function AutoRunPolicyPage() {
         description="Fine-grained control per safe-allowlist action."
         persistKey="org:auto-run-policy:actions"
       >
+        {allowlist.length === 0 ? (
+          <p className="metric-label" style={{ marginTop: "12px" }}>
+            No actions on the allowlist yet. Configure global auto-run or review the{" "}
+            <Link href="/settings/ai-automation-policies">Policy Centre</Link>.
+          </p>
+        ) : (
         <table className="data-table" style={{ marginTop: "12px" }}>
           <thead>
             <tr>
@@ -169,14 +195,14 @@ export default function AutoRunPolicyPage() {
             </tr>
           </thead>
           <tbody>
-            {(data?.allowlist ?? []).map((entry) => {
+            {allowlist.map((entry) => {
               const actionPolicy = getPolicy("ACTION", entry.action);
               const enabled = actionPolicy?.enabled ?? false;
               const isEligible = entry.policyTier !== "MANUAL_ONLY";
               const saveKey = `ACTION:${entry.action}`;
               return (
                 <tr key={entry.action}>
-                  <td style={{ fontWeight: 500 }}>{entry.action.replace(/_/g, " ")}</td>
+                  <td style={{ fontWeight: 500 }}>{entry.label ?? entry.action.replace(/_/g, " ")}</td>
                   <td>
                     <span className={`impact-tier-badge impact-tier-${entry.impactTier.toLowerCase()}`}>
                       {entry.impactTier}
@@ -190,7 +216,7 @@ export default function AutoRunPolicyPage() {
                       {entry.policyTier.replace(/_/g, " ")}
                     </span>
                   </td>
-                  <td>{formatCooldown(entry.cooldownMs)}</td>
+                  <td>{formatCooldown(entry)}</td>
                   <td>
                     <button
                       className={`policy-toggle policy-toggle-sm ${enabled ? "policy-toggle-on" : "policy-toggle-off"}`}
@@ -208,6 +234,7 @@ export default function AutoRunPolicyPage() {
             })}
           </tbody>
         </table>
+        )}
       </PageSection>
 
       {/* ── Per-project switches ───────────────────────────────────── */}

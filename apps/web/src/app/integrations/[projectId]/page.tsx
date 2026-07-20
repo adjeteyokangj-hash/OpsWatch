@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { ProjectConnectionsPanel } from "../../../components/integrations/project-connections-panel";
 import { ProjectWorkspaceShell } from "../../../components/projects/project-workspace-shell";
 import { PageSection } from "../../../components/ui/page-section";
 import { apiFetch } from "../../../lib/api";
+import { ConfigureSetupReturnBanner } from "../../../components/ui/configure-setup-return-banner";
 import {
   formatRelativeTime,
   summarizeProjectIntegrations,
@@ -89,6 +90,9 @@ export default function ProjectIntegrationsPage() {
         </Link>
       }
     >
+      <Suspense fallback={null}>
+        <ConfigureSetupReturnBanner />
+      </Suspense>
       {summary ? (
         <section className="panel integrations-overview-summary">
           <dl className="integrations-overview-summary__stats">

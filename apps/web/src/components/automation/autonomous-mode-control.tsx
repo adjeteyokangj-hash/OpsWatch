@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   AUTONOMOUS_MODE_DESCRIPTIONS,
@@ -94,18 +95,42 @@ export function AutonomousModeControl({ projectId, compact: _compact = false, on
   }
 
   const effective = state.effectiveMode;
-  const isClamped = state.requestedMode !== state.effectiveMode;
+  const requested = state.requestedMode;
+  const isClamped = requested !== effective;
+  const blockedReason = state.policyGates.blockedReason;
 
   return (
     <div className="topology-detail-section" data-testid="autonomous-mode-control">
-      <div className="autonomous-mode-status-row" style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.75rem" }}>
-        <AutonomousModeBadge mode={effective} />
+      <div
+        className="autonomous-mode-status-row"
+        style={{ display: "flex", flexWrap: "wrap", gap: "1rem", marginBottom: "0.75rem", alignItems: "center" }}
+      >
+        <div>
+          <p className="metric-label" style={{ margin: 0 }}>
+            Requested mode
+          </p>
+          <p style={{ margin: "2px 0 0", fontWeight: 600 }}>{AUTONOMOUS_MODE_LABELS[requested]}</p>
+        </div>
+        <div>
+          <p className="metric-label" style={{ margin: 0 }}>
+            Effective mode
+          </p>
+          <div style={{ marginTop: "2px" }}>
+            <AutonomousModeBadge mode={effective} />
+          </div>
+        </div>
       </div>
 
       {error ? <p className="error-panel">{error}</p> : null}
-      {isClamped && state.policyGates.blockedReason ? (
+      {isClamped ? (
+        <p className="topology-observe-blocked-note" data-testid="autonomous-mode-clamped-note" role="status">
+          Requested mode differs from effective mode — automation is not fully active at the requested level.
+        </p>
+      ) : null}
+      {blockedReason ? (
         <p className="topology-observe-blocked-note" data-testid="autonomous-mode-policy-note" role="status">
-          {state.policyGates.blockedReason} Effective mode: {AUTONOMOUS_MODE_LABELS[effective]}.
+          {blockedReason}{" "}
+          <Link href="/settings/ai-automation-policies">Open organisation policy</Link>
         </p>
       ) : null}
       {state.remediationEmergencyDisabled ? (

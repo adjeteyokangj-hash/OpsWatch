@@ -54,6 +54,60 @@ export type ApiFetchOptions = RequestInit & {
   suppressAuthRedirect?: boolean;
 };
 
+/** Snapshot from GET /intelligence/feature-gates → operatingProfile */
+export type AiOperatingProfile = "safety_gated" | "ai_led_safe";
+
+export type AiOperatingProfileFlagRow = {
+  envVar: string;
+  enabled: boolean;
+  profileDefault: boolean;
+  explicitOverride: "true" | "false" | null;
+};
+
+export type AiOperatingProfileSnapshot = {
+  profile: AiOperatingProfile;
+  envVar: "OPSWATCH_AI_OPERATING_PROFILE";
+  description: string;
+  effectiveFlags: AiOperatingProfileFlagRow[];
+};
+
+/** Runtime proof payload from GET /intelligence/operations-status */
+export type OpsStatusTone = "green" | "amber" | "red";
+
+export type AiOperationsStatusCapability = {
+  id: string;
+  label: string;
+  tone: OpsStatusTone;
+  summary: string;
+  lastEvidenceAt: string | null;
+  evidence: Record<string, unknown>;
+};
+
+export type AiOperationsStatusPayload = {
+  asOf: string;
+  overall: {
+    modeLabel: string;
+    tone: OpsStatusTone;
+    summary: string;
+  };
+  lastAiDecision: {
+    at: string | null;
+    summary: string | null;
+    kind: string | null;
+  };
+  capabilities: AiOperationsStatusCapability[];
+  blocked: Array<{ id: string; label: string; reason: string }>;
+  recentDecisions: Array<{
+    id: string;
+    kind: "audit" | "automation" | "prediction";
+    summary: string;
+    decisionType: string | null;
+    confidence: number | null;
+    outcome: string | null;
+    at: string;
+  }>;
+};
+
 const toNetworkError = (error: unknown, path: string): Error => {
   const detail = error instanceof Error ? error.message : String(error);
   if (/failed to fetch|networkerror|load failed|aborted/i.test(detail)) {

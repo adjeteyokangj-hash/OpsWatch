@@ -30,6 +30,7 @@ const baseNavGroups = [
       ["Workflows", "/workflows"],
       ["Services", "/services"],
       ["Automation", "/automation"],
+      ["AI & Automation Policies", "/settings/ai-automation-policies"],
       ["Security", "/security"],
       ["Maintenance", "/maintenance"]
     ] as const
@@ -40,7 +41,8 @@ const baseNavGroups = [
       ["Reports", "/reports"],
       ["Members", "/members"],
       ["Subscription", "/subscription"],
-      ["Settings", "/settings"]
+      ["Settings", "/settings"],
+      ["AI Policies", "/settings/ai-automation-policies"]
     ] as const
   }
 ] as const;
@@ -64,6 +66,8 @@ const navIcons: Record<string, string> = {
   Workflows: "↻",
   Services: "◎",
   Automation: "⚙",
+  "AI & Automation Policies": "◈",
+  "AI Policies": "◈",
   Security: "⛨",
   Maintenance: "⏸",
   Reports: "▤",

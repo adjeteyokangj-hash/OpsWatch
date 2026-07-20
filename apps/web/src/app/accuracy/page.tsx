@@ -37,6 +37,10 @@ type AutoRunActionStat = {
 };
 
 type AutoRunMetrics = {
+  attempted?: number;
+  executed?: number;
+  blockedOrPendingApproval?: number;
+  datasetNote?: string;
   totalAutoRuns?: number;
   autoRunSuccessRate?: number | null;
   succeeded?: number;
@@ -122,7 +126,13 @@ export default function AccuracyPage() {
 
   const normalizedAutoRunMetrics = autoRunMetrics
     ? {
-        totalAutoRuns: autoRunMetrics.totalAutoRuns ?? autoRunMetrics.total ?? 0,
+        attempted: autoRunMetrics.attempted ?? autoRunMetrics.totalAutoRuns ?? autoRunMetrics.total ?? 0,
+        executed:
+          autoRunMetrics.executed ??
+          (autoRunMetrics.succeeded ?? 0) + (autoRunMetrics.failed ?? 0),
+        blockedOrPendingApproval: autoRunMetrics.blockedOrPendingApproval ?? 0,
+        datasetNote: autoRunMetrics.datasetNote,
+        totalAutoRuns: autoRunMetrics.totalAutoRuns ?? autoRunMetrics.total ?? autoRunMetrics.attempted ?? 0,
         succeeded: autoRunMetrics.succeeded ?? 0,
         failed: autoRunMetrics.failed ?? Math.max(0, (autoRunMetrics.totalAutoRuns ?? autoRunMetrics.total ?? 0) - (autoRunMetrics.succeeded ?? 0)),
         blockedByPolicy: autoRunMetrics.blockedByPolicy ?? 0,
@@ -130,9 +140,15 @@ export default function AccuracyPage() {
         blockedByConfidence: autoRunMetrics.blockedByConfidence ?? 0,
         autoRunSuccessRate:
           autoRunMetrics.autoRunSuccessRate ??
-          ((autoRunMetrics.totalAutoRuns ?? autoRunMetrics.total ?? 0) > 0
-            ? Math.round(((autoRunMetrics.succeeded ?? 0) / (autoRunMetrics.totalAutoRuns ?? autoRunMetrics.total ?? 1)) * 100)
-            : null),
+          ((autoRunMetrics.executed ?? (autoRunMetrics.succeeded ?? 0) + (autoRunMetrics.failed ?? 0)) > 0
+            ? Math.round(
+                ((autoRunMetrics.succeeded ?? 0) /
+                  (autoRunMetrics.executed ?? (autoRunMetrics.succeeded ?? 0) + (autoRunMetrics.failed ?? 0))) *
+                  100
+              )
+            : (autoRunMetrics.totalAutoRuns ?? autoRunMetrics.total ?? 0) > 0
+              ? Math.round(((autoRunMetrics.succeeded ?? 0) / (autoRunMetrics.totalAutoRuns ?? autoRunMetrics.total ?? 1)) * 100)
+              : null),
         byAction: autoRunMetrics.byAction ?? []
       }
     : null;
@@ -204,11 +220,25 @@ export default function AccuracyPage() {
         >
           <div className="grid-6" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginTop: "12px" }}>
             <div className="stat-card">
+              <p className="label">Attempted</p>
+              <p className="value">{normalizedAutoRunMetrics.attempted}</p>
+            </div>
+            <div className="stat-card">
+              <p className="label">Executed</p>
+              <p className="value">{normalizedAutoRunMetrics.executed}</p>
+            </div>
+            <div className="stat-card">
+              <p className="label">Blocked / pending approval</p>
+              <p className="value">{normalizedAutoRunMetrics.blockedOrPendingApproval}</p>
+            </div>
+          </div>
+          <div className="grid-6" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginTop: "8px" }}>
+            <div className="stat-card">
               <p className="label">Total Auto-Runs</p>
               <p className="value">{normalizedAutoRunMetrics.totalAutoRuns}</p>
             </div>
             <div className="stat-card">
-              <p className="label">Auto-Run Success Rate</p>
+              <p className="label">Executed success rate</p>
               <p className="value">
                 {normalizedAutoRunMetrics.autoRunSuccessRate !== null ? `${normalizedAutoRunMetrics.autoRunSuccessRate}%` : "—"}
               </p>
@@ -222,6 +252,11 @@ export default function AccuracyPage() {
               </p>
             </div>
           </div>
+          {normalizedAutoRunMetrics.datasetNote ? (
+            <p className="metric-label" style={{ marginTop: "12px" }}>
+              {normalizedAutoRunMetrics.datasetNote}
+            </p>
+          ) : null}
           <div className="grid-6" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginTop: "8px" }}>
             <div className="stat-card stat-card-link">
               <Link href="/accuracy/actions?blockedReason=policy">

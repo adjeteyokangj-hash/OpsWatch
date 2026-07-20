@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
@@ -11,6 +11,7 @@ import { StatusBadge } from "../../../../components/ui/status-badge";
 import { AutonomousModeControl } from "../../../../components/automation/autonomous-mode-control";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../lib/api";
+import { ConfigureSetupReturnBanner } from "../../../../components/ui/configure-setup-return-banner";
 
 type HistoryItem = {
   id: string;
@@ -65,6 +66,10 @@ export default function ProjectAutomationPage() {
       loading={loading}
       error={error}
     >
+      <>
+      <Suspense fallback={null}>
+        <ConfigureSetupReturnBanner />
+      </Suspense>
       <WorkspaceSummaryStrip
         cards={[
           { key: "runs", label: "Runs (loaded)", value: historyLoading ? "…" : items.length, tone: "info" },
@@ -144,6 +149,7 @@ export default function ProjectAutomationPage() {
           </div>
         ) : null}
       </PageSection>
+    </>
     </ProjectWorkspaceShell>
   );
 }

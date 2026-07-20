@@ -10,7 +10,8 @@ import { StatCard } from "../../components/dashboard/stat-card";
 import { StatusBadge } from "../../components/ui/status-badge";
 import { LearningStateBanner } from "../../components/ui/learning-state-banner";
 import { ProductTruthStatus } from "../../components/ui/product-truth-status";
-import { apiFetch } from "../../lib/api";
+import { AiOperationsStatus } from "../../components/intelligence/ai-operations-status";
+import { apiFetch, type AiOperationsStatusPayload, type AiOperatingProfileSnapshot } from "../../lib/api";
 
 type LearningStage = {
   key: string;
@@ -222,6 +223,8 @@ export default function IntelligencePage() {
   const [data, setData] = useState<IntelligenceSnapshot | null>(null);
   const [gates, setGates] = useState<FeatureGate[]>([]);
   const [learningStages, setLearningStages] = useState<LearningStage[]>([]);
+  const [operatingProfile, setOperatingProfile] = useState<AiOperatingProfileSnapshot | null>(null);
+  const [opsStatus, setOpsStatus] = useState<AiOperationsStatusPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
@@ -231,15 +234,24 @@ export default function IntelligencePage() {
     setError(null);
     try {
       // Skip on-read harvest — worker learning cycle owns writes; keeps UI reads light.
-      const [snapshot, gatePayload] = await Promise.all([
+      const [snapshot, gatePayload, operationsStatus] = await Promise.all([
         apiFetch<IntelligenceSnapshot>("/intelligence?harvest=false"),
-        apiFetch<{ gates: FeatureGate[]; learningStages?: LearningStage[] }>(
-          "/intelligence/feature-gates"
-        ).catch(() => ({ gates: [], learningStages: [] }))
+        apiFetch<{
+          gates: FeatureGate[];
+          learningStages?: LearningStage[];
+          operatingProfile?: AiOperatingProfileSnapshot;
+        }>("/intelligence/feature-gates").catch(() => ({
+          gates: [] as FeatureGate[],
+          learningStages: [] as LearningStage[],
+          operatingProfile: undefined as AiOperatingProfileSnapshot | undefined
+        })),
+        apiFetch<AiOperationsStatusPayload>("/intelligence/operations-status").catch(() => null)
       ]);
       setData(snapshot);
       setGates(gatePayload.gates ?? []);
       setLearningStages(gatePayload.learningStages ?? snapshot.phase9?.learningStages ?? []);
+      setOperatingProfile(gatePayload.operatingProfile ?? null);
+      setOpsStatus(operationsStatus);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to load intelligence";
       setError(message);
@@ -297,6 +309,8 @@ export default function IntelligencePage() {
             action={<Link className="text-link" href="/insights">Product insights →</Link>}
           />
 
+          <AiOperationsStatus status={opsStatus} loading={false} />
+
           <section className="grid-6 dashboard-metrics">
             <StatCard label="Observations" value={data.counters.observations} />
             <StatCard label="Baselines ready" value={`${data.counters.baselinesReady}/${data.counters.baselines}`} />
@@ -308,7 +322,13 @@ export default function IntelligencePage() {
 
           <PageSection
             title="Prediction readiness"
-            description="Generation stays default-off. Candidates require evidence, expiry, and review for high impact."
+            description={
+              opsStatus?.capabilities.find((c) => c.id === "prediction_engine")?.tone === "green"
+                ? "Prediction engine is active with recent candidates. Emission still requires evidence, confidence thresholds, expiry, and review for high impact."
+                : opsStatus?.capabilities.find((c) => c.id === "prediction_engine")?.tone === "amber"
+                  ? "Prediction engine is enabled but waiting for enough evidence to emit confidence-gated candidates."
+                  : "Prediction engine is blocked or off. See AI Operations Status above for the blocker."
+            }
             persistKey="org:intelligence:prediction-readiness"
           >
             <div className="snapshot-grid" data-testid="predictions-disabled-state">
@@ -340,7 +360,7 @@ export default function IntelligencePage() {
           {learningStages.length > 0 ? (
             <PageSection
               title="Learning stages"
-              description="Separate flags. Stages default OFF; the UI never invents hidden predictions."
+              description="Separate flags. Under ai_led_safe many resolve on when unset; UI never invents hidden predictions."
               persistKey="org:intelligence:learning-stages"
               defaultCollapsed
             >

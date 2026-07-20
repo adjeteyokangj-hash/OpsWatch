@@ -7,7 +7,7 @@ import { Shell } from "../../../../components/layout/shell";
 import { Header } from "../../../../components/layout/header";
 import { ProjectWorkspaceNav } from "../../../../components/projects/project-workspace-nav";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
-import { apiFetch } from "../../../../lib/api";
+import { apiFetch, type AiOperationsStatusPayload } from "../../../../lib/api";
 import type { ProjectIntegration } from "../../../../lib/integrations";
 import { TopologyCanvas } from "../../../../components/topology/topology-canvas";
 import { TopologyNodeDrawer } from "../../../../components/topology/topology-node-drawer";
@@ -32,6 +32,7 @@ import {
 import { TopologyRelationshipSummary } from "../../../../components/topology/topology-relationship-summary";
 import { TopologyKey } from "../../../../components/topology/topology-key";
 import { PageSection } from "../../../../components/ui/page-section";
+import { AiOperationsStatus } from "../../../../components/intelligence/ai-operations-status";
 import {
   TopologyRelationshipDrawer,
   evaluateRelationshipAutomation
@@ -112,10 +113,33 @@ export default function ProjectTopologyPage() {
   const [incidentMemorySignals, setIncidentMemorySignals] = useState<RelationshipIncidentMemorySignals | null>(null);
   const [incidentMemoryLoading, setIncidentMemoryLoading] = useState(false);
   const [sideStackCollapsed, setSideStackCollapsed] = useState(false);
+  const [operatingProfile, setOperatingProfile] = useState<AiOperationsStatusPayload | null>(null);
+  const [operatingProfileLoading, setOperatingProfileLoading] = useState(true);
 
   useEffect(() => {
     setSideStackCollapsed(readSideStackCollapsed());
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setOperatingProfileLoading(true);
+    const path = projectId
+      ? `/intelligence/operations-status?projectId=${encodeURIComponent(projectId)}`
+      : "/intelligence/operations-status";
+    void apiFetch<AiOperationsStatusPayload>(path)
+      .then((payload) => {
+        if (!cancelled) setOperatingProfile(payload);
+      })
+      .catch(() => {
+        if (!cancelled) setOperatingProfile(null);
+      })
+      .finally(() => {
+        if (!cancelled) setOperatingProfileLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const toggleSideStack = useCallback(() => {
     setSideStackCollapsed((current) => {
@@ -576,6 +600,13 @@ export default function ProjectTopologyPage() {
           <ProjectWorkspaceNav projectId={projectId} />
         </section>
 
+        <AiOperationsStatus
+          status={operatingProfile}
+          loading={operatingProfileLoading}
+          compact
+          projectId={projectId}
+        />
+
         {projectError ? <section className="panel error-panel">{projectError}</section> : null}
         {fixError ? (
           <section className="panel error-panel" role="alert" data-testid="topology-fix-error">
@@ -816,7 +847,11 @@ export default function ProjectTopologyPage() {
                 ) : null}
                 <PageSection
                   title="Incident memory"
-                  description="Relationship-level learning appears when you select an edge on the map. Predictions stay disabled; patterns and deploy correlation live on the Intelligence tab when evidence exists."
+                  description={
+                    operatingProfile?.overall.tone === "green" || operatingProfile?.overall.tone === "amber"
+                      ? "Relationship-level learning appears when you select an edge on the map. Predictions follow live AI Operations Status (confidence-gated). Patterns and deploy correlation live on Intelligence when evidence exists."
+                      : "Relationship-level learning appears when you select an edge on the map. AI Operations Status shows blockers when predictions or healing are inactive. Patterns and deploy correlation live on the Intelligence tab when evidence exists."
+                  }
                   className="topology-intel-slot"
                   persistKey={`project:${projectId}:topology:incident-memory`}
                   defaultCollapsed
