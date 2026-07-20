@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import tls from "tls";
+import { propagateCheckRecovery } from "@opswatch/api/recovery-propagation";
 import { prisma } from "../lib/prisma";
 import { logger } from "../lib/logger";
 import { resolveSafeOutboundTarget } from "../lib/outbound-url-safety";
@@ -229,19 +230,28 @@ export const runSslChecksJob = async (
       const recovered =
         recentResults.length >= check.recoveryThreshold &&
         recentResults.every((result) => result.status === "PASS");
-      const openAlerts = recovered
-        ? await prisma.alert.findMany({
-            where: { sourceType: "CHECK", sourceId: check.id, status: "OPEN" },
-            select: { id: true }
-          })
-        : [];
+      if (!recovered) continue;
 
-      for (const openAlert of openAlerts) {
-        await prisma.alert.update({
-          where: { id: openAlert.id },
-          data: { status: "RESOLVED", resolvedAt: new Date(), lastSeenAt: new Date() }
-        });
-        await dispatchAlertNotifications(openAlert.id, "resolved");
+      const incidentLink = await prisma.incidentAlert.findFirst({
+        where: {
+          Alert: { sourceType: "CHECK", sourceId: check.id, status: { not: "RESOLVED" } },
+          Incident: { status: { in: ["OPEN", "INVESTIGATING", "MONITORING"] } }
+        },
+        select: { incidentId: true }
+      });
+
+      const recovery = await propagateCheckRecovery({
+        organizationId: check.Service.Project.organizationId,
+        projectId: check.Service.projectId,
+        checkId: check.id,
+        serviceId: check.serviceId,
+        incidentId: incidentLink?.incidentId ?? null,
+        correlationId: `worker-ssl-check:${check.id}:${Date.now()}`,
+        recoveryCause: "natural",
+        checkFailed: false
+      });
+      for (const id of recovery.alertResolvedIds) {
+        await dispatchAlertNotifications(id, "resolved");
       }
     }
   }

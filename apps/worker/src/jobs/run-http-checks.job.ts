@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { classifyHttpCheckFailure, formatFailureMessage } from "@opswatch/shared";
+import { propagateCheckRecovery } from "@opswatch/api/recovery-propagation";
 import { prisma } from "../lib/prisma";
 import { logger } from "../lib/logger";
 import { connectionRequestHeaders } from "../lib/connection-auth";
@@ -84,26 +85,60 @@ const upsertCheckAlert = async (input: {
   }
 };
 
-const resolveCheckAlerts = async (checkId: string): Promise<void> => {
+const resolveCheckAlerts = async (input: {
+  checkId: string;
+  projectId: string;
+  serviceId: string;
+  organizationId: string;
+}): Promise<void> => {
   const openAlerts = await prisma.alert.findMany({
     where: {
       sourceType: "CHECK",
-      sourceId: checkId,
-      status: "OPEN"
+      sourceId: input.checkId,
+      status: { in: ["OPEN", "ACKNOWLEDGED", "REMEDIATING", "VERIFYING", "RECOVERING"] }
     },
     select: { id: true }
   });
 
-  for (const openAlert of openAlerts) {
-    await prisma.alert.update({
-      where: { id: openAlert.id },
-      data: {
-        status: "RESOLVED",
-        resolvedAt: new Date(),
-        lastSeenAt: new Date()
-      }
-    });
-    await dispatchAlertNotifications(openAlert.id, "resolved");
+  const incidentLink = await prisma.incidentAlert.findFirst({
+    where: {
+      Alert: { sourceType: "CHECK", sourceId: input.checkId, status: { not: "RESOLVED" } },
+      Incident: { status: { in: ["OPEN", "INVESTIGATING", "MONITORING"] } }
+    },
+    select: { incidentId: true }
+  });
+
+  const correlationId = `worker-http-check:${input.checkId}:${Date.now()}`;
+  const recovery = await propagateCheckRecovery({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    checkId: input.checkId,
+    serviceId: input.serviceId,
+    incidentId: incidentLink?.incidentId ?? null,
+    correlationId,
+    recoveryCause: "natural",
+    checkFailed: false
+  });
+
+  // Notify for alerts that were resolved by propagation.
+  for (const id of recovery.alertResolvedIds) {
+    await dispatchAlertNotifications(id, "resolved");
+  }
+
+  // If propagation found nothing (edge case) but threshold was met, fall back to status update.
+  if (recovery.alertResolvedIds.length === 0 && openAlerts.length > 0 && recovery.verification.met) {
+    for (const openAlert of openAlerts) {
+      await prisma.alert.update({
+        where: { id: openAlert.id },
+        data: {
+          status: "RESOLVED",
+          resolvedAt: new Date(),
+          lastSeenAt: new Date(),
+          message: "Automatically resolved after successful recovery verification"
+        }
+      });
+      await dispatchAlertNotifications(openAlert.id, "resolved");
+    }
   }
 };
 
@@ -311,9 +346,23 @@ export const runHttpChecksJob = async (
       }
     });
 
+    const openAlertCount = await prisma.alert.count({
+      where: {
+        serviceId: check.serviceId,
+        status: { not: "RESOLVED" }
+      }
+    });
     await prisma.service.update({
       where: { id: check.serviceId },
-      data: { status: status === "PASS" ? "HEALTHY" : "DOWN", updatedAt: new Date() }
+      data: {
+        status:
+          status === "PASS"
+            ? openAlertCount > 0
+              ? "DEGRADED"
+              : "HEALTHY"
+            : "DOWN",
+        updatedAt: new Date()
+      }
     });
     if (managedConnectionId) {
       await prisma.connection.updateMany({
@@ -391,7 +440,14 @@ export const runHttpChecksJob = async (
       const recovered =
         recentResults.length >= check.recoveryThreshold &&
         recentResults.every((result) => result.status === "PASS");
-      if (recovered) await resolveCheckAlerts(check.id);
+      if (recovered) {
+        await resolveCheckAlerts({
+          checkId: check.id,
+          projectId: check.Service.projectId,
+          serviceId: check.serviceId,
+          organizationId: check.Service.Project.organizationId
+        });
+      }
     }
   }
 
