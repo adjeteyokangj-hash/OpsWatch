@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockEventFindMany = vi.fn();
-const mockFindingFindUnique = vi.fn();
+const mockFindingFindFirst = vi.fn();
 const mockFindingCreate = vi.fn();
 const mockFindingUpdate = vi.fn();
 const mockOccurrenceCreate = vi.fn();
@@ -13,7 +13,7 @@ vi.mock("../../lib/prisma", () => ({
   prisma: {
     securityEvent: { findMany: (...args: unknown[]) => mockEventFindMany(...args) },
     securityFinding: {
-      findUnique: (...args: unknown[]) => mockFindingFindUnique(...args),
+      findFirst: (...args: unknown[]) => mockFindingFindFirst(...args),
       create: (...args: unknown[]) => mockFindingCreate(...args),
       update: (...args: unknown[]) => mockFindingUpdate(...args)
     },
@@ -34,7 +34,7 @@ import { findingFingerprint } from "./security-detection-rules";
 describe("security detection", () => {
   beforeEach(() => {
     mockEventFindMany.mockReset();
-    mockFindingFindUnique.mockReset();
+    mockFindingFindFirst.mockReset();
     mockFindingCreate.mockReset();
     mockFindingUpdate.mockReset();
     mockOccurrenceCreate.mockReset();
@@ -44,7 +44,7 @@ describe("security detection", () => {
     mockRuleFindMany.mockResolvedValue([]);
     mockRuleFindFirst.mockResolvedValue(null);
     mockRuleCreate.mockResolvedValue({});
-    mockFindingFindUnique.mockResolvedValue(null);
+    mockFindingFindFirst.mockResolvedValue(null);
     mockFindingCreate.mockImplementation(async ({ data }: { data: { id: string } }) => data);
     mockOccurrenceCreate.mockResolvedValue({});
   });
@@ -115,7 +115,7 @@ describe("security detection", () => {
         severity: "HIGH"
       }))
     );
-    mockFindingFindUnique.mockResolvedValue({
+    mockFindingFindFirst.mockResolvedValue({
       id: "finding-1",
       state: "SUPPRESSED",
       suppressedUntil: new Date(now + 60_000),

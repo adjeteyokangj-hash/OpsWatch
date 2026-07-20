@@ -24,13 +24,15 @@ monitoring and governed response. It does **not** predict attacks.
 
 | Suite | Result |
 | --- | --- |
-| `src/services/security` unit (ingest/detection/response) | **14 passed**, 1 skipped (DB e2e gated) |
-| `security.database-e2e.test.ts` with `RUN_DATABASE_E2E=true` | **1 passed** |
-| `permissions.test.ts` (includes security role mapping) | **5 passed** (run with security units earlier: 16 with permissions) |
-| API `tsc --noEmit` | **exit 0** |
-| Migration `20260720090000_phase8_security_threat_foundation` | **applied** locally |
+| `pnpm typecheck` | **exit 0** |
+| `NODE_ENV=test pnpm test` | **API 384 passed** (31 skipped), **web 142 passed**, **worker 36 passed** (3 skipped) — **FULL_TEST_EXIT:0** |
+| `src/services/security` unit | **14 passed**, 1 skipped |
+| `RUN_DATABASE_E2E=true` security DB E2E | **1 passed** |
+| `pnpm lint` | **exit 0** (1 pre-existing web hooks warning) |
+| `pnpm build` | **exit 0** |
+| Playwright `e2e/phase8-security.spec.ts` | **1 passed**; shots 01, 02, 03, 18 captured |
 
-Combined focused security + permissions unit run earlier: **16 passed**.
+Gate logs under `test-artifacts/phase8-security/gate-*.txt`.
 
 
 ```text
