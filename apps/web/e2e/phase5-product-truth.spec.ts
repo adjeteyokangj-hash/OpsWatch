@@ -82,8 +82,9 @@ test.describe("Phase 5 product truth", () => {
       await capture(page, "test-data-indicator");
 
       await gotoSafe(page, "/security", 90_000);
-      await slowExpect(page.getByTestId("security-foundation-state")).toContainText("Foundation");
-      await capture(page, "security-foundation");
+      await slowExpect(page.getByTestId("security-workspace")).toBeVisible();
+      await slowExpect(page.getByTestId("security-coverage")).toBeVisible();
+      await capture(page, "security-workspace");
 
       await gotoSafe(page, "/intelligence", 90_000);
       await slowExpect(page.getByTestId("predictions-disabled-state")).toContainText("Feature disabled");
