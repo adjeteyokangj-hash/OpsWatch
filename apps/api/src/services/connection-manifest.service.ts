@@ -1,8 +1,16 @@
+import {
+  isMonitoringConnectorMode
+} from "./monitoring-connectors/monitoring-connector-types";
+import { resolveMonitoringProfile } from "./monitoring-connectors/monitoring-connector-profile.registry";
+
 export const CONNECTION_MODES = [
   "AGENTLESS",
   "HEARTBEAT",
   "WEBHOOK",
   "API",
+  "METRICS_ALERTS_CONNECTOR",
+  "APPLICATION_PERFORMANCE_CONNECTOR",
+  "INFRASTRUCTURE_MONITORING_CONNECTOR",
   "SYNTHETIC",
   "OTEL_COLLECTOR",
   "SDK",
@@ -62,6 +70,29 @@ const endpointFields: ConnectionConfigField[] = [
   { key: "timeoutMs", label: "Timeout (ms)", type: "number", description: "Maximum 30 seconds." }
 ];
 
+const monitoringConnectorFields: ConnectionConfigField[] = [
+  ...endpointFields,
+  {
+    key: "syncPath",
+    label: "Sync path",
+    type: "string",
+    required: true,
+    description: "Relative path used for scheduled synchronization."
+  },
+  {
+    key: "pageSize",
+    label: "Page size",
+    type: "number",
+    description: "Requested page size for paginated source APIs."
+  },
+  {
+    key: "cursorParam",
+    label: "Cursor query parameter",
+    type: "string",
+    description: "Query parameter used for pagination cursors."
+  }
+];
+
 const foundationHooks: ConnectionManifest["foundationHooks"] = [
   { key: "dns", supported: false, reason: "DNS probing is not implemented yet." },
   { key: "tls", supported: false, reason: "TLS certificate inspection is not implemented yet." },
@@ -76,6 +107,9 @@ const manifests: Record<ConnectionMode, ConnectionManifest> = {
   HEARTBEAT: { version: "1.0", displayName: "Heartbeat ingest", productStatus: "Requires configuration", requiredCapabilities: ["heartbeat"], supportedAuthMethods: ["HMAC", "API_KEY"], availableCapabilities: ["heartbeat", "deployment_metadata"], configurationSchema: [], foundationHooks },
   WEBHOOK: { version: "1.0", displayName: "Signed webhook event ingest", productStatus: "Requires configuration", requiredCapabilities: ["event_ingest"], supportedAuthMethods: ["HMAC"], availableCapabilities: ["event_ingest", "deployment_events"], configurationSchema: [], foundationHooks },
   API: { version: "1.1", displayName: "Generic REST/API check", productStatus: "Available", requiredCapabilities: ["api_probe"], supportedAuthMethods: ["NONE", "API_KEY", "BEARER", "BASIC", "CUSTOM_HEADER"], availableCapabilities: ["api_probe", "discovery"], configurationSchema: [...endpointFields, { key: "discoveryPath", label: "Discovery path", type: "string", description: "Optional GET path used for real response-key discovery." }], foundationHooks },
+  METRICS_ALERTS_CONNECTOR: { version: "1.0", displayName: "Metrics & alerts connector", productStatus: "Preview", requiredCapabilities: ["monitoring_sync"], supportedAuthMethods: ["API_KEY", "BEARER", "CUSTOM_HEADER"], availableCapabilities: ["monitoring_sync", "metric_ingest", "alert_ingest", "event_ingest"], configurationSchema: monitoringConnectorFields, foundationHooks },
+  APPLICATION_PERFORMANCE_CONNECTOR: { version: "1.0", displayName: "Application performance connector", productStatus: "Preview", requiredCapabilities: ["monitoring_sync"], supportedAuthMethods: ["API_KEY", "BEARER", "CUSTOM_HEADER"], availableCapabilities: ["monitoring_sync", "trace_ingest", "apm_ingest", "dependency_ingest"], configurationSchema: monitoringConnectorFields, foundationHooks },
+  INFRASTRUCTURE_MONITORING_CONNECTOR: { version: "1.0", displayName: "Infrastructure monitoring connector", productStatus: "Preview", requiredCapabilities: ["monitoring_sync"], supportedAuthMethods: ["API_KEY", "BEARER", "CUSTOM_HEADER"], availableCapabilities: ["monitoring_sync", "service_health_ingest", "entity_ingest", "problem_ingest"], configurationSchema: monitoringConnectorFields, foundationHooks },
   SYNTHETIC: { version: "1.0", displayName: "Synthetic journey draft contract", productStatus: "Planned", requiredCapabilities: [], supportedAuthMethods: ["NONE"], availableCapabilities: [], configurationSchema: [], foundationHooks },
   OTEL_COLLECTOR: { version: "1.0", displayName: "OpenTelemetry collector ingest", productStatus: "Requires configuration", requiredCapabilities: ["telemetry_ingest"], supportedAuthMethods: ["API_KEY"], availableCapabilities: ["telemetry_ingest", "traces", "metrics", "logs"], configurationSchema: [{ key: "serviceName", label: "Expected service.name", type: "string", required: true, description: "Must exactly match the Collector resource service.name." }], foundationHooks },
   SDK: { version: "1.0", displayName: "SDK event ingest", productStatus: "Requires configuration", requiredCapabilities: ["event_ingest"], supportedAuthMethods: ["API_KEY", "HMAC"], availableCapabilities: ["event_ingest", "traces", "deployment_metadata"], configurationSchema: [], foundationHooks },
@@ -148,7 +182,19 @@ export const parseGuidedConnectionInput = (
   const connectorType = readString(value.connectorType) ?? readString(value.type) ?? (options.partial ? "" : "API");
   const normalizedConnectorType = connectorType.toUpperCase().replace(/[^A-Z0-9]/g, "");
   const trueNumeris = normalizedConnectorType === "TRUENUMERIS";
-  const inferredMode = trueNumeris || normalizedConnectorType === "API" ? "API" : "AGENTLESS";
+  const monitoringModeByType: Record<string, ConnectionMode> = {
+    METRICS_ALERTS: "METRICS_ALERTS_CONNECTOR",
+    METRICSALERTS: "METRICS_ALERTS_CONNECTOR",
+    METRICS_ALERTS_CONNECTOR: "METRICS_ALERTS_CONNECTOR",
+    APPLICATION_PERFORMANCE: "APPLICATION_PERFORMANCE_CONNECTOR",
+    APPLICATIONPERFORMANCE: "APPLICATION_PERFORMANCE_CONNECTOR",
+    APPLICATION_PERFORMANCE_CONNECTOR: "APPLICATION_PERFORMANCE_CONNECTOR",
+    INFRASTRUCTURE_MONITORING: "INFRASTRUCTURE_MONITORING_CONNECTOR",
+    INFRASTRUCTUREMONITORING: "INFRASTRUCTURE_MONITORING_CONNECTOR",
+    INFRASTRUCTURE_MONITORING_CONNECTOR: "INFRASTRUCTURE_MONITORING_CONNECTOR"
+  };
+  const monitoringMode = monitoringModeByType[normalizedConnectorType];
+  const inferredMode = monitoringMode ?? (trueNumeris || normalizedConnectorType === "API" ? "API" : "AGENTLESS");
   const modeValue = (readString(value.mode) ?? inferredMode).toUpperCase();
   if (!isConnectionMode(modeValue)) throw new Error(`mode must be one of: ${CONNECTION_MODES.join(", ")}`);
   const baseUrl = readString(value.baseUrl) ?? readString(legacy.baseUrl);
@@ -179,7 +225,23 @@ export const parseGuidedConnectionInput = (
       ? { authPrefix: readString(value.authPrefix) ?? readString(legacy.authPrefix) ?? TRUE_NUMERIS_PROFILE.authPrefix }
       : {})
   };
-  const defaultCapabilities = modeValue === "API" ? ["api_probe"] : modeValue === "AGENTLESS" ? ["health_check"] : [];
+  if (isMonitoringConnectorMode(modeValue)) {
+    const profile = resolveMonitoringProfile(modeValue, configuration);
+    configuration.healthPath = readString(configuration.healthPath) ?? profile.defaultHealthPath;
+    configuration.syncPath = readString(value.syncPath) ?? readString(legacy.syncPath) ?? profile.defaultSyncPath;
+    configuration.pageSize = configuration.pageSize ?? profile.defaultPageSize;
+    configuration.cursorParam = configuration.cursorParam ?? profile.cursorParam;
+    if (effectiveBaseUrl) {
+      configuration.endpoint = joinConnectionUrl(effectiveBaseUrl, String(configuration.healthPath));
+    }
+  }
+  const defaultCapabilities = modeValue === "API"
+    ? ["api_probe"]
+    : modeValue === "AGENTLESS"
+      ? ["health_check"]
+      : isMonitoringConnectorMode(modeValue)
+        ? ["monitoring_sync"]
+        : [];
   return {
     projectId: readString(value.applicationId) ?? readString(value.projectId) ?? null,
     name: readString(value.name) ?? "",
@@ -251,7 +313,14 @@ export const validateConnectionConfiguration = (
     }
     return { valid: true, value };
   }
-  if (!["AGENTLESS", "API"].includes(mode)) return { valid: true, value };
+  const endpointModes = [
+    "AGENTLESS",
+    "API",
+    "METRICS_ALERTS_CONNECTOR",
+    "APPLICATION_PERFORMANCE_CONNECTOR",
+    "INFRASTRUCTURE_MONITORING_CONNECTOR"
+  ];
+  if (!endpointModes.includes(mode)) return { valid: true, value };
 
   const endpoint = value.endpoint;
   if (typeof endpoint !== "string" || !/^https?:\/\//i.test(endpoint)) {
@@ -283,6 +352,22 @@ export const validateConnectionConfiguration = (
   }
   if (mode === "API" && value.discoveryPath !== undefined && (typeof value.discoveryPath !== "string" || !value.discoveryPath.startsWith("/"))) {
     return { valid: false, error: "configuration.discoveryPath must begin with /" };
+  }
+  const monitoringModes = [
+    "METRICS_ALERTS_CONNECTOR",
+    "APPLICATION_PERFORMANCE_CONNECTOR",
+    "INFRASTRUCTURE_MONITORING_CONNECTOR"
+  ];
+  if (monitoringModes.includes(mode as string)) {
+    if (typeof value.syncPath !== "string" || !value.syncPath.startsWith("/")) {
+      return { valid: false, error: "configuration.syncPath must begin with /" };
+    }
+    if (
+      value.pageSize !== undefined &&
+      (!Number.isInteger(value.pageSize) || Number(value.pageSize) < 1 || Number(value.pageSize) > 1000)
+    ) {
+      return { valid: false, error: "configuration.pageSize must be an integer between 1 and 1000" };
+    }
   }
   return { valid: true, value };
 };

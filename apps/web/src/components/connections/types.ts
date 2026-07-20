@@ -3,6 +3,9 @@ export type ConnectionEnvironment = (typeof CONNECTION_ENVIRONMENTS)[number];
 
 export const CONNECTION_METHODS = [
   { value: "REST_API", label: "REST API", mode: "API", productStatus: "Available" },
+  { value: "METRICS_ALERTS", label: "Metrics & alerts connector", mode: "METRICS_ALERTS_CONNECTOR", productStatus: "Preview" },
+  { value: "APPLICATION_PERFORMANCE", label: "Application performance connector", mode: "APPLICATION_PERFORMANCE_CONNECTOR", productStatus: "Preview" },
+  { value: "INFRASTRUCTURE_MONITORING", label: "Infrastructure monitoring connector", mode: "INFRASTRUCTURE_MONITORING_CONNECTOR", productStatus: "Preview" },
   { value: "HEARTBEAT", label: "Heartbeat", mode: "HEARTBEAT", productStatus: "Requires configuration" },
   { value: "WEBHOOK", label: "Webhook", mode: "WEBHOOK", productStatus: "Requires configuration" },
   { value: "AGENTLESS", label: "Agentless URL", mode: "AGENTLESS", productStatus: "Available" },
@@ -54,6 +57,12 @@ export type ConnectionRecord = {
   lastValidatedAt?: string | null;
   validationLatencyMs?: number | null;
   validationStatusCode?: number | null;
+  lastSyncAt?: string | null;
+  lastSyncStatus?: string | null;
+  lastSyncSummary?: string | null;
+  lastSyncError?: string | null;
+  lastSyncImportedCount?: number | null;
+  monitoringLimitations?: string[];
   isActive: boolean;
   configuration?: Record<string, unknown> | null;
   capabilities?: string[];
@@ -74,6 +83,7 @@ export type GuidedConnectionForm = {
   baseUrl: string;
   healthPath: string;
   discoveryPath: string;
+  syncPath: string;
   authType: AuthTypeValue;
   authSecret: string;
   authHeaderName: string;
@@ -101,6 +111,7 @@ export type GuidedConnectionDto = {
   baseUrl?: string;
   healthPath?: string;
   discoveryPath?: string;
+  syncPath?: string;
   authType: AuthTypeValue;
   authMethod: string;
   authSecret?: string;
@@ -146,6 +157,7 @@ export const emptyGuidedForm = (applicationId = ""): GuidedConnectionForm => ({
   baseUrl: "",
   healthPath: "/health",
   discoveryPath: "",
+  syncPath: "",
   authType: "NONE",
   authSecret: "",
   authHeaderName: "",

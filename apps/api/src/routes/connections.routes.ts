@@ -12,6 +12,7 @@ import {
   reactivateConnection,
   recordConnectionValidation,
   rotateConnectionCredential,
+  syncConnection,
   testConnection,
   testUnsavedConnectionHandler
 } from "../controllers/connections.controller";
@@ -37,6 +38,7 @@ connectionsRouter.patch("/connections/:connectionId", patchConnection);
 connectionsRouter.post("/connections/:connectionId/validation", recordConnectionValidation);
 connectionsRouter.post("/connections/test", testUnsavedConnectionHandler);
 connectionsRouter.post("/connections/:connectionId/test", testConnection);
+connectionsRouter.post("/connections/:connectionId/sync", syncConnection);
 connectionsRouter.post("/connections/:connectionId/discover", discoverConnection);
 connectionsRouter.post("/connections/:connectionId/disable", requireAdmin, disableConnection);
 connectionsRouter.post("/connections/:connectionId/reactivate", requireAdmin, reactivateConnection);

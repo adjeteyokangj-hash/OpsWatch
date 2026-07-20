@@ -18,7 +18,17 @@ export const timeoutSecondsToMs = (seconds: TimeoutSeconds | number): number => 
   return Math.round(value * 1000);
 };
 
-export const isRestMethod = (method: ConnectionMethodValue): boolean => method === "REST_API" || method === "AGENTLESS";
+export const isRestMethod = (method: ConnectionMethodValue): boolean =>
+  method === "REST_API" ||
+  method === "AGENTLESS" ||
+  method === "METRICS_ALERTS" ||
+  method === "APPLICATION_PERFORMANCE" ||
+  method === "INFRASTRUCTURE_MONITORING";
+
+export const isMonitoringMethod = (method: ConnectionMethodValue): boolean =>
+  method === "METRICS_ALERTS" ||
+  method === "APPLICATION_PERFORMANCE" ||
+  method === "INFRASTRUCTURE_MONITORING";
 
 export const methodLabel = (method: ConnectionMethodValue | string): string =>
   CONNECTION_METHODS.find((row) => row.value === method || row.mode === method)?.label ?? method;
@@ -159,6 +169,7 @@ export const buildGuidedConnectionPayload = (
     payload.baseUrl = form.baseUrl.trim();
     payload.healthPath = form.healthPath.trim() || undefined;
     payload.discoveryPath = form.discoveryPath.trim() || undefined;
+    payload.syncPath = form.syncPath.trim() || undefined;
     payload.requestMethod = form.requestMethod.trim() || "GET";
   }
 
@@ -192,6 +203,7 @@ export const connectionFromRecord = (row: ConnectionRecord): GuidedConnectionFor
   const baseUrl = row.baseUrl || configurationString(configuration, "baseUrl") || configurationString(configuration, "endpoint");
   const healthPath = row.healthPath || configurationString(configuration, "healthPath") || "/health";
   const discoveryPath = row.discoveryPath || configurationString(configuration, "discoveryPath");
+  const syncPath = configurationString(configuration, "syncPath");
   const timeoutRaw = configuration.timeoutMs;
   const timeoutMs = typeof timeoutRaw === "number" ? timeoutRaw : Number(timeoutRaw);
   const timeoutSeconds = ([5, 10, 15, 30] as const).includes((timeoutMs / 1000) as TimeoutSeconds)
@@ -213,6 +225,7 @@ export const connectionFromRecord = (row: ConnectionRecord): GuidedConnectionFor
     baseUrl,
     healthPath,
     discoveryPath,
+    syncPath,
     authType,
     authSecret: "",
     authHeaderName: configurationString(configuration, "authHeaderName"),

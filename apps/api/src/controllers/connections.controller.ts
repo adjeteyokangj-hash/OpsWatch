@@ -16,6 +16,9 @@ import {
   testAgentlessConnection,
   testUnsavedConnection
 } from "../services/agentless-connection.service";
+import { listMonitoringProfileLimitations } from "../services/monitoring-connectors/monitoring-connector-profile.registry";
+import { syncMonitoringConnectionById } from "../services/monitoring-connectors/monitoring-connector-sync.service";
+import { isMonitoringConnectorMode } from "../services/monitoring-connectors/monitoring-connector-types";
 import { isOtelIngestionEnabled } from "../services/otel-bridge.service";
 import {
   fetchActiveCredentialMetadata,
@@ -68,6 +71,16 @@ const toConnectionDto = async (row: any, orgId: string) => {
     isActive: row.isActive,
     linkedServiceId: row.linkedServiceId,
     linkedCheckId: row.linkedCheckId,
+    lastSyncAt: row.lastSyncAt?.toISOString() ?? null,
+    lastSyncStatus: row.lastSyncStatus ?? null,
+    lastSyncSummary: row.lastSyncSummary ?? null,
+    lastSyncError: row.lastSyncError ?? null,
+    lastSyncDurationMs: row.lastSyncDurationMs ?? null,
+    lastSyncImportedCount: row.lastSyncImportedCount ?? null,
+    syncIntervalMinutes: row.syncIntervalMinutes ?? 15,
+    monitoringLimitations: isMonitoringConnectorMode(row.mode)
+      ? listMonitoringProfileLimitations(row.mode)
+      : [],
     project: row.Project ? { id: row.Project.id, name: row.Project.name } : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()
@@ -513,6 +526,31 @@ export const discoverConnection = async (req: AuthRequest, res: Response) => {
     res.status(422).json({
       error: error instanceof Error ? error.message : "Discovery failed",
       errorCategory: "DISCOVERY_FAILED"
+    });
+  }
+};
+
+export const syncConnection = async (req: AuthRequest, res: Response) => {
+  const orgId = requireOrg(req, res);
+  if (!orgId) return;
+  const connection = await prisma.connection.findFirst({
+    where: { id: req.params.connectionId, organizationId: orgId, isActive: true },
+    select: { id: true, mode: true }
+  });
+  if (!connection) {
+    res.status(404).json({ error: "Active connection not found" });
+    return;
+  }
+  if (!isMonitoringConnectorMode(connection.mode)) {
+    res.status(400).json({ error: "Only monitoring source connections support synchronization" });
+    return;
+  }
+  try {
+    const result = await syncMonitoringConnectionById(orgId, connection.id);
+    res.status(result.status === "FAILED" ? 422 : 200).json(result);
+  } catch (error) {
+    res.status(422).json({
+      error: error instanceof Error ? error.message : "Monitoring source sync failed"
     });
   }
 };

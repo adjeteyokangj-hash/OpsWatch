@@ -340,6 +340,7 @@ model Organization {
   RemediationPatternOutcome           RemediationPatternOutcome[]
   LearningAlgorithmVersion            LearningAlgorithmVersion[]
   PredictionOutcomeEvaluation         PredictionOutcomeEvaluation[]
+  MonitoringSyncRun                   MonitoringSyncRun[]
 }
 
 model OrganizationIncidentGroup {
@@ -441,6 +442,7 @@ model Project {
   SecurityResponseRun                 SecurityResponseRun[]
   SecurityCoverageState               SecurityCoverageState[]
   SecurityBaselineSample              SecurityBaselineSample[]
+  MonitoringSyncRun                   MonitoringSyncRun[]
 
   @@index([organizationId])
   @@index([operationalLocationId])
@@ -484,6 +486,14 @@ model Connection {
   deactivatedAt               DateTime?
   linkedServiceId             String?
   linkedCheckId               String?
+  lastSyncAt                  DateTime?
+  lastSyncStatus              String?
+  lastSyncSummary             String?
+  lastSyncError               String?
+  lastSyncDurationMs          Int?
+  lastSyncImportedCount       Int?
+  lastSyncCursor              String?
+  syncIntervalMinutes         Int                           @default(15)
   isActive                    Boolean                       @default(true)
   createdAt                   DateTime                      @default(now())
   updatedAt                   DateTime
@@ -496,14 +506,46 @@ model Connection {
   LogRecord                   LogRecord[]
   SpanRecord                  SpanRecord[]
   TraceRecord                 TraceRecord[]
+  MonitoringSyncRun           MonitoringSyncRun[]
 
   @@unique([organizationId, projectId, name])
   @@index([credentialFamilyId])
   @@index([organizationId, isActive, createdAt])
   @@index([projectId, isActive])
   @@index([organizationId, mode, installationStatus])
+  @@index([organizationId, mode, lastSyncAt])
   @@index([linkedServiceId])
   @@index([linkedCheckId])
+}
+
+/// Paginated import run for a monitoring source connection.
+model MonitoringSyncRun {
+  id               String   @id
+  organizationId   String
+  connectionId     String
+  projectId        String?
+  environment      String
+  connectorMode    String
+  status           String   @default("RUNNING")
+  startedAt        DateTime @default(now())
+  completedAt      DateTime?
+  durationMs       Int?
+  importedCount    Int      @default(0)
+  pageCount        Int      @default(0)
+  cursorStart      String?
+  cursorEnd        String?
+  errorCategory    String?
+  errorMessage     String?
+  summaryJson      Json?
+  limitationsJson  Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  Organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Connection       Connection   @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  Project          Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, connectionId, startedAt])
+  @@index([connectionId, status, startedAt])
 }
 
 /// Optional location hierarchy for centrally managed, distributed, or hybrid organizations.

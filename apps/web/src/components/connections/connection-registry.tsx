@@ -6,6 +6,7 @@ import {
   configurationString,
   formatLatency,
   hostFromBaseUrl,
+  isMonitoringMethod,
   methodLabel,
   modeToMethod
 } from "./connection-form-state";
@@ -30,6 +31,7 @@ type ConnectionRegistryProps = {
   isAdmin?: boolean | null;
   onAdd: () => void;
   onTest: (connectionId: string) => void;
+  onSync?: (connectionId: string) => void;
   onEdit: (connection: ConnectionRecord) => void;
   onDisable: (connection: ConnectionRecord) => void;
   onRotate: (connection: ConnectionRecord, authSecret: string) => void;
@@ -43,6 +45,7 @@ export function ConnectionRegistry({
   isAdmin = null,
   onAdd,
   onTest,
+  onSync,
   onEdit,
   onDisable,
   onRotate,
@@ -95,6 +98,7 @@ export function ConnectionRegistry({
                 <th>Expires</th>
                 <th>Last used</th>
                 <th>Last tested</th>
+                <th>Last sync</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -142,6 +146,19 @@ export function ConnectionRegistry({
                     <td data-label="Expires">{formatCredentialDate(connection.credentialExpiresAt)}</td>
                     <td data-label="Last used">{formatCredentialDateOrNever(connection.lastSuccessAt)}</td>
                     <td data-label="Last tested">{formatCredentialDateOrNever(connection.lastValidatedAt)}</td>
+                    <td data-label="Last sync">
+                      {isMonitoringMethod(method) ? (
+                        <>
+                          <span data-testid={`connection-last-sync-${connection.id}`}>
+                            {connection.lastSyncStatus ?? "Not synced"}
+                          </span>
+                          <small>{formatCredentialDateOrNever(connection.lastSyncAt)}</small>
+                          {connection.lastSyncSummary ? <small>{connection.lastSyncSummary}</small> : null}
+                        </>
+                      ) : (
+                        <span>—</span>
+                      )}
+                    </td>
                     <td data-label="Status">
                       <span
                         className={`result-pill ${credentialStatusPillClass(credentialStatus)}`}
@@ -165,6 +182,17 @@ export function ConnectionRegistry({
                         >
                           {busyId === connection.id ? "Working…" : "Test"}
                         </button>
+                        {isMonitoringMethod(method) && onSync ? (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            data-testid={`connection-sync-button-${connection.id}`}
+                            disabled={busyId === connection.id || !connection.isActive}
+                            onClick={() => onSync(connection.id)}
+                          >
+                            Sync
+                          </button>
+                        ) : null}
                         <button type="button" className="secondary-button" onClick={() => onEdit(connection)}>
                           Edit
                         </button>

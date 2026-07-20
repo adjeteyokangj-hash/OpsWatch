@@ -95,6 +95,23 @@ function ConnectionsPageContent() {
     }
   };
 
+  const syncConnection = async (connectionId: string) => {
+    setBusyId(connectionId);
+    setError(null);
+    try {
+      await apiFetch(`/connections/${connectionId}/sync`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      await load();
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : "Monitoring sync failed");
+      await load();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const testConnection = async (connectionId: string) => {
     setBusyId(connectionId);
     setError(null);
@@ -161,11 +178,11 @@ function ConnectionsPageContent() {
   return (
     <Shell>
       <Header
-        title="Connections"
-        description="Connect applications with a guided setup. Test for real evidence, then start monitoring."
+        title="Monitoring connections"
+        description="Connect monitoring sources with secure credentials, connection testing, and scheduled synchronization."
         actions={
           <button type="button" className="primary-button" onClick={openCreate}>
-            + Add connection
+            + Connect monitoring source
           </button>
         }
       />
@@ -207,6 +224,7 @@ function ConnectionsPageContent() {
         isAdmin={isAdmin}
         onAdd={openCreate}
         onTest={(id) => void testConnection(id)}
+        onSync={(id) => void syncConnection(id)}
         onEdit={openEdit}
         onDisable={(row) => void disableConnection(row)}
         onRotate={(row, secret) => void rotateCredential(row, secret)}

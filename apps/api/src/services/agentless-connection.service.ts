@@ -20,6 +20,8 @@ import {
   resolveConnectionSecrets,
   sanitizeConnectionError
 } from "./credentials/connection-credential.service";
+import { isMonitoringConnectorMode } from "./monitoring-connectors/monitoring-connector-types";
+import { testMonitoringConnection } from "./monitoring-connectors/monitoring-connector-test.service";
 
 type ConnectionRow = {
   id: string;
@@ -186,6 +188,22 @@ const classifyFetchError = (error: unknown): ConnectionErrorCategory => {
 };
 
 const probe = async (connection: ConnectionRow, overrideSecret?: string): Promise<ProbeResult> => {
+  if (isMonitoringConnectorMode(connection.mode)) {
+    const monitoringResult = await testMonitoringConnection({
+      ...connection,
+      environment: connection.environment ?? "production",
+      authMethod: connection.authMethod ?? "NONE"
+    }, { authSecret: overrideSecret });
+    return {
+      succeeded: monitoringResult.succeeded,
+      statusCode: monitoringResult.statusCode,
+      responseTimeMs: monitoringResult.responseTimeMs,
+      ...(monitoringResult.succeeded ? {} : {
+        error: monitoringResult.error,
+        errorCategory: monitoringResult.errorCategory as ConnectionErrorCategory | undefined
+      })
+    };
+  }
   if (!isConnectionMode(connection.mode) || !["AGENTLESS", "API"].includes(connection.mode)) {
     return { succeeded: false, error: "This connector does not implement an agentless probe", errorCategory: "INVALID_RESPONSE" };
   }

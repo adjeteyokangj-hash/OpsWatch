@@ -8,7 +8,8 @@
 		"./app": "./src/app.ts",
 		"./bootstrap": "./src/bootstrap.ts",
 		"./otel-process": "./dist/services/otel/otel-process.service.js",
-		"./learning-cycle": "./dist/services/learning/learning-cycle.service.js"
+		"./learning-cycle": "./dist/services/learning/learning-cycle.service.js",
+		"./monitoring-sync": "./dist/services/monitoring-connectors/monitoring-connector-sync.service.js"
 	},
 	"scripts": {
 		"dev": "tsx watch src/server.ts",

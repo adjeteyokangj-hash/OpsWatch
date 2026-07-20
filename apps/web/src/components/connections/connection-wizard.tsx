@@ -15,6 +15,7 @@ import {
   connectionTestPassed,
   discoveredServiceNames,
   formatLatency,
+  isMonitoringMethod,
   isRestMethod
 } from "./connection-form-state";
 import { ConnectionWizardSummary } from "./connection-wizard-summary";
@@ -222,9 +223,9 @@ export function ConnectionWizard({
     <section className="panel connection-wizard" aria-label="Add connection">
       <div className="connection-wizard__header">
         <div>
-          <h2>{editingConnectionId ? "Edit connection" : "Add connection"}</h2>
+          <h2>{editingConnectionId ? "Edit monitoring connection" : "Connect monitoring source"}</h2>
           <p className="dashboard-subtle">
-            Guided setup for application connections. Credentials stay write-only and are cleared from this form after save.
+            Guided setup for external monitoring connections. Provider-neutral labels only; credentials stay write-only.
           </p>
         </div>
         <button type="button" className="secondary-button" onClick={onCancel}>
@@ -306,9 +307,26 @@ export function ConnectionWizard({
                   id={`${baseId}-method`}
                   value={form.method}
                   data-testid="connection-method"
-                  onChange={(event) =>
-                    updateForm({ method: event.target.value as GuidedConnectionForm["method"] })
-                  }
+                  onChange={(event) => {
+                    const method = event.target.value as GuidedConnectionForm["method"];
+                    const monitoring = isMonitoringMethod(method);
+                    updateForm({
+                      method,
+                      ...(monitoring
+                        ? {
+                            authType: form.authType === "NONE" ? "API_KEY" : form.authType,
+                            healthPath: form.healthPath || "/api/v1/validate",
+                            syncPath:
+                              form.syncPath ||
+                              (method === "METRICS_ALERTS"
+                                ? "/api/v1/sync/metrics-alerts"
+                                : method === "APPLICATION_PERFORMANCE"
+                                  ? "/api/v1/sync/application-performance"
+                                  : "/api/v1/sync/infrastructure")
+                          }
+                        : {})
+                    });
+                  }}
                 >
                   {CONNECTION_METHODS.map((method) => (
                     <option key={method.value} value={method.value} disabled={method.productStatus === "Planned"}>
@@ -458,6 +476,19 @@ export function ConnectionWizard({
                       onChange={(event) => updateForm({ discoveryPath: event.target.value })}
                     />
                   </label>
+                  {isMonitoringMethod(form.method) ? (
+                    <label htmlFor={`${baseId}-sync-path`}>
+                      Sync path
+                      <input
+                        id={`${baseId}-sync-path`}
+                        required
+                        value={form.syncPath}
+                        data-testid="connection-sync-path"
+                        placeholder="/api/v1/sync/metrics-alerts"
+                        onChange={(event) => updateForm({ syncPath: event.target.value })}
+                      />
+                    </label>
+                  ) : null}
                 </>
               ) : (
                 <p className="dashboard-subtle" data-testid="connection-non-rest-note">
