@@ -12,6 +12,7 @@ import { pruneRetentionJob } from "../jobs/prune-retention.job";
 import { runExpireCredentialsJob } from "../jobs/expire-credentials.job";
 import { processOtelBatchesJob } from "../jobs/process-otel-batches.job";
 import { processOtelFreshnessJob } from "../jobs/process-otel-freshness.job";
+import { runLearningCycleJob } from "../jobs/run-learning-cycle.job";
 import { createExclusiveRunner } from "../lib/exclusive-job";
 import { markSchedulerSuccess } from "./worker-heartbeat.service";
 
@@ -42,6 +43,7 @@ type SchedulerOptions = {
   credentialExpiryMs?: number;
   otelBatchesMs?: number;
   otelFreshnessMs?: number;
+  learningCycleMs?: number;
 };
 
 const readInterval = (key: string, fallback: number): number => {
@@ -80,7 +82,9 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
     otelBatchesMs:
       options.otelBatchesMs ?? readInterval("WORKER_OTEL_BATCH_INTERVAL_MS", 30_000),
     otelFreshnessMs:
-      options.otelFreshnessMs ?? readInterval("WORKER_OTEL_FRESHNESS_INTERVAL_MS", 60_000)
+      options.otelFreshnessMs ?? readInterval("WORKER_OTEL_FRESHNESS_INTERVAL_MS", 60_000),
+    learningCycleMs:
+      options.learningCycleMs ?? readInterval("WORKER_LEARNING_CYCLE_INTERVAL_MS", 60 * 60_000)
   };
 
   const timers: NodeJS.Timeout[] = [];
@@ -109,6 +113,7 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
       markSchedulerSuccess("processOtelBatchesJob");
     });
     void runSafely("processOtelFreshnessJob", processOtelFreshnessJob);
+    void runSafely("runLearningCycleJob", runLearningCycleJob);
   }
 
   timers.push(
@@ -202,6 +207,12 @@ export const scheduleJobs = (options: SchedulerOptions = {}): (() => void) => {
     setInterval(() => {
       void runSafely("processOtelFreshnessJob", processOtelFreshnessJob);
     }, intervals.otelFreshnessMs)
+  );
+
+  timers.push(
+    setInterval(() => {
+      void runSafely("runLearningCycleJob", runLearningCycleJob);
+    }, intervals.learningCycleMs)
   );
 
   return () => {

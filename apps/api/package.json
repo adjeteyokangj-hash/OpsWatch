@@ -7,7 +7,8 @@
 		".": "./dist/index.js",
 		"./app": "./src/app.ts",
 		"./bootstrap": "./src/bootstrap.ts",
-		"./otel-process": "./dist/services/otel/otel-process.service.js"
+		"./otel-process": "./dist/services/otel/otel-process.service.js",
+		"./learning-cycle": "./src/services/learning/learning-cycle.service.ts"
 	},
 	"scripts": {
 		"dev": "tsx watch src/server.ts",
