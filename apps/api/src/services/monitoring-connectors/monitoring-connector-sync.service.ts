@@ -4,9 +4,11 @@ import { canonicalGraph } from "../canonical-graph.service";
 import { validateConnectionConfiguration } from "../connection-manifest.service";
 import { createChangeLedgerEntry } from "../change-ledger.service";
 import { resolveConnectionSecrets } from "../credentials/connection-credential.service";
+import { adaptMonitoringSyncPayload } from "./monitoring-connector-adapters";
+import { correlateMonitoringSignals } from "./monitoring-connector-correlation.service";
 import { MonitoringHttpError, monitoringHttpGetJson } from "./monitoring-connector-http.client";
-import { parseMonitoringSyncPage } from "./monitoring-connector-normalize";
 import { resolveMonitoringProfile } from "./monitoring-connector-profile.registry";
+import { proposeMonitoringRemediation } from "./monitoring-connector-remediation.service";
 import {
   isMonitoringConnectorMode,
   MONITORING_ENTITY_SOURCE,
@@ -114,8 +116,10 @@ export const syncMonitoringConnection = async (
   let pageCount = 0;
   let entityCount = 0;
   let signalCount = 0;
+  let alertCount = 0;
   let cursor: string | null = null;
   let cursorEnd: string | null = null;
+  const entityIdByStableKey = new Map<string, string>();
   const limitations = [...profile.limitations];
 
   try {
@@ -129,15 +133,20 @@ export const syncMonitoringConnection = async (
         query: {
           [cursorParam]: cursor ?? undefined,
           [profile.pageSizeParam]: pageSize
-        }
+        },
+        maxRetries: Number(configuration.maxRetries ?? 3),
+        sleepFn:
+          typeof configuration.__testSleepMs === "number"
+            ? async () => undefined
+            : undefined
       });
-      const parsed = parseMonitoringSyncPage(connection.mode, page.data, cursorParam);
+      const parsed = adaptMonitoringSyncPayload(connection.mode, page.data, cursorParam);
       pageCount += 1;
       const batch = parsed.items[0];
       if (!batch) break;
 
       for (const entity of batch.entities) {
-        await canonicalGraph.upsertEntity({
+        const upserted = await canonicalGraph.upsertEntity({
           organizationId: connection.organizationId,
           projectId: connection.projectId,
           environment: connection.environment ?? "production",
@@ -155,30 +164,57 @@ export const syncMonitoringConnection = async (
           },
           incrementEvidence: true
         });
+        entityIdByStableKey.set(entity.stableKey, upserted.id);
         entityCount += 1;
         importedCount += 1;
       }
 
-      for (const signal of batch.signals) {
-        signalCount += 1;
-        importedCount += 1;
-        await createChangeLedgerEntry({
+      if (batch.signals.length > 0) {
+        const correlated = await correlateMonitoringSignals({
           organizationId: connection.organizationId,
           projectId: connection.projectId,
           connectionId: connection.id,
-          kind: "CHANGE",
-          summary: `${connection.name}: ${signal.title}`,
-          source: MONITORING_SOURCE_PROVENANCE,
-          externalId: signal.externalId,
-          evidence: {
-            signalKind: signal.kind,
-            connectorMode: connection.mode,
-            severity: signal.severity ?? null,
-            entityStableKey: signal.entityStableKey ?? null,
-            observedAt: signal.observedAt ?? null,
-            metadata: signal.metadata ?? null
-          }
+          connectorMode: connection.mode,
+          connectionName: connection.name,
+          signals: batch.signals,
+          entityIdByStableKey
         });
+        alertCount += correlated.filter((row) => row.created && !row.suppressed).length;
+
+        for (const signal of batch.signals) {
+          signalCount += 1;
+          importedCount += 1;
+          const related = correlated.find((row) => row.externalId === signal.externalId);
+          const proposals = proposeMonitoringRemediation({
+            organizationId: connection.organizationId,
+            projectId: connection.projectId,
+            connectionId: connection.id,
+            connectorMode: connection.mode,
+            alertId: related?.alertId,
+            operationalEntityId: related?.operationalEntityId,
+            diagnosed: false
+          });
+          await createChangeLedgerEntry({
+            organizationId: connection.organizationId,
+            projectId: connection.projectId,
+            connectionId: connection.id,
+            kind: "CHANGE",
+            summary: `${connection.name}: ${signal.title}`,
+            source: MONITORING_SOURCE_PROVENANCE,
+            externalId: signal.externalId,
+            evidence: {
+              signalKind: signal.kind,
+              connectorMode: connection.mode,
+              severity: signal.severity ?? null,
+              entityStableKey: signal.entityStableKey ?? null,
+              observedAt: signal.observedAt ?? null,
+              alertId: related?.alertId ?? null,
+              remediationProposals: proposals,
+              autoRemediate: false,
+              metadata: signal.metadata ?? null
+            }
+          });
+        }
       }
 
       cursor = parsed.nextCursor;
@@ -191,7 +227,7 @@ export const syncMonitoringConnection = async (
     } while (cursor);
 
     const durationMs = Date.now() - startedAt;
-    const summary = `Imported ${entityCount} entities and ${signalCount} signals across ${pageCount} page(s).`;
+    const summary = `Imported ${entityCount} entities and ${signalCount} signals (${alertCount} alerts) across ${pageCount} page(s).`;
     const status = limitations.some((item) => item.includes("stopped")) ? "PARTIAL" : "SUCCEEDED";
 
     await prisma.$transaction([
@@ -205,7 +241,7 @@ export const syncMonitoringConnection = async (
           pageCount,
           cursorStart: null,
           cursorEnd,
-          summaryJson: { entityCount, signalCount },
+          summaryJson: { entityCount, signalCount, alertCount },
           limitationsJson: limitations,
           updatedAt: new Date()
         }

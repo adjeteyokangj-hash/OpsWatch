@@ -135,6 +135,16 @@ export const listConnections = async (req: AuthRequest, res: Response) => {
         isActive: row.isActive,
         linkedServiceId: row.linkedServiceId,
         linkedCheckId: row.linkedCheckId,
+        lastSyncAt: row.lastSyncAt?.toISOString() ?? null,
+        lastSyncStatus: row.lastSyncStatus ?? null,
+        lastSyncSummary: row.lastSyncSummary ?? null,
+        lastSyncError: row.lastSyncError ?? null,
+        lastSyncDurationMs: row.lastSyncDurationMs ?? null,
+        lastSyncImportedCount: row.lastSyncImportedCount ?? null,
+        syncIntervalMinutes: row.syncIntervalMinutes ?? 15,
+        monitoringLimitations: isMonitoringConnectorMode(row.mode)
+          ? listMonitoringProfileLimitations(row.mode)
+          : [],
         project: row.Project ? { id: row.Project.id, name: row.Project.name } : null,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString()

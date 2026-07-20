@@ -3,9 +3,9 @@ export type ConnectionEnvironment = (typeof CONNECTION_ENVIRONMENTS)[number];
 
 export const CONNECTION_METHODS = [
   { value: "REST_API", label: "REST API", mode: "API", productStatus: "Available" },
-  { value: "METRICS_ALERTS", label: "Metrics & alerts connector", mode: "METRICS_ALERTS_CONNECTOR", productStatus: "Preview" },
-  { value: "APPLICATION_PERFORMANCE", label: "Application performance connector", mode: "APPLICATION_PERFORMANCE_CONNECTOR", productStatus: "Preview" },
-  { value: "INFRASTRUCTURE_MONITORING", label: "Infrastructure monitoring connector", mode: "INFRASTRUCTURE_MONITORING_CONNECTOR", productStatus: "Preview" },
+  { value: "METRICS_ALERTS", label: "Metrics & alerts connector", mode: "METRICS_ALERTS_CONNECTOR", productStatus: "Available" },
+  { value: "APPLICATION_PERFORMANCE", label: "Application performance connector", mode: "APPLICATION_PERFORMANCE_CONNECTOR", productStatus: "Available" },
+  { value: "INFRASTRUCTURE_MONITORING", label: "Infrastructure monitoring connector", mode: "INFRASTRUCTURE_MONITORING_CONNECTOR", productStatus: "Available" },
   { value: "HEARTBEAT", label: "Heartbeat", mode: "HEARTBEAT", productStatus: "Requires configuration" },
   { value: "WEBHOOK", label: "Webhook", mode: "WEBHOOK", productStatus: "Requires configuration" },
   { value: "AGENTLESS", label: "Agentless URL", mode: "AGENTLESS", productStatus: "Available" },

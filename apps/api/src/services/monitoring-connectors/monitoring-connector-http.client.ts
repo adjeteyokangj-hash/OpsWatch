@@ -42,6 +42,8 @@ export type MonitoringHttpRequest = {
   query?: Record<string, string | number | undefined>;
   timeoutMs?: number;
   maxRetries?: number;
+  /** Test seam — defaults to real sleep. */
+  sleepFn?: (ms: number) => Promise<void>;
 };
 
 export const monitoringHttpGetJson = async <T>(
@@ -49,6 +51,7 @@ export const monitoringHttpGetJson = async <T>(
 ): Promise<{ data: T; statusCode: number; responseTimeMs: number }> => {
   const timeoutMs = input.timeoutMs ?? 15_000;
   const maxRetries = input.maxRetries ?? 3;
+  const wait = input.sleepFn ?? sleep;
   const url = new URL(joinConnectionUrl(input.baseUrl, input.path));
   for (const [key, value] of Object.entries(input.query ?? {})) {
     if (value === undefined || value === "") continue;
@@ -75,7 +78,7 @@ export const monitoringHttpGetJson = async <T>(
         const backoffMs = retryAfter > 0 ? retryAfter * 1000 : Math.min(60_000, 2 ** attempt * 1000);
         lastError = new MonitoringHttpError("Rate limited by monitoring source", "RATE_LIMITED", 429, true);
         if (attempt < maxRetries) {
-          await sleep(backoffMs);
+          await wait(backoffMs);
           attempt += 1;
           continue;
         }
@@ -91,7 +94,7 @@ export const monitoringHttpGetJson = async <T>(
           retryable
         );
         if (retryable && attempt < maxRetries) {
-          await sleep(Math.min(30_000, 2 ** attempt * 1000));
+          await wait(Math.min(30_000, 2 ** attempt * 1000));
           attempt += 1;
           lastError = error;
           continue;
@@ -114,7 +117,7 @@ export const monitoringHttpGetJson = async <T>(
         timedOut
       );
       if (httpError.retryable && attempt < maxRetries) {
-        await sleep(Math.min(30_000, 2 ** attempt * 1000));
+        await wait(Math.min(30_000, 2 ** attempt * 1000));
         attempt += 1;
         lastError = httpError;
         continue;
