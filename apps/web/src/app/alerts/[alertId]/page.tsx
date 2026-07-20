@@ -6,7 +6,12 @@ import { useParams } from "next/navigation";
 import { Shell } from "../../../components/layout/shell";
 import { Header } from "../../../components/layout/header";
 import { PageSection } from "../../../components/ui/page-section";
+import {
+  AlertRepairConfirmDrawer,
+  type AlertRepairConfirmInput
+} from "../../../components/alerts/alert-repair-confirm-drawer";
 import { apiFetch } from "../../../lib/api";
+import { fetchSessionUser } from "../../../lib/auth";
 
 type AlertDetail = {
   id: string;
@@ -85,6 +90,14 @@ type AlertAutomationEvaluation = {
   runId?: string | null;
   correlationId?: string | null;
   timeline: Array<{ stage: string; at: string | null; detail: string }>;
+  failureClass?: string | null;
+  diagnosisSummary?: string | null;
+  recommendedActionLabel?: string | null;
+  primaryCtaKind?: string | null;
+  checkId?: string | null;
+  configureHref?: string | null;
+  projectId?: string | null;
+  verificationPassed?: boolean;
 };
 
 export default function AlertDetailPage() {
@@ -95,7 +108,13 @@ export default function AlertDetailPage() {
   const [automation, setAutomation] = useState<AlertAutomationEvaluation | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [repairBusy, setRepairBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerRepair, setDrawerRepair] = useState<AlertRepairConfirmInput | null>(null);
+  const [resolvePrompt, setResolvePrompt] = useState(false);
+  const [resolveReason, setResolveReason] = useState("");
 
   const load = useCallback(async () => {
     if (!alertId) return;
@@ -121,12 +140,18 @@ export default function AlertDetailPage() {
     void load();
   }, [load]);
 
-  const runStatusAction = async (action: "acknowledge" | "resolve") => {
+  useEffect(() => {
+    void fetchSessionUser()
+      .then((user) => setIsAdmin(user?.role === "ADMIN"))
+      .catch(() => setIsAdmin(false));
+  }, []);
+
+  const runAcknowledge = async () => {
     if (!alert) return;
     setSaving(true);
     setError(null);
     try {
-      const updated = await apiFetch<AlertDetail>(`/alerts/${alert.id}/${action}`, {
+      const updated = await apiFetch<AlertDetail>(`/alerts/${alert.id}/acknowledge`, {
         method: "PATCH"
       });
       setAlert(updated);
@@ -135,11 +160,168 @@ export default function AlertDetailPage() {
       );
       setAutomation(evaluation);
     } catch (err: any) {
-      setError(err?.message || `Failed to ${action} alert`);
+      setError(err?.message || "Failed to acknowledge alert");
     } finally {
       setSaving(false);
     }
   };
+
+  const runResolve = async (reason?: string) => {
+    if (!alert) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await apiFetch<AlertDetail>(`/alerts/${alert.id}/resolve`, {
+        method: "PATCH",
+        body: JSON.stringify(reason ? { reason, force: true } : {})
+      });
+      setAlert(updated);
+      setResolvePrompt(false);
+      setResolveReason("");
+      const evaluation = await apiFetch<AlertAutomationEvaluation>(`/alerts/${alert.id}/automation`).catch(
+        () => null
+      );
+      setAutomation(evaluation);
+    } catch (err: any) {
+      setError(err?.message || "Failed to resolve alert");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openResolveFlow = () => {
+    if (automation?.verificationPassed) {
+      void runResolve();
+      return;
+    }
+    setResolvePrompt(true);
+  };
+
+  const openRepairDrawer = (oneTimeOverride = false) => {
+    if (!automation?.selectedAction) {
+      setError("No recommended repair action is available for this alert.");
+      return;
+    }
+    setDrawerRepair({
+      actionKey: automation.selectedAction,
+      actionLabel: automation.recommendedActionLabel ?? automation.selectedAction,
+      diagnosisSummary: automation.diagnosisSummary ?? alert?.message ?? null,
+      riskLevel: automation.riskLevel ?? null,
+      approvalRequired: automation.approvalRequired || oneTimeOverride,
+      verificationStrategy:
+        automation.timeline.find((step) => step.stage === "Verification method")?.detail ?? null,
+      whySelected: automation.matchingPolicy
+        ? `Matched via ${automation.matchingPolicy}`
+        : automation.availabilityReason ?? null,
+      availabilityReason: automation.availabilityReason ?? null,
+      oneTimeOverride
+    });
+    setDrawerOpen(true);
+  };
+
+  const executeRepair = async (input: { note: string }) => {
+    if (!alert || !automation?.selectedAction) {
+      throw new Error("Missing alert or selected action");
+    }
+    setRepairBusy(true);
+    setError(null);
+    try {
+      const projectId = alert.project?.id ?? automation.projectId ?? undefined;
+      const oneTime = Boolean(drawerRepair?.oneTimeOverride);
+      const automationModeForRun = oneTime || automation.approvalRequired ? "APPROVAL" : "APPROVAL";
+      let approvalId: string | undefined;
+
+      if (automation.approvalRequired || oneTime) {
+        const approval = await apiFetch<{ id: string }>("/remediation/approvals", {
+          method: "POST",
+          body: JSON.stringify({
+            actionKey: automation.selectedAction,
+            projectId,
+            alertId: alert.id,
+            serviceId: alert.service?.id,
+            checkId: automation.checkId,
+            reason: input.note || "Operator confirmed recommended alert repair",
+            automationMode: "APPROVAL",
+            evidence: {
+              failureClass: automation.failureClass,
+              diagnosisSummary: automation.diagnosisSummary
+            }
+          })
+        });
+        approvalId = approval.id;
+
+        if (isAdmin) {
+          await apiFetch(`/remediation/approvals/${approval.id}/decide`, {
+            method: "POST",
+            body: JSON.stringify({
+              decision: "APPROVED",
+              reason: input.note || "Administrator approved one-time alert repair"
+            })
+          });
+        } else {
+          setError("Repair approval requested. An administrator must approve before execution.");
+          await load();
+          return;
+        }
+      }
+
+      await apiFetch("/remediation/governed-execute", {
+        method: "POST",
+        body: JSON.stringify({
+          actionKey: automation.selectedAction,
+          projectId,
+          alertId: alert.id,
+          serviceId: alert.service?.id,
+          approvalId,
+          automationMode: automationModeForRun,
+          note: input.note || undefined,
+          idempotencyKey: `alert:${alert.id}:${automation.selectedAction}:${Date.now()}`,
+          extra: automation.checkId ? { checkId: automation.checkId } : undefined
+        })
+      });
+      await load();
+    } finally {
+      setRepairBusy(false);
+    }
+  };
+
+  const requestApprovalOnly = async () => {
+    if (!alert || !automation?.selectedAction) return;
+    setRepairBusy(true);
+    setError(null);
+    try {
+      await apiFetch("/remediation/approvals", {
+        method: "POST",
+        body: JSON.stringify({
+          actionKey: automation.selectedAction,
+          projectId: alert.project?.id ?? automation.projectId,
+          alertId: alert.id,
+          serviceId: alert.service?.id,
+          checkId: automation.checkId,
+          reason: "Technician requested repair approval from alert detail",
+          automationMode: "APPROVAL",
+          evidence: {
+            failureClass: automation.failureClass,
+            diagnosisSummary: automation.diagnosisSummary
+          }
+        })
+      });
+      setError(null);
+      await load();
+      setError("Repair approval requested. Waiting for an administrator decision.");
+    } catch (err: any) {
+      setError(err?.message || "Failed to request repair approval");
+    } finally {
+      setRepairBusy(false);
+    }
+  };
+
+  const ctaKind = automation?.primaryCtaKind ?? "NONE";
+  const projectId = alert?.project?.id ?? automation?.projectId ?? null;
+  const automationHref = projectId ? `/projects/${projectId}/automation` : "/automation";
+  const remediatorHref = projectId
+    ? `/projects/${projectId}/integrations/worker_provider`
+    : "/integrations";
 
   return (
     <Shell>
@@ -169,7 +351,7 @@ export default function AlertDetailPage() {
 
           <PageSection
             title="Alert details"
-            description="Review timestamps, metadata, and update alert status."
+            description="Review timestamps, metadata, and update alert status. Acknowledge means ownership — not repair."
             persistKey={`alert:${alertId}:details`}
             actions={
               <div className="channel-actions">
@@ -178,7 +360,7 @@ export default function AlertDetailPage() {
                   className="secondary-button"
                   data-action="api"
                   data-endpoint="/alerts/:alertId/acknowledge"
-                  onClick={() => void runStatusAction("acknowledge")}
+                  onClick={() => void runAcknowledge()}
                   disabled={saving || alert.status !== "OPEN"}
                 >
                   {saving ? "Saving..." : "Acknowledge"}
@@ -188,7 +370,7 @@ export default function AlertDetailPage() {
                   className="secondary-button"
                   data-action="api"
                   data-endpoint="/alerts/:alertId/resolve"
-                  onClick={() => void runStatusAction("resolve")}
+                  onClick={() => openResolveFlow()}
                   disabled={saving || alert.status === "RESOLVED"}
                 >
                   {saving ? "Saving..." : "Resolve"}
@@ -196,6 +378,37 @@ export default function AlertDetailPage() {
               </div>
             }
           >
+            {resolvePrompt ? (
+              <div className="panel notice-panel" data-testid="alert-resolve-reason">
+                <p>
+                  Manual resolve requires a reason unless OpsWatch has verified recovery. This does not run a
+                  repair.
+                </p>
+                <label>
+                  Resolution reason
+                  <textarea
+                    value={resolveReason}
+                    onChange={(event) => setResolveReason(event.target.value)}
+                    rows={3}
+                    required
+                    placeholder="e.g. Check URL updated to public health endpoint; monitoring confirmed healthy"
+                  />
+                </label>
+                <div className="channel-actions">
+                  <button type="button" className="secondary-button" onClick={() => setResolvePrompt(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    disabled={saving || !resolveReason.trim()}
+                    onClick={() => void runResolve(resolveReason.trim())}
+                  >
+                    Confirm resolve
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <p>
               <strong>Last seen:</strong> {new Date(alert.lastSeenAt).toLocaleString()}
             </p>
@@ -209,7 +422,11 @@ export default function AlertDetailPage() {
             </p>
             <p>
               <strong>Service:</strong>{" "}
-              {alert.service ? <Link href={`/checks?serviceId=${alert.service.id}`}>{alert.service.name}</Link> : "-"}
+              {alert.service ? (
+                <Link href={`/checks?serviceId=${alert.service.id}`}>{alert.service.name}</Link>
+              ) : (
+                "-"
+              )}
             </p>
             <p>
               <strong>Source:</strong> {alert.sourceType} · {alert.category}
@@ -234,7 +451,7 @@ export default function AlertDetailPage() {
                 </ul>
               </div>
             ) : null}
-            {(alert.logEvidence?.length || alert.spanEvidence?.length || alert.apmEvidence?.length) ? (
+            {alert.logEvidence?.length || alert.spanEvidence?.length || alert.apmEvidence?.length ? (
               <div data-testid="logs-apm-alert-evidence">
                 <h3>Logs / APM evidence</h3>
                 <ul className="dashboard-list">
@@ -264,14 +481,6 @@ export default function AlertDetailPage() {
                     </li>
                   ))}
                 </ul>
-                {(alert.operationalEntityId || alert.operationalRelationshipId) && (
-                  <p className="dashboard-subtle">
-                    Canonical entity: {alert.operationalEntityId ?? "—"}
-                    {alert.operationalRelationshipId
-                      ? ` · relationship ${alert.operationalRelationshipId}`
-                      : ""}
-                  </p>
-                )}
               </div>
             ) : null}
             <p>
@@ -295,7 +504,8 @@ export default function AlertDetailPage() {
                   <li key={incident.id}>
                     <Link href={`/incidents/${incident.id}`}>{incident.title}</Link>
                     <div className="dashboard-subtle">
-                      {incident.status} · {incident.severity} · Opened {new Date(incident.openedAt).toLocaleString()}
+                      {incident.status} · {incident.severity} · Opened{" "}
+                      {new Date(incident.openedAt).toLocaleString()}
                     </div>
                   </li>
                 ))}
@@ -305,15 +515,152 @@ export default function AlertDetailPage() {
 
           <PageSection
             title="Automation and recovery"
-            description="Did OpsWatch only detect this, attempt a repair, or verify recovery?"
+            description="Recommended repair, policy gates, and verification evidence."
             persistKey={`alert:${alertId}:automation`}
-            defaultCollapsed
+            defaultCollapsed={alert.status === "RESOLVED"}
             data-testid="alert-automation-recovery"
           >
             {!automation ? (
               <p className="dashboard-subtle">Automation evaluation is unavailable for this alert.</p>
             ) : (
               <>
+                <div className="alert-repair-cta" data-testid="alert-repair-cta">
+                  {automation.diagnosisSummary ? (
+                    <p className="alert-automation-reason" role="status">
+                      <strong>Diagnosis:</strong> {automation.diagnosisSummary}
+                    </p>
+                  ) : null}
+
+                  {ctaKind === "CONFIGURE_CHECK" ? (
+                    <div className="channel-actions">
+                      <Link
+                        className="primary-button"
+                        href={automation.configureHref ?? `/checks`}
+                        data-testid="alert-configure-check"
+                      >
+                        Review check configuration
+                      </Link>
+                      {projectId ? (
+                        <Link className="secondary-button" href={`/projects/${projectId}/integrations`}>
+                          Connect private-network worker
+                        </Link>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {ctaKind === "EXECUTE" ? (
+                    <div className="channel-actions">
+                      <button
+                        type="button"
+                        className="primary-button"
+                        data-testid="alert-run-recommended-fix"
+                        disabled={repairBusy || !automation.selectedAction}
+                        onClick={() => openRepairDrawer(false)}
+                      >
+                        {repairBusy ? "Working…" : "Run recommended fix"}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {ctaKind === "REQUEST_APPROVAL" ? (
+                    <div className="channel-actions">
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          className="primary-button"
+                          data-testid="alert-approve-one-time"
+                          disabled={repairBusy || !automation.selectedAction}
+                          onClick={() => openRepairDrawer(true)}
+                        >
+                          Approve one-time repair
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="primary-button"
+                          data-testid="alert-request-approval"
+                          disabled={repairBusy || !automation.selectedAction}
+                          onClick={() => void requestApprovalOnly()}
+                        >
+                          Request repair approval
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {ctaKind === "OBSERVE_BLOCKED" ? (
+                    <>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        data-testid="alert-run-recommended-fix-unavailable"
+                        disabled
+                        title={automation.availabilityReason ?? "Execution prohibited"}
+                      >
+                        Run recommended fix — unavailable
+                      </button>
+                      <p className="alert-automation-reason" role="status">
+                        This application is in Observe / Monitor Only mode. Change the automation policy or
+                        approve a one-time repair to allow OpsWatch to execute the recommended action.
+                      </p>
+                      <div className="channel-actions">
+                        {isAdmin ? (
+                          <>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              data-testid="alert-approve-one-time"
+                              disabled={repairBusy || !automation.selectedAction}
+                              onClick={() => openRepairDrawer(true)}
+                            >
+                              Approve one-time repair
+                            </button>
+                            <Link className="secondary-button" href={automationHref}>
+                              Change automation policy
+                            </Link>
+                            <Link className="secondary-button" href={remediatorHref}>
+                              Open remediation settings
+                            </Link>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            data-testid="alert-request-approval"
+                            disabled={repairBusy || !automation.selectedAction}
+                            onClick={() => void requestApprovalOnly()}
+                          >
+                            Request repair approval
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  ) : null}
+
+                  {ctaKind === "SETUP_REQUIRED" ? (
+                    <div className="channel-actions">
+                      <Link className="primary-button" href={remediatorHref}>
+                        Open remediation settings
+                      </Link>
+                      <Link className="secondary-button" href={automationHref}>
+                        Change automation policy
+                      </Link>
+                    </div>
+                  ) : null}
+
+                  {automation.recommendedActionLabel || automation.selectedAction ? (
+                    <p className="dashboard-subtle">
+                      Recommended: <strong>{automation.recommendedActionLabel ?? automation.selectedAction}</strong>
+                      {automation.selectedAction ? (
+                        <>
+                          {" "}
+                          (<code>{automation.selectedAction}</code>)
+                        </>
+                      ) : null}
+                    </p>
+                  ) : null}
+                </div>
+
                 <dl className="topology-detail-grid">
                   <div>
                     <dt>Detection status</dt>
@@ -338,6 +685,10 @@ export default function AlertDetailPage() {
                     <dd data-testid="alert-availability-reason">
                       {automation.availabilityReason ?? automation.reasonNoAction ?? "—"}
                     </dd>
+                  </div>
+                  <div>
+                    <dt>Failure class</dt>
+                    <dd>{automation.failureClass ?? "—"}</dd>
                   </div>
                   <div>
                     <dt>Risk</dt>
@@ -425,6 +776,17 @@ export default function AlertDetailPage() {
           </PageSection>
         </>
       )}
+
+      <AlertRepairConfirmDrawer
+        open={drawerOpen}
+        repair={drawerRepair}
+        submitting={repairBusy}
+        onClose={() => {
+          setDrawerOpen(false);
+          setDrawerRepair(null);
+        }}
+        onConfirm={executeRepair}
+      />
 
       <p className="incident-back-link">
         <Link href="/alerts" className="onboarding-link primary-button">
