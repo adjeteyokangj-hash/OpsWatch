@@ -334,6 +334,12 @@ model Organization {
   SecurityBaselineSample              SecurityBaselineSample[]
   SecurityRuleAudit                   SecurityRuleAudit[]
   SecurityEvidenceAccessAudit         SecurityEvidenceAccessAudit[]
+  MetricBaseline                      MetricBaseline[]
+  AnomalyRecord                       AnomalyRecord[]
+  IncidentPatternMemory               IncidentPatternMemory[]
+  RemediationPatternOutcome           RemediationPatternOutcome[]
+  LearningAlgorithmVersion            LearningAlgorithmVersion[]
+  PredictionOutcomeEvaluation         PredictionOutcomeEvaluation[]
 }
 
 model OrganizationIncidentGroup {
@@ -2426,22 +2432,50 @@ model AiConfidenceRecord {
 
 /// Prediction framework storage — product emission gated OFF by default.
 model PredictionCandidate {
-  id              String       @id
-  organizationId  String
-  projectId       String?
-  predictionType  String
-  title           String
-  summary         String
-  confidenceScore Float        @default(0)
+  id                 String       @id
+  organizationId     String
+  projectId          String?
+  environment        String       @default("unknown")
+  entityId           String?
+  relationshipId     String?
+  predictionType     String
+  title              String
+  summary            String
+  confidenceScore    Float        @default(0)
+  confidenceLabel    String       @default("INSUFFICIENT")
   /// DISABLED | INSUFFICIENT_DATA | READY — READY only when predictions feature flag is on AND threshold met.
-  status          String       @default("DISABLED")
-  evidenceJson    Json?
-  computedAt      DateTime     @default(now())
-  expiresAt       DateTime?
-  Organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status             String       @default("DISABLED")
+  /// DRAFT | NEEDS_REVIEW | CONFIRMED | DISMISSED | EXPIRED | MATERIALISED | PREVENTED | FALSE_POSITIVE
+  reviewState        String       @default("DRAFT")
+  forecastHorizonMs  Int?
+  probability        Float?
+  ruleName           String?
+  ruleVersion        Int          @default(1)
+  algorithmVersion   String?
+  dataQualityState   String       @default("UNKNOWN")
+  recommendedAction  String?
+  relatedAlertId     String?
+  relatedIncidentId  String?
+  actualOutcome      String?
+  falsePositive      Boolean      @default(false)
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  reviewNote         String?
+  evidenceJson       Json?
+  explanationJson    Json?
+  featureFlagsJson   Json?
+  computedAt         DateTime     @default(now())
+  expiresAt          DateTime?
+  retentionExpiresAt DateTime?
+  updatedAt          DateTime     @default(now())
+  Organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  OutcomeEvaluation  PredictionOutcomeEvaluation?
 
   @@index([organizationId, status, computedAt])
   @@index([organizationId, predictionType])
+  @@index([organizationId, reviewState, computedAt])
+  @@index([organizationId, entityId])
+  @@index([retentionExpiresAt])
 }
 
 /// Empty until predictions are enabled and outcomes can be scored.
@@ -3034,4 +3068,174 @@ model SecurityEvidenceAccessAudit {
 
   @@index([organizationId, createdAt])
   @@index([resourceType, resourceId])
+}
+
+/// Phase 9 rich metric baseline (additive; LearningBaseline retained for compatibility).
+model MetricBaseline {
+  id                 String       @id
+  organizationId     String
+  projectId          String?
+  environment        String       @default("unknown")
+  entityId           String?
+  relationshipId     String?
+  metricKey          String
+  windowMs           Int          @default(3600000)
+  seasonalBucket     String?
+  sampleCount        Int          @default(0)
+  mean               Float?
+  median             Float?
+  p50                Float?
+  p95                Float?
+  variance           Float?
+  minValue           Float?
+  maxValue           Float?
+  confidence         Float        @default(0)
+  confidenceLabel    String       @default("INSUFFICIENT")
+  dataQualityState   String       @default("INSUFFICIENT_SAMPLES")
+  firstSampleAt      DateTime?
+  lastSampleAt       DateTime?
+  lastRecalculatedAt DateTime
+  algorithmVersion   String       @default("metric-baseline-v1")
+  sourceQualityJson  Json?
+  retentionExpiresAt DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime
+  Organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, projectId, environment, entityId, metricKey, windowMs, seasonalBucket])
+  @@index([organizationId, metricKey, lastRecalculatedAt])
+  @@index([organizationId, dataQualityState])
+  @@index([retentionExpiresAt])
+}
+
+model AnomalyRecord {
+  id                   String       @id
+  organizationId       String
+  projectId            String?
+  environment          String       @default("unknown")
+  entityId             String?
+  relationshipId       String?
+  metricKey            String
+  method               String
+  severity             String       @default("MEDIUM")
+  expectedMin          Float?
+  expectedMax          Float?
+  observedValue        Float
+  deviation            Float?
+  durationMs           Int?
+  sampleCount          Int          @default(0)
+  baselineConfidence   Float        @default(0)
+  baselineId           String?
+  explanation          String
+  relatedChangeIdsJson Json?
+  relatedAlertIdsJson  Json?
+  relatedIncidentIdsJson Json?
+  dataQualityState     String       @default("UNKNOWN")
+  algorithmVersion     String       @default("anomaly-v1")
+  status               String       @default("OPEN")
+  firstDetectedAt      DateTime
+  lastDetectedAt       DateTime
+  retentionExpiresAt   DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime
+  Organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, lastDetectedAt])
+  @@index([organizationId, metricKey, lastDetectedAt])
+  @@index([organizationId, entityId])
+  @@index([retentionExpiresAt])
+}
+
+model IncidentPatternMemory {
+  id                       String       @id
+  organizationId           String
+  projectId                String?
+  fingerprint              String
+  title                    String
+  confirmedRootCause       String?
+  rootCauseConfidence      Float?
+  affectedEntityIdsJson    Json?
+  propagationPathJson      Json?
+  alertSequenceJson        Json?
+  evidenceSummaryJson      Json?
+  deploymentContextJson    Json?
+  remediationActionsJson   Json?
+  verificationOutcome      String?
+  timeToDetectMs           Int?
+  timeToRecoverMs          Int?
+  recurrenceCount          Int          @default(1)
+  successfulActionKeysJson Json?
+  failedActionKeysJson     Json?
+  displayEligible          Boolean      @default(false)
+  dataQualityState         String       @default("UNKNOWN")
+  sourceIncidentIdsJson    Json?
+  lastSeenAt               DateTime
+  retentionExpiresAt       DateTime?
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime
+  Organization             Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, fingerprint])
+  @@index([organizationId, displayEligible, lastSeenAt])
+  @@index([retentionExpiresAt])
+}
+
+model RemediationPatternOutcome {
+  id                       String       @id
+  organizationId           String
+  projectId                String?
+  patternFingerprint       String?
+  actionKey                String
+  successCount             Int          @default(0)
+  failureCount             Int          @default(0)
+  partialCount             Int          @default(0)
+  rollbackCount            Int          @default(0)
+  recurrenceAfterSuccess   Int          @default(0)
+  totalRecoveryMs          BigInt       @default(0)
+  recommendationConfidence Float        @default(0)
+  riskLevel                String       @default("MEDIUM")
+  lastOutcome              String?
+  lastOutcomeAt            DateTime?
+  evidenceJson             Json?
+  algorithmVersion         String       @default("remediation-outcome-v1")
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime
+  Organization             Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, projectId, patternFingerprint, actionKey])
+  @@index([organizationId, actionKey])
+}
+
+model LearningAlgorithmVersion {
+  id                   String        @id
+  organizationId       String?
+  algorithmName        String
+  version              String
+  parametersJson       Json?
+  calculationWindowMs  Int?
+  validationStatus     String        @default("UNVALIDATED")
+  featureFlagsJson     Json?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime
+  Organization         Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([algorithmName, version])
+  @@index([organizationId, algorithmName])
+}
+
+model PredictionOutcomeEvaluation {
+  id               String              @id
+  organizationId   String
+  predictionId     String              @unique
+  classification   String
+  leadTimeMs       Int?
+  notes            String?
+  evaluatedAt      DateTime            @default(now())
+  evaluatedBy      String?
+  metricsJson      Json?
+  createdAt        DateTime            @default(now())
+  Organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Prediction       PredictionCandidate @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, classification, evaluatedAt])
 }
