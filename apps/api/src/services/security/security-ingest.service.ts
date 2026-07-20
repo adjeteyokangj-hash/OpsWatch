@@ -293,5 +293,28 @@ export const ingestSecurityEvents = async (
     }
   }
 
+  if (accepted > 0) {
+    // Fire-and-forget detection — failures must not fail ingest.
+    void import("./security-detection.service")
+      .then(({ evaluateSecurityDetections }) =>
+        evaluateSecurityDetections({
+          organizationId: options.organizationId,
+          projectId: events.find((event) => event.projectId)?.projectId,
+          environment: options.environmentBinding || undefined
+        })
+      )
+      .then(async (detection) => {
+        if (detection.findingsCreatedOrUpdated > 0) {
+          const { correlateThreatSequences } = await import("./security-correlation.service");
+          const { promoteOpenFindingsToIncidents } = await import("./security-incident.service");
+          const { syncSecurityTopologyOverlay } = await import("./security-topology-overlay.service");
+          await correlateThreatSequences({ organizationId: options.organizationId });
+          await promoteOpenFindingsToIncidents({ organizationId: options.organizationId });
+          await syncSecurityTopologyOverlay({ organizationId: options.organizationId });
+        }
+      })
+      .catch(() => undefined);
+  }
+
   return { accepted, rejected, duplicates, results };
 };
