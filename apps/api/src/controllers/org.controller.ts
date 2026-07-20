@@ -11,7 +11,12 @@ const ALLOWED_API_KEY_SCOPES = new Set([
   "heartbeats:write",
   "alerts:read",
   "incidents:read",
-  "projects:read"
+  "projects:read",
+  "security.events:write",
+  "authentication.events:write",
+  "audit.events:write",
+  "security.findings:read",
+  "security.response:request"
 ]);
 
 const EXPIRING_SOON_MS = 14 * 24 * 60 * 60 * 1000;

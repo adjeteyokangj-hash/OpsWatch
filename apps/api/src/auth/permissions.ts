@@ -22,7 +22,13 @@ export type Permission =
   | "maintenance:manage"
   | "playbooks:view"
   | "playbooks:manage"
-  | "analytics:view";
+  | "analytics:view"
+  | "security:read"
+  | "security:investigate"
+  | "security:manage_rules"
+  | "security:respond"
+  | "security:approve_high_risk"
+  | "security:manage_suppression";
 
 const ROLE_PERMISSIONS: Record<OpsWatchRole, ReadonlySet<Permission>> = {
   VIEWER: new Set([
@@ -32,6 +38,7 @@ const ROLE_PERMISSIONS: Record<OpsWatchRole, ReadonlySet<Permission>> = {
     "maintenance:view",
     "playbooks:view",
     "analytics:view"
+    // Intentionally no security:* — ordinary viewers cannot see security evidence.
   ]),
   INCIDENT_RESPONDER: new Set([
     "incidents:read",
@@ -40,7 +47,10 @@ const ROLE_PERMISSIONS: Record<OpsWatchRole, ReadonlySet<Permission>> = {
     "automation:plan:observe",
     "maintenance:view",
     "playbooks:view",
-    "analytics:view"
+    "analytics:view",
+    "security:read",
+    "security:investigate"
+    // No security:respond / approve_high_risk / manage_rules — not credential authority.
   ]),
   AUTOMATION_OPERATOR: new Set([
     "incidents:read",
@@ -54,7 +64,11 @@ const ROLE_PERMISSIONS: Record<OpsWatchRole, ReadonlySet<Permission>> = {
     "automation:execute",
     "maintenance:view",
     "playbooks:view",
-    "analytics:view"
+    "analytics:view",
+    "security:read",
+    "security:investigate",
+    "security:respond"
+    // No security:approve_high_risk or manage_rules by default.
   ]),
   ADMIN: new Set([
     "incidents:read",
@@ -71,7 +85,13 @@ const ROLE_PERMISSIONS: Record<OpsWatchRole, ReadonlySet<Permission>> = {
     "maintenance:manage",
     "playbooks:view",
     "playbooks:manage",
-    "analytics:view"
+    "analytics:view",
+    "security:read",
+    "security:investigate",
+    "security:manage_rules",
+    "security:respond",
+    "security:approve_high_risk",
+    "security:manage_suppression"
   ])
 };
 

@@ -414,6 +414,31 @@ export const requireApiKeyScopes = (requiredScopes: string[]) => {
   };
 };
 
+/** Accept if the key holds at least one of the listed scopes. */
+export const requireAnyApiKeyScopes = (acceptedScopes: string[]) => {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    // Authenticate the key without requiring every accepted scope.
+    const result = await authorizeApiKey(req, []);
+    if (!result.ok) {
+      res.status(failureStatus(result.reason)).json({
+        error: failureMessage(result.reason),
+        code: result.reason.toUpperCase()
+      });
+      return;
+    }
+    const scopes = req.apiKeyScopes || [];
+    const allowed = acceptedScopes.some((scope) => scopes.includes(scope));
+    if (!allowed) {
+      res.status(403).json({
+        error: failureMessage("insufficient_scope"),
+        code: "INSUFFICIENT_SCOPE"
+      });
+      return;
+    }
+    next();
+  };
+};
+
 export const requireApiKeyReadScope = (requiredScopes: string[], _projectIdParam?: string) => {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     if ((await tryAttachSession(req)) || tryAttachJwt(req)) {

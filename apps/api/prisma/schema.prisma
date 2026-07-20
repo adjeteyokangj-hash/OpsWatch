@@ -162,6 +162,9 @@ model Incident {
   mergedIntoIncidentId  String?
   reopenCount           Int                        @default(0)
   lastReopenedAt        DateTime?
+  /// Optional classification: SECURITY | OPERATIONAL | null (legacy).
+  classification        String?
+  securitySeverity      String?
   ChangeEvent           ChangeEvent[]
   ChangeLedgerEntry     ChangeLedgerEntry[]
   IncidentTimelineEvent IncidentTimelineEvent[]
@@ -174,6 +177,10 @@ model Incident {
   LogEvidenceLink       LogEvidenceLink[]
   SpanEvidenceLink      SpanEvidenceLink[]
   ApmEvidenceLink       ApmEvidenceLink[]
+  SecurityIncidentEvidence SecurityIncidentEvidence[]
+  SecurityFinding       SecurityFinding[]
+  ThreatCorrelationSequence ThreatCorrelationSequence[]
+  SecurityResponseRun   SecurityResponseRun[]
 
   @@index([projectId, openedAt])
   @@index([correlationGroupId])
@@ -181,6 +188,7 @@ model Incident {
   @@index([mergedIntoIncidentId])
   @@index([rootCauseEntityId])
   @@index([rootCauseRelationshipId])
+  @@index([projectId, classification])
 }
 
 model IncidentTopologyReference {
@@ -313,6 +321,19 @@ model Organization {
   LogEvidenceLink                     LogEvidenceLink[]
   SpanEvidenceLink                    SpanEvidenceLink[]
   ApmEvidenceLink                     ApmEvidenceLink[]
+  SecurityEvent                       SecurityEvent[]
+  SecurityDetectionRule               SecurityDetectionRule[]
+  SecurityFinding                     SecurityFinding[]
+  SecurityFindingOccurrence           SecurityFindingOccurrence[]
+  SecurityEvidenceLink                SecurityEvidenceLink[]
+  SecurityIncidentEvidence            SecurityIncidentEvidence[]
+  ThreatCorrelationSequence           ThreatCorrelationSequence[]
+  SecurityAssetRisk                   SecurityAssetRisk[]
+  SecurityResponseRun                 SecurityResponseRun[]
+  SecurityCoverageState               SecurityCoverageState[]
+  SecurityBaselineSample              SecurityBaselineSample[]
+  SecurityRuleAudit                   SecurityRuleAudit[]
+  SecurityEvidenceAccessAudit         SecurityEvidenceAccessAudit[]
 }
 
 model OrganizationIncidentGroup {
@@ -406,6 +427,14 @@ model Project {
   LogEvidenceLink                     LogEvidenceLink[]
   SpanEvidenceLink                    SpanEvidenceLink[]
   ApmEvidenceLink                     ApmEvidenceLink[]
+  SecurityEvent                       SecurityEvent[]
+  SecurityDetectionRule               SecurityDetectionRule[]
+  SecurityFinding                     SecurityFinding[]
+  ThreatCorrelationSequence           ThreatCorrelationSequence[]
+  SecurityAssetRisk                   SecurityAssetRisk[]
+  SecurityResponseRun                 SecurityResponseRun[]
+  SecurityCoverageState               SecurityCoverageState[]
+  SecurityBaselineSample              SecurityBaselineSample[]
 
   @@index([organizationId])
   @@index([operationalLocationId])
@@ -2641,4 +2670,368 @@ model RemediationCircuitBreaker {
 
   @@unique([organizationId, projectId, actionKey])
   @@index([organizationId, state, openUntil])
+}
+
+/// Phase 8: ingested security evidence event (redacted before persist).
+model SecurityEvent {
+  id                    String       @id
+  organizationId        String
+  projectId             String?
+  environment           String       @default("unknown")
+  locationId            String?
+  entityId              String?
+  relationshipId        String?
+  accountIdentifierHash String?
+  sourceIpTruncated     String?
+  geography             String?
+  deviceSessionHash      String?
+  eventType             String
+  severity              String       @default("MEDIUM")
+  timestamp             DateTime
+  receivedAt            DateTime     @default(now())
+  connectionId          String?
+  providerSource        String?
+  correlationId         String?
+  traceId               String?
+  evidenceRef           String?
+  redactionState        String       @default("REDACTED")
+  retentionExpiresAt    DateTime
+  idempotencyKey        String?
+  payloadJson           Json?
+  rawSource             String?
+  metadataJson          Json?
+  createdAt             DateTime     @default(now())
+  Organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project               Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Occurrences           SecurityFindingOccurrence[]
+  EvidenceLinks         SecurityEvidenceLink[]
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, timestamp])
+  @@index([organizationId, projectId, eventType, timestamp])
+  @@index([organizationId, environment, timestamp])
+  @@index([organizationId, correlationId])
+  @@index([organizationId, accountIdentifierHash, timestamp])
+  @@index([organizationId, sourceIpTruncated, timestamp])
+  @@index([entityId, timestamp])
+  @@index([retentionExpiresAt])
+  @@index([connectionId, timestamp])
+}
+
+model SecurityDetectionRule {
+  id                  String        @id
+  organizationId      String?
+  projectId           String?
+  environment         String?
+  ruleKey             String
+  name                String
+  description         String?
+  version             Int           @default(1)
+  enabled             Boolean       @default(true)
+  severity            String        @default("MEDIUM")
+  category            String
+  thresholdJson       Json?
+  windowMs            Int           @default(300000)
+  minimumSamples      Int           @default(1)
+  suppressionJson     Json?
+  recommendedResponse String?
+  isDefault           Boolean       @default(false)
+  lastChangedBy       String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime
+  Organization        Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project             Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Findings            SecurityFinding[]
+  Audits              SecurityRuleAudit[]
+
+  @@unique([organizationId, projectId, environment, ruleKey])
+  @@index([organizationId, enabled])
+  @@index([ruleKey, version])
+}
+
+model SecurityFinding {
+  id                     String           @id
+  organizationId         String
+  projectId              String?
+  environment            String           @default("unknown")
+  fingerprint            String
+  ruleId                 String?
+  ruleKey                String
+  ruleVersion            Int              @default(1)
+  ruleName               String
+  state                  String           @default("OPEN")
+  severity               String           @default("MEDIUM")
+  confidence             Float            @default(0.5)
+  firstSeenAt            DateTime
+  lastSeenAt             DateTime
+  occurrenceCount        Int              @default(1)
+  affectedEntityId       String?
+  affectedRelationshipId String?
+  recommendedResponse    String?
+  relatedAlertId         String?
+  relatedIncidentId      String?
+  responseStatus         String?
+  suppressedUntil        DateTime?
+  acceptedRiskUntil      DateTime?
+  falsePositiveReason    String?
+  acceptedRiskReason     String?
+  evidenceSummaryJson    Json?
+  thresholdWindowJson    Json?
+  matchedEvidenceJson    Json?
+  baselineNote           String?
+  retentionExpiresAt     DateTime?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime
+  Organization           Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project                Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Rule                   SecurityDetectionRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  Incident               Incident?        @relation(fields: [relatedIncidentId], references: [id], onDelete: SetNull)
+  Occurrences            SecurityFindingOccurrence[]
+  EvidenceLinks          SecurityEvidenceLink[]
+  IncidentEvidence       SecurityIncidentEvidence[]
+  ResponseRuns           SecurityResponseRun[]
+
+  @@unique([organizationId, projectId, environment, fingerprint])
+  @@index([organizationId, state, lastSeenAt])
+  @@index([organizationId, severity, lastSeenAt])
+  @@index([organizationId, projectId, lastSeenAt])
+  @@index([relatedIncidentId])
+  @@index([relatedAlertId])
+  @@index([ruleKey])
+  @@index([affectedEntityId])
+  @@index([retentionExpiresAt])
+}
+
+model SecurityFindingOccurrence {
+  id              String        @id
+  organizationId  String
+  findingId       String
+  securityEventId String?
+  occurredAt      DateTime
+  evidenceJson    Json?
+  createdAt       DateTime      @default(now())
+  Organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Finding         SecurityFinding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  SecurityEvent   SecurityEvent? @relation(fields: [securityEventId], references: [id], onDelete: SetNull)
+
+  @@index([findingId, occurredAt])
+  @@index([organizationId, occurredAt])
+  @@index([securityEventId])
+}
+
+model SecurityEvidenceLink {
+  id              String                    @id
+  organizationId  String
+  findingId       String?
+  sequenceId      String?
+  securityEventId String?
+  alertId         String?
+  incidentId      String?
+  logRecordId     String?
+  spanRecordId    String?
+  checkResultId   String?
+  changeEventId   String?
+  linkKind        String
+  summary         String?
+  confidence      Float?
+  evidenceLevel   String                    @default("SUSPECTED")
+  metadataJson    Json?
+  observedAt      DateTime                  @default(now())
+  createdAt       DateTime                  @default(now())
+  Organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Finding         SecurityFinding?          @relation(fields: [findingId], references: [id], onDelete: SetNull)
+  Sequence        ThreatCorrelationSequence? @relation(fields: [sequenceId], references: [id], onDelete: SetNull)
+  SecurityEvent   SecurityEvent?            @relation(fields: [securityEventId], references: [id], onDelete: SetNull)
+
+  @@index([findingId, observedAt])
+  @@index([sequenceId, observedAt])
+  @@index([organizationId, incidentId])
+  @@index([alertId])
+}
+
+model SecurityIncidentEvidence {
+  id              String                     @id
+  organizationId  String
+  incidentId      String
+  findingId       String?
+  sequenceId      String?
+  securityEventId String?
+  evidenceKind    String
+  summary         String
+  confidence      Float?
+  evidenceLevel   String                     @default("SUSPECTED")
+  metadataJson    Json?
+  observedAt      DateTime                   @default(now())
+  createdAt       DateTime                   @default(now())
+  Organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Incident        Incident                   @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  Finding         SecurityFinding?           @relation(fields: [findingId], references: [id], onDelete: SetNull)
+  Sequence        ThreatCorrelationSequence? @relation(fields: [sequenceId], references: [id], onDelete: SetNull)
+
+  @@index([incidentId, observedAt])
+  @@index([organizationId, findingId])
+  @@index([sequenceId])
+}
+
+model ThreatCorrelationSequence {
+  id                     String           @id
+  organizationId         String
+  projectId              String?
+  environment            String           @default("unknown")
+  sequenceType           String
+  confidence             Float            @default(0.5)
+  stage                  String           @default("DETECTED")
+  status                 String           @default("OPEN")
+  orderedEvidenceJson    Json
+  affectedAssetIdsJson   Json?
+  likelyEntryPoint       String?
+  recommendedContainment String?
+  entityId               String?
+  relatedFindingIdsJson  Json?
+  relatedIncidentId      String?
+  evidenceLevel          String           @default("SUSPECTED")
+  retentionExpiresAt     DateTime?
+  firstSeenAt            DateTime
+  lastSeenAt             DateTime
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime
+  Organization           Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project                Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Incident               Incident?        @relation(fields: [relatedIncidentId], references: [id], onDelete: SetNull)
+  EvidenceLinks          SecurityEvidenceLink[]
+  IncidentEvidence       SecurityIncidentEvidence[]
+  ResponseRuns           SecurityResponseRun[]
+
+  @@index([organizationId, status, lastSeenAt])
+  @@index([organizationId, projectId, sequenceType])
+  @@index([relatedIncidentId])
+  @@index([entityId])
+  @@index([retentionExpiresAt])
+}
+
+model SecurityAssetRisk {
+  id               String       @id
+  organizationId   String
+  projectId        String?
+  entityId         String?
+  relationshipId   String?
+  riskState        String       @default("UNKNOWN")
+  findingIdsJson   Json?
+  sequenceIdsJson  Json?
+  evidenceLevel    String       @default("INSUFFICIENT_EVIDENCE")
+  summary          String?
+  updatedAt        DateTime
+  createdAt        DateTime     @default(now())
+  Organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project          Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, entityId])
+  @@unique([organizationId, relationshipId])
+  @@index([organizationId, riskState])
+  @@index([projectId, riskState])
+}
+
+model SecurityResponseRun {
+  id                        String                     @id
+  organizationId            String
+  projectId                 String?
+  findingId                 String?
+  incidentId                String?
+  sequenceId                String?
+  actionKey                 String
+  automationMode            String                     @default("OBSERVE")
+  status                    String                     @default("PROPOSED")
+  remediationLogId          String?
+  remediationExecutionRunId String?
+  requestedBy               String?
+  approvedBy                String?
+  verificationJson          Json?
+  resultJson                Json?
+  failureReason             String?
+  correlationId             String?
+  startedAt                 DateTime?
+  endedAt                   DateTime?
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime
+  Organization              Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project                   Project?                   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  Finding                   SecurityFinding?           @relation(fields: [findingId], references: [id], onDelete: SetNull)
+  Incident                  Incident?                  @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  Sequence                  ThreatCorrelationSequence? @relation(fields: [sequenceId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, correlationId])
+  @@index([organizationId, status, createdAt])
+  @@index([findingId, createdAt])
+  @@index([incidentId, createdAt])
+}
+
+model SecurityCoverageState {
+  id             String       @id
+  organizationId String
+  projectId      String?
+  dimension      String
+  status         String       @default("NOT_CONFIGURED")
+  depth          String       @default("NONE")
+  evidenceJson   Json?
+  updatedAt      DateTime
+  createdAt      DateTime     @default(now())
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project        Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, projectId, dimension])
+  @@index([organizationId, status])
+}
+
+model SecurityBaselineSample {
+  id             String       @id
+  organizationId String
+  projectId      String?
+  environment    String       @default("unknown")
+  metricKey      String
+  windowStart    DateTime
+  windowEnd      DateTime
+  sampleCount    Int          @default(0)
+  valueSum       Float        @default(0)
+  valueAvg       Float?
+  valueP95       Float?
+  confidence     Float        @default(0)
+  baselineNote   String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Project        Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, projectId, environment, metricKey, windowStart])
+  @@index([organizationId, metricKey, windowEnd])
+}
+
+model SecurityRuleAudit {
+  id             String                @id
+  organizationId String
+  ruleId         String
+  actorUserId    String?
+  action         String
+  beforeJson     Json?
+  afterJson      Json?
+  createdAt      DateTime              @default(now())
+  Organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Rule           SecurityDetectionRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([ruleId, createdAt])
+}
+
+model SecurityEvidenceAccessAudit {
+  id             String       @id
+  organizationId String
+  actorUserId    String?
+  resourceType   String
+  resourceId     String
+  action         String       @default("READ")
+  metadataJson   Json?
+  createdAt      DateTime     @default(now())
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([resourceType, resourceId])
 }

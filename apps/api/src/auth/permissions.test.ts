@@ -32,4 +32,16 @@ describe("permissions", () => {
     expect(hasPermission("VIEWER", "automation:plan:observe")).toBe(true);
     expect(hasPermission("VIEWER", "remediation:execute:safe")).toBe(false);
   });
+
+  it("keeps security evidence off ordinary viewers and limits responders", () => {
+    expect(hasPermission("VIEWER", "security:read")).toBe(false);
+    expect(hasPermission("INCIDENT_RESPONDER", "security:read")).toBe(true);
+    expect(hasPermission("INCIDENT_RESPONDER", "security:investigate")).toBe(true);
+    expect(hasPermission("INCIDENT_RESPONDER", "security:respond")).toBe(false);
+    expect(hasPermission("INCIDENT_RESPONDER", "security:approve_high_risk")).toBe(false);
+    expect(hasPermission("INCIDENT_RESPONDER", "security:manage_rules")).toBe(false);
+    expect(hasPermission("AUTOMATION_OPERATOR", "security:respond")).toBe(true);
+    expect(hasPermission("AUTOMATION_OPERATOR", "security:approve_high_risk")).toBe(false);
+    expect(hasPermission("ADMIN", "security:approve_high_risk")).toBe(true);
+  });
 });
