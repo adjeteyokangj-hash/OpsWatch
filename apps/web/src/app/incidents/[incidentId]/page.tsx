@@ -12,6 +12,7 @@ import { IncidentLayerImpactPanel } from "../../../components/incidents/incident
 import { IncidentDiagnosisEvidence } from "../../../components/incidents/incident-diagnosis-evidence";
 import { HttpStatusReviewModal } from "../../../components/incidents/http-status-review-modal";
 import { AutomationPlanPanel } from "../../../components/incidents/automation-plan-panel";
+import { IncidentRemediationTimeline } from "../../../components/incidents/incident-remediation-timeline";
 import { IncidentOrgCorrelationPanel } from "../../../components/incidents/incident-org-correlation-panel";
 import { IncidentGraphView } from "../../../components/incidents/incident-graph-view";
 import type { AutomationPlan, AutomationRunDetails } from "../../../components/incidents/automation-plan-types";
@@ -558,18 +559,24 @@ export default function IncidentDetailPage() {
       ) : null}
 
       {activeTab === "automation" ? (
-        <AutomationPlanPanel
-          plan={automationPlan}
-          run={automationRun}
-          loading={planningAutomation}
-          acting={automationActing}
-          error={automationPlanError}
-          canApprove={canApproveAutomation}
-          onGenerate={() => void generateAutomationPlan()}
-          onApprove={(reason) => void approveAutomationPlan(reason)}
-          onReject={(reason) => void rejectAutomationPlan(reason)}
-          onCancel={() => void cancelAutomationPlan()}
-        />
+        <>
+          <IncidentRemediationTimeline
+            incidentId={incident.id}
+            projectId={incident.project?.id}
+          />
+          <AutomationPlanPanel
+            plan={automationPlan}
+            run={automationRun}
+            loading={planningAutomation}
+            acting={automationActing}
+            error={automationPlanError}
+            canApprove={canApproveAutomation}
+            onGenerate={() => void generateAutomationPlan()}
+            onApprove={(reason) => void approveAutomationPlan(reason)}
+            onReject={(reason) => void rejectAutomationPlan(reason)}
+            onCancel={() => void cancelAutomationPlan()}
+          />
+        </>
       ) : null}
 
       {activeTab === "overview" ? (

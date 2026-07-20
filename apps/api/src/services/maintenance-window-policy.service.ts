@@ -8,6 +8,7 @@ export type MaintenancePolicyResult = {
   suppressAlerts: boolean;
   suppressIncidents: boolean;
   allowAutonomous: boolean;
+  remediationPolicy?: string | null;
 };
 
 const ACTIVE_STATUSES: MaintenanceWindowStatus[] = ["ACTIVE"];
@@ -47,7 +48,8 @@ export const findActiveMaintenanceForService = async (input: {
       windowName: window.name,
       suppressAlerts: window.suppressAlerts,
       suppressIncidents: window.suppressIncidents,
-      allowAutonomous: window.allowAutonomous
+      allowAutonomous: window.allowAutonomous,
+      remediationPolicy: (window as { remediationPolicy?: string | null }).remediationPolicy ?? null
     };
   }
 

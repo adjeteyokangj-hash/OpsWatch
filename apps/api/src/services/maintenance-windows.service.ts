@@ -2,6 +2,36 @@ import { randomUUID } from "crypto";
 import type { MaintenanceWindowStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
+export type MaintenanceRemediationPolicyOption =
+  | "DERIVED"
+  | "ALLOW_LOW_RISK"
+  | "REQUIRE_APPROVAL"
+  | "SUPPRESS"
+  | "DEFER"
+  | "EMERGENCY_ONLY";
+
+const REMEDIATION_POLICY_OPTIONS = new Set<string>([
+  "ALLOW_LOW_RISK",
+  "REQUIRE_APPROVAL",
+  "SUPPRESS",
+  "DEFER",
+  "EMERGENCY_ONLY"
+]);
+
+export const normalizeRemediationPolicy = (
+  value: unknown
+): string | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null || value === "" || value === "DERIVED") return null;
+  const normalized = String(value).trim().toUpperCase();
+  if (!REMEDIATION_POLICY_OPTIONS.has(normalized)) {
+    throw new Error(
+      "remediationPolicy must be DERIVED, ALLOW_LOW_RISK, REQUIRE_APPROVAL, SUPPRESS, DEFER, or EMERGENCY_ONLY"
+    );
+  }
+  return normalized;
+};
+
 export type MaintenanceWindowDto = {
   id: string;
   organizationId: string;
@@ -14,6 +44,7 @@ export type MaintenanceWindowDto = {
   suppressAlerts: boolean;
   suppressIncidents: boolean;
   allowAutonomous: boolean;
+  remediationPolicy: string | null;
   createdById: string;
   cancelledById: string | null;
   cancelledAt: string | null;
@@ -34,6 +65,7 @@ const toDto = (row: {
   suppressAlerts: boolean;
   suppressIncidents: boolean;
   allowAutonomous: boolean;
+  remediationPolicy?: string | null;
   createdById: string;
   cancelledById: string | null;
   cancelledAt: Date | null;
@@ -52,6 +84,7 @@ const toDto = (row: {
   suppressAlerts: row.suppressAlerts,
   suppressIncidents: row.suppressIncidents,
   allowAutonomous: row.allowAutonomous,
+  remediationPolicy: row.remediationPolicy ?? null,
   createdById: row.createdById,
   cancelledById: row.cancelledById,
   cancelledAt: row.cancelledAt?.toISOString() ?? null,
@@ -101,12 +134,15 @@ export const createMaintenanceWindow = async (input: {
   suppressAlerts?: boolean;
   suppressIncidents?: boolean;
   allowAutonomous?: boolean;
+  remediationPolicy?: string | null;
   serviceIds?: string[];
   createdById: string;
 }): Promise<MaintenanceWindowDto> => {
   if (input.endsAt <= input.startsAt) {
     throw new Error("endsAt must be after startsAt");
   }
+
+  const remediationPolicy = normalizeRemediationPolicy(input.remediationPolicy);
 
   if (input.projectId) {
     const project = await prisma.project.findFirst({
@@ -145,6 +181,7 @@ export const createMaintenanceWindow = async (input: {
       suppressAlerts: input.suppressAlerts ?? true,
       suppressIncidents: input.suppressIncidents ?? false,
       allowAutonomous: input.allowAutonomous ?? false,
+      remediationPolicy: remediationPolicy ?? null,
       createdById: input.createdById,
       updatedAt: now,
       Services: {
@@ -170,6 +207,7 @@ export const updateMaintenanceWindow = async (input: {
   suppressAlerts?: boolean;
   suppressIncidents?: boolean;
   allowAutonomous?: boolean;
+  remediationPolicy?: string | null;
   serviceIds?: string[];
 }): Promise<MaintenanceWindowDto> => {
   const existing = await prisma.maintenanceWindow.findFirst({
@@ -184,6 +222,11 @@ export const updateMaintenanceWindow = async (input: {
   const startsAt = input.startsAt ?? existing.startsAt;
   const endsAt = input.endsAt ?? existing.endsAt;
   if (endsAt <= startsAt) throw new Error("endsAt must be after startsAt");
+
+  const remediationPolicy =
+    input.remediationPolicy !== undefined
+      ? normalizeRemediationPolicy(input.remediationPolicy)
+      : undefined;
 
   if (input.serviceIds) {
     const serviceIds = input.serviceIds;
@@ -226,6 +269,7 @@ export const updateMaintenanceWindow = async (input: {
         ...(input.suppressAlerts !== undefined ? { suppressAlerts: input.suppressAlerts } : {}),
         ...(input.suppressIncidents !== undefined ? { suppressIncidents: input.suppressIncidents } : {}),
         ...(input.allowAutonomous !== undefined ? { allowAutonomous: input.allowAutonomous } : {}),
+        ...(remediationPolicy !== undefined ? { remediationPolicy } : {}),
         updatedAt: new Date()
       }
     });

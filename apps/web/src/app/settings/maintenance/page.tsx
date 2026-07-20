@@ -18,10 +18,20 @@ type MaintenanceWindow = {
   suppressAlerts: boolean;
   suppressIncidents: boolean;
   allowAutonomous: boolean;
+  remediationPolicy: string | null;
   serviceIds: string[];
 };
 
 type ProjectOption = { id: string; name: string };
+
+const REMEDIATION_POLICY_LABELS: Record<string, string> = {
+  DERIVED: "Derived from flags",
+  ALLOW_LOW_RISK: "Allow low-risk autonomous",
+  REQUIRE_APPROVAL: "Require approval",
+  SUPPRESS: "Suppress remediation",
+  DEFER: "Defer until window ends",
+  EMERGENCY_ONLY: "Emergency only"
+};
 
 const emptyForm = {
   name: "",
@@ -32,6 +42,7 @@ const emptyForm = {
   suppressAlerts: true,
   suppressIncidents: false,
   allowAutonomous: false,
+  remediationPolicy: "DERIVED",
   serviceIdsText: ""
 };
 
@@ -80,6 +91,7 @@ export default function MaintenanceWindowsPage() {
           suppressAlerts: form.suppressAlerts,
           suppressIncidents: form.suppressIncidents,
           allowAutonomous: form.allowAutonomous,
+          remediationPolicy: form.remediationPolicy,
           serviceIds: form.serviceIdsText
             .split(",")
             .map((value) => value.trim())
@@ -186,6 +198,20 @@ export default function MaintenanceWindowsPage() {
             Allow autonomous automation during window
           </label>
           <label>
+            Remediation policy
+            <select
+              data-testid="maintenance-remediation-policy"
+              value={form.remediationPolicy}
+              onChange={(event) => setForm({ ...form, remediationPolicy: event.target.value })}
+            >
+              {Object.entries(REMEDIATION_POLICY_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Service IDs (comma-separated, empty = all services in scope)
             <input
               value={form.serviceIdsText}
@@ -244,6 +270,9 @@ export default function MaintenanceWindowsPage() {
                       {row.suppressAlerts ? "Suppress alerts" : "Alerts active"}
                       {row.suppressIncidents ? " · No incidents" : ""}
                       {row.allowAutonomous ? " · Autonomous allowed" : ""}
+                      {row.remediationPolicy
+                        ? ` · Remediation: ${REMEDIATION_POLICY_LABELS[row.remediationPolicy] ?? row.remediationPolicy}`
+                        : " · Remediation: derived"}
                     </td>
                     <td>
                       {row.status === "SCHEDULED" || row.status === "ACTIVE" ? (

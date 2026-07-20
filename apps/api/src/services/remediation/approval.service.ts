@@ -38,6 +38,34 @@ const emit = async (input: {
   }
 };
 
+const loadProjectIntegrations = async (input: {
+  organizationId: string;
+  projectId?: string | null;
+}): Promise<import("./actions").IntegrationConfigInput[]> => {
+  if (!input.projectId) return [];
+  const rows = await prisma.projectIntegration.findMany({
+    where: {
+      projectId: input.projectId,
+      enabled: true,
+      Project: { organizationId: input.organizationId }
+    },
+    select: {
+      type: true,
+      enabled: true,
+      configJson: true,
+      validationStatus: true,
+      lastValidatedAt: true
+    }
+  });
+  return rows.map((row) => ({
+    type: row.type,
+    enabled: row.enabled,
+    configJson: (row.configJson as Record<string, unknown> | null) ?? null,
+    validationStatus: row.validationStatus,
+    lastValidatedAt: row.lastValidatedAt
+  }));
+};
+
 export const requestRemediationApproval = async (input: {
   context: RemediationContext;
   actionKey: string;
@@ -58,10 +86,25 @@ export const requestRemediationApproval = async (input: {
     throw new Error("Action is not registered or is disabled.");
   }
 
+  let environment: string | null = null;
+  if (input.context.projectId) {
+    const project = await prisma.project.findFirst({
+      where: { id: input.context.projectId, organizationId: input.context.organizationId },
+      select: { environment: true }
+    });
+    environment = project?.environment ?? null;
+  }
+
+  const integrations = await loadProjectIntegrations({
+    organizationId: input.context.organizationId,
+    projectId: input.context.projectId
+  });
+
   const availability = resolveActionAvailability({
     actionKey: input.actionKey,
     context: input.context,
-    automationMode: input.automationMode ?? "APPROVAL"
+    automationMode: input.automationMode ?? "APPROVAL",
+    integrations
   });
   if (availability?.state === "OBSERVE_ONLY") {
     throw new Error(availability.reason);
@@ -76,15 +119,6 @@ export const requestRemediationApproval = async (input: {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + (input.ttlMs ?? DEFAULT_APPROVAL_TTL_MS));
   const id = randomUUID();
-
-  let environment: string | null = null;
-  if (input.context.projectId) {
-    const project = await prisma.project.findFirst({
-      where: { id: input.context.projectId, organizationId: input.context.organizationId },
-      select: { environment: true }
-    });
-    environment = project?.environment ?? null;
-  }
 
   await prisma.remediationApproval.create({
     data: {
@@ -184,10 +218,14 @@ export const decideRemediationApproval = async (input: {
     }
   });
 
+  const decidedByUser = await prisma.user.findUnique({
+    where: { id: input.decidedBy },
+    select: { id: true }
+  });
   await prisma.auditLog.create({
     data: {
       id: randomUUID(),
-      userId: input.decidedBy,
+      userId: decidedByUser?.id ?? null,
       action:
         input.decision === "APPROVED"
           ? "REMEDIATION_APPROVAL_GRANTED"
@@ -198,7 +236,8 @@ export const decideRemediationApproval = async (input: {
         correlationId: row.correlationId,
         actionKey: row.actionKey,
         decision: input.decision,
-        decisionReason: input.decisionReason
+        decisionReason: input.decisionReason,
+        decidedBy: input.decidedBy
       }) as object
     }
   });
@@ -265,7 +304,11 @@ export const revalidateApprovedAction = async (input: {
     automationMode: input.automationMode ?? "APPROVAL",
     circuitOpen: input.circuitOpen,
     credentialValid: input.credentialValid,
-    credentialReason: input.credentialReason
+    credentialReason: input.credentialReason,
+    integrations: await loadProjectIntegrations({
+      organizationId: input.organizationId,
+      projectId: input.context.projectId
+    })
   });
   if (
     !availability ||

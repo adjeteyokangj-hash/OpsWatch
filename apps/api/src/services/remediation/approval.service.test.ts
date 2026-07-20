@@ -10,6 +10,14 @@ vi.mock("../../lib/prisma", () => {
       project: {
         findFirst: vi.fn(async () => ({ environment: "test" }))
       },
+      projectIntegration: {
+        findMany: vi.fn(async () => [])
+      },
+      user: {
+        findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
+          where.id ? { id: where.id } : null
+        )
+      },
       remediationApproval: {
         create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
           store.approvals.push(data);

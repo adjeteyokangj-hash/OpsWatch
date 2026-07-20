@@ -116,11 +116,21 @@ export const decidePhase7Approval = async (req: AuthRequest, res: Response) => {
     return;
   }
   try {
+    const approvalId = String(req.params.approvalId || "");
+    if (!approvalId) {
+      res.status(400).json({ error: "approvalId is required" });
+      return;
+    }
+    const decidedBy = typeof req.user?.sub === "string" ? req.user.sub : "";
+    if (!decidedBy) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
     const result = await decideRemediationApproval({
       organizationId: orgId,
-      approvalId: req.params.approvalId,
+      approvalId,
       decision: decision as "APPROVED" | "REJECTED",
-      decidedBy: typeof req.user?.sub === "string" ? req.user.sub : "unknown",
+      decidedBy,
       decisionReason: String(req.body?.reason || decision)
     });
     res.json(result);
@@ -141,10 +151,6 @@ export const executePhase7Governed = async (req: AuthRequest, res: Response) => 
   }
   if (automationMode !== "APPROVAL" && automationMode !== "AUTONOMOUS") {
     res.status(400).json({ error: "automationMode must be APPROVAL or AUTONOMOUS" });
-    return;
-  }
-  if (automationMode === "OBSERVE") {
-    res.status(400).json({ error: "Observe mode never executes" });
     return;
   }
 
@@ -232,6 +238,8 @@ export const listPhase7Runs = async (req: AuthRequest, res: Response) => {
 
   const where: Record<string, unknown> = { organizationId: orgId };
   if (typeof req.query.projectId === "string") where.projectId = req.query.projectId;
+  if (typeof req.query.incidentId === "string") where.incidentId = req.query.incidentId;
+  if (typeof req.query.alertId === "string") where.alertId = req.query.alertId;
   if (typeof req.query.status === "string") where.status = req.query.status;
   if (typeof req.query.actionKey === "string") where.actionKey = req.query.actionKey;
   if (typeof req.query.provider === "string") where.provider = req.query.provider;

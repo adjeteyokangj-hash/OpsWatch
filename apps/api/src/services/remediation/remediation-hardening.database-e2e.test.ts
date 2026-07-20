@@ -28,6 +28,24 @@ describe.runIf(enabled)("remediation production hardening", () => {
       }
     });
     await ensureE2EOrgPlan(organizationId, "BUSINESS");
+    await prisma.automationPolicy.upsert({
+      where: {
+        organizationId_policyKey: { organizationId, policyKey: "GLOBAL" }
+      },
+      update: {
+        enabled: true,
+        executionMode: "AUTONOMOUS",
+        updatedAt: new Date()
+      },
+      create: {
+        id: randomUUID(),
+        organizationId,
+        policyKey: "GLOBAL",
+        enabled: true,
+        executionMode: "AUTONOMOUS",
+        updatedAt: new Date()
+      }
+    });
     await prisma.project.create({
       data: {
         id: projectId,
@@ -38,6 +56,7 @@ describe.runIf(enabled)("remediation production hardening", () => {
         apiKey: randomUUID(),
         signingSecret: randomUUID(),
         organizationId,
+        automationMode: "AUTO_HEAL_SAFE",
         updatedAt: new Date()
       }
     });

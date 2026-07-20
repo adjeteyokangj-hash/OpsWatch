@@ -1535,6 +1535,8 @@ model MaintenanceWindow {
   suppressAlerts    Boolean                    @default(true)
   suppressIncidents Boolean                    @default(false)
   allowAutonomous   Boolean                    @default(false)
+  /// Phase 7: ALLOW_LOW_RISK | REQUIRE_APPROVAL | SUPPRESS | DEFER | EMERGENCY_ONLY
+  remediationPolicy String?
   createdById       String
   cancelledById     String?
   cancelledAt       DateTime?

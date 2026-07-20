@@ -16,6 +16,7 @@ import {
   getCircuitState
 } from "./circuit-breaker.service";
 import { revalidateApprovedAction } from "./approval.service";
+import { evaluateMaintenanceRemediation } from "../maintenance-remediation-policy.service";
 import { recordOperationsTimelineEvent } from "../intelligence/observation.service";
 import { TIMELINE_EVENT } from "../intelligence/intelligence-constants";
 
@@ -209,6 +210,20 @@ export const executeGovernedRemediation = async (input: {
   });
   if (!circuitGate.ok) {
     throw new Error(circuitGate.reason);
+  }
+
+  if (input.context.projectId) {
+    const maintenance = await evaluateMaintenanceRemediation({
+      organizationId: input.context.organizationId,
+      projectId: input.context.projectId,
+      serviceId: input.context.serviceId,
+      riskLevel: def.riskLevel,
+      automationMode: input.automationMode,
+      emergency: input.context.extra?.emergency === true
+    });
+    if (!maintenance.allowed) {
+      throw new Error(maintenance.reason);
+    }
   }
 
   if (input.approvalId) {

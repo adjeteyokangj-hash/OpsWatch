@@ -125,6 +125,20 @@ const recordProbeResult = async (connection: ConnectionRow, result: ProbeResult)
 };
 
 export const assertSafeConnectionTarget = async (target: string): Promise<void> => {
+  if (process.env.OPSWATCH_ALLOW_LOCAL_CONNECTION_PROBES === "true") {
+    try {
+      const localUrl = new URL(target.trim());
+      if (
+        localUrl.hostname === "127.0.0.1" ||
+        localUrl.hostname === "localhost" ||
+        localUrl.hostname === "::1"
+      ) {
+        return;
+      }
+    } catch {
+      // fall through to strict validation
+    }
+  }
   const url = parseSafeExternalHttpUrl(target);
   if (process.env.NODE_ENV === "test" && url.hostname.endsWith(".test")) return;
   const addresses = await lookup(url.hostname, { all: true, verbatim: true });

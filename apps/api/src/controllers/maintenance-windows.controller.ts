@@ -71,6 +71,8 @@ export const createMaintenanceWindowHandler = async (req: AuthRequest, res: Resp
       suppressAlerts: body.suppressAlerts !== false,
       suppressIncidents: Boolean(body.suppressIncidents),
       allowAutonomous: Boolean(body.allowAutonomous),
+      remediationPolicy:
+        body.remediationPolicy === undefined ? undefined : body.remediationPolicy,
       serviceIds: Array.isArray(body.serviceIds) ? body.serviceIds : [],
       createdById: typeof req.user?.sub === "string" ? req.user.sub : "operator"
     });
@@ -100,6 +102,8 @@ export const updateMaintenanceWindowHandler = async (req: AuthRequest, res: Resp
       suppressAlerts: typeof body.suppressAlerts === "boolean" ? body.suppressAlerts : undefined,
       suppressIncidents: typeof body.suppressIncidents === "boolean" ? body.suppressIncidents : undefined,
       allowAutonomous: typeof body.allowAutonomous === "boolean" ? body.allowAutonomous : undefined,
+      remediationPolicy:
+        body.remediationPolicy === undefined ? undefined : body.remediationPolicy,
       serviceIds: Array.isArray(body.serviceIds) ? body.serviceIds : undefined
     });
     res.json(updated);
