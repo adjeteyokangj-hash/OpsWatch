@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import {
   DEFAULT_DETECTION_RULES,
@@ -42,7 +43,7 @@ const resolveRules = async (organizationId: string): Promise<DetectionRuleDef[]>
   });
   const byKey = new Map(DEFAULT_DETECTION_RULES.map((rule) => [rule.ruleKey, rule]));
   for (const row of overrides) {
-    const base = byKey.get(row.ruleKey) || DEFAULT_DETECTION_RULES[0];
+    const base = byKey.get(row.ruleKey) ?? DEFAULT_DETECTION_RULES[0]!;
     byKey.set(row.ruleKey, {
       ruleKey: row.ruleKey,
       name: row.name,
@@ -306,7 +307,7 @@ const upsertFinding = async (args: {
   const { organizationId, rule, matchedEvents, confidence, baselineNote } = args;
   if (matchedEvents.length === 0) return null;
 
-  const sample = matchedEvents[0];
+  const sample = matchedEvents[0]!;
   const environment = sample.environment || "unknown";
   const projectId = sample.projectId;
   const fingerprint = findingFingerprint({
@@ -317,25 +318,23 @@ const upsertFinding = async (args: {
     entityKey: entityKeyFor(rule, matchedEvents)
   });
 
-  const existing = await prisma.securityFinding.findUnique({
+  const existing = await prisma.securityFinding.findFirst({
     where: {
-      organizationId_projectId_environment_fingerprint: {
-        organizationId,
-        projectId: projectId ?? null,
-        environment,
-        fingerprint
-      }
+      organizationId,
+      projectId: projectId ?? null,
+      environment,
+      fingerprint
     }
   });
 
   const now = new Date();
   const firstSeen = matchedEvents.reduce(
     (min, event) => (event.timestamp < min ? event.timestamp : min),
-    matchedEvents[0].timestamp
+    sample.timestamp
   );
   const lastSeen = matchedEvents.reduce(
     (max, event) => (event.timestamp > max ? event.timestamp : max),
-    matchedEvents[0].timestamp
+    sample.timestamp
   );
 
   if (existing) {

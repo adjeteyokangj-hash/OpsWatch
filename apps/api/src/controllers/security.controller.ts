@@ -149,7 +149,7 @@ export const getSecurityFindingController = async (req: AuthRequest, res: Respon
   if (!organizationId) return;
   const finding = await getSecurityFindingById({
     organizationId,
-    findingId: req.params.id,
+    findingId: String(req.params.id),
     actorUserId: req.user?.id
   });
   if (!finding) {
@@ -169,7 +169,7 @@ export const markFalsePositiveController = async (req: AuthRequest, res: Respons
   }
   const finding = await markFindingFalsePositive({
     organizationId,
-    findingId: req.params.id,
+    findingId: String(req.params.id),
     actorUserId: req.user?.id,
     reason
   });
@@ -191,7 +191,7 @@ export const acceptRiskController = async (req: AuthRequest, res: Response) => {
   const until = req.body?.until ? new Date(String(req.body.until)) : null;
   const finding = await acceptFindingRisk({
     organizationId,
-    findingId: req.params.id,
+    findingId: String(req.params.id),
     actorUserId: req.user?.id,
     reason,
     until
@@ -214,7 +214,7 @@ export const suppressFindingController = async (req: AuthRequest, res: Response)
   }
   const finding = await suppressFinding({
     organizationId,
-    findingId: req.params.id,
+    findingId: String(req.params.id),
     actorUserId: req.user?.id,
     reason,
     until
@@ -257,7 +257,7 @@ export const getSequenceController = async (req: AuthRequest, res: Response) => 
   if (!organizationId) return;
   const attackPath = await buildAttackPathView({
     organizationId,
-    sequenceId: req.params.id
+    sequenceId: String(req.params.id)
   });
   if (!attackPath) {
     res.status(404).json({ error: "Sequence not found" });
@@ -289,7 +289,7 @@ export const updateRuleController = async (req: AuthRequest, res: Response) => {
   const organizationId = requireOrgAndPermission(req, res, "security:manage_rules");
   if (!organizationId) return;
   const rule = await prisma.securityDetectionRule.findFirst({
-    where: { id: req.params.id, organizationId }
+    where: { id: String(req.params.id), organizationId }
   });
   if (!rule) {
     res.status(404).json({ error: "Rule not found" });

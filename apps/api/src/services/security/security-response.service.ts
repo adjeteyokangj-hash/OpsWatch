@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { recordCredentialAudit } from "../credentials/credential-audit.service";
 
@@ -98,7 +99,7 @@ export const createSecurityResponseRun = async (args: {
           recommendation: def.label,
           verification: def.verification,
           context: args.context || {}
-        },
+        } as Prisma.InputJsonValue,
         updatedAt: new Date()
       }
     });
@@ -147,8 +148,8 @@ export const createSecurityResponseRun = async (args: {
       where: { id: run.id },
       data: {
         status: verification.ok ? "VERIFIED" : "FAILED",
-        verificationJson: verification,
-        resultJson: verification,
+        verificationJson: verification as Prisma.InputJsonValue,
+        resultJson: verification as Prisma.InputJsonValue,
         failureReason: verification.ok ? null : verification.message,
         endedAt: new Date(),
         updatedAt: new Date()

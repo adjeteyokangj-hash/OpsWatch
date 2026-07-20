@@ -111,8 +111,8 @@ export const correlateThreatSequences = async (args: {
         entityId: events.find((event) => event.entityId)?.entityId || null,
         relatedFindingIdsJson: relatedFindingIds,
         evidenceLevel,
-        firstSeenAt: new Date(ordered[0].at),
-        lastSeenAt: new Date(ordered[ordered.length - 1].at),
+        firstSeenAt: new Date(ordered[0]!.at),
+        lastSeenAt: new Date(ordered[ordered.length - 1]!.at),
         updatedAt: now
       }
     });

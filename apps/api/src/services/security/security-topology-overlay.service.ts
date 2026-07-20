@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import type { SecurityRiskState } from "./security-scopes";
 
@@ -30,8 +31,8 @@ export const upsertSecurityAssetRisk = async (args: {
         where: { id: existing.id },
         data: {
           riskState: args.riskState,
-          findingIdsJson: args.findingIds || existing.findingIdsJson,
-          sequenceIdsJson: args.sequenceIds || existing.sequenceIdsJson,
+          findingIdsJson: (args.findingIds || existing.findingIdsJson || []) as Prisma.InputJsonValue,
+          sequenceIdsJson: (args.sequenceIds || existing.sequenceIdsJson || []) as Prisma.InputJsonValue,
           evidenceLevel: args.evidenceLevel || existing.evidenceLevel,
           summary: args.summary || existing.summary,
           projectId: args.projectId ?? existing.projectId,
@@ -69,8 +70,8 @@ export const upsertSecurityAssetRisk = async (args: {
       where: { id: existingRel.id },
       data: {
         riskState: args.riskState,
-        findingIdsJson: args.findingIds || existingRel.findingIdsJson,
-        sequenceIdsJson: args.sequenceIds || existingRel.sequenceIdsJson,
+        findingIdsJson: (args.findingIds || existingRel.findingIdsJson || []) as Prisma.InputJsonValue,
+        sequenceIdsJson: (args.sequenceIds || existingRel.sequenceIdsJson || []) as Prisma.InputJsonValue,
         evidenceLevel: args.evidenceLevel || existingRel.evidenceLevel,
         summary: args.summary || existingRel.summary,
         updatedAt: now

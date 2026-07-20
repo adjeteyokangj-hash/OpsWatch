@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { COVERAGE_DIMENSIONS, type CoverageDepth, type CoverageDimension } from "./security-scopes";
 
@@ -200,7 +201,7 @@ export const computeSecurityCoverage = async (args: {
         data: {
           status: row.status,
           depth: row.depth,
-          evidenceJson: row.evidence,
+          evidenceJson: row.evidence as Prisma.InputJsonValue,
           updatedAt: now
         }
       });
@@ -213,7 +214,7 @@ export const computeSecurityCoverage = async (args: {
           dimension: row.dimension,
           status: row.status,
           depth: row.depth,
-          evidenceJson: row.evidence,
+          evidenceJson: row.evidence as Prisma.InputJsonValue,
           updatedAt: now
         }
       });

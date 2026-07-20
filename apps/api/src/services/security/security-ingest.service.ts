@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { isSecurityEventType, eventFamily } from "./security-event-types";
 import {
@@ -270,7 +271,7 @@ export const ingestSecurityEvents = async (
               : "CLEAN",
           retentionExpiresAt,
           idempotencyKey,
-          payloadJson: payloadJson ?? undefined,
+          payloadJson: (payloadJson ?? undefined) as Prisma.InputJsonValue | undefined,
           rawSource: item.rawSource || options.rawSource || null,
           metadataJson: {
             ...(metadataJson && typeof metadataJson === "object" ? metadataJson : {}),
@@ -280,7 +281,7 @@ export const ingestSecurityEvents = async (
               ipTruncated: privacy.meta.ipTruncated,
               accountHashed: privacy.meta.accountHashed
             }
-          }
+          } as Prisma.InputJsonValue
         }
       });
 
