@@ -45,6 +45,17 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
 
   const overviewRows = [
     { label: "Health", value: healthLabel(node.status) },
+    {
+      label: "Recovery",
+      value:
+        context?.recoveryState === "VERIFYING"
+          ? "Verifying"
+          : context?.recoveryState === "RECOVERING"
+            ? "Recovering"
+            : context?.recoveryState === "RECOVERED"
+              ? "Recovered and verified"
+              : "—"
+    },
     { label: "Availability", value: availability == null ? "—" : `${availability.toFixed(1)}%` },
     { label: "Last check", value: formatRelativeTime(context?.lastCheckAt) },
     { label: "Relationships", value: String(relationship?.totalRelationshipCount ?? 0) },

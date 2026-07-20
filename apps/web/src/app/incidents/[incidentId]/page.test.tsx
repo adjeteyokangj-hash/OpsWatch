@@ -7,6 +7,18 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({ incidentId: "inc-1" })
 }));
 
+vi.mock("next/link", () => ({
+  default: ({
+    children,
+    href,
+    className
+  }: {
+    children: React.ReactNode;
+    href: string;
+    className?: string;
+  }) => React.createElement("a", { href, className }, children)
+}));
+
 vi.mock("../../../components/layout/shell", () => ({
   Shell: ({ children }: { children: React.ReactNode }) =>
     React.createElement("div", null, children)
@@ -26,6 +38,20 @@ import IncidentDetailPage from "./page";
 describe("incident AI panel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    const store = new Map<string, string>();
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          store.set(key, value);
+        },
+        removeItem: (key: string) => {
+          store.delete(key);
+        },
+        clear: () => store.clear()
+      }
+    });
     mockApiFetch.mockImplementation((path: string) => {
       if (path === "/incidents/inc-1") {
         return Promise.resolve({
@@ -86,14 +112,33 @@ describe("incident AI panel", () => {
               policyTier: "SAFE_AUTOMATIC",
               impactTier: "LOW",
               autoRunEligible: true,
+              historicalSuccessRate: 0.75,
+              suppressionInfo: null,
               confidenceFactors: [
                 {
                   name: "Prior success rate",
                   impact: 25,
-                  status: "positive",
-                  description: "Action has worked reliably in similar incidents"
+                  status: "pass",
+                  description: "75% historical success rate (50-80%, acceptable)"
                 }
               ]
+            },
+            {
+              action: "REQUEST_HUMAN_REVIEW",
+              label: "Request human review",
+              description: "Escalate for technician review.",
+              group: "GROUP_C_SUPPORT",
+              requiresApproval: false,
+              kind: "support",
+              state: "READY",
+              confidenceLabel: "MEDIUM",
+              confidenceScore: 60,
+              policyTier: "MANUAL_ONLY",
+              impactTier: "LOW",
+              autoRunEligible: false,
+              historicalSuccessRate: null,
+              suppressionInfo: null,
+              confidenceFactors: []
             },
             {
               action: "ROLLBACK_DEPLOYMENT",
@@ -108,11 +153,13 @@ describe("incident AI panel", () => {
               policyTier: "APPROVAL_REQUIRED",
               impactTier: "HIGH",
               autoRunEligible: false,
+              historicalSuccessRate: null,
+              suppressionInfo: null,
               confidenceFactors: [
                 {
                   name: "Insufficient confidence",
                   impact: -20,
-                  status: "negative",
+                  status: "fail",
                   description: "Risk is too high for automatic execution"
                 }
               ]
@@ -163,6 +210,9 @@ describe("incident AI panel", () => {
           permissions: { canApprove: false }
         });
       }
+      if (path.startsWith("/remediation/logs")) {
+        return Promise.resolve([]);
+      }
       if (path === "/remediation/execute") {
         return Promise.resolve({
           action: "RETRY_WEBHOOKS",
@@ -170,7 +220,12 @@ describe("incident AI panel", () => {
           result: {
             success: true,
             status: "COMPLETED",
-            summary: "Webhook redelivery completed."
+            summary: "Webhook redelivery completed.",
+            details: {
+              recoveryUiLabel: "Repair completed — verification pending",
+              executedAt: new Date().toISOString(),
+              triggeredBy: "tester"
+            }
           }
         });
       }
@@ -188,15 +243,37 @@ describe("incident AI panel", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Retry webhooks")).toBeTruthy();
-      expect(screen.getByText("Ready")).toBeTruthy();
-      expect(screen.getByText("Unsupported")).toBeTruthy();
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        "/remediation/suggest",
+        expect.objectContaining({ method: "POST" })
+      );
     });
 
-    await user.click(screen.getByRole("button", { name: "Apply fix" }));
+    await waitFor(() => {
+      expect(screen.getByText("Recommended actions")).toBeTruthy();
+    });
+
+    const recommended = screen.getByText("Recommended actions").closest("section.page-section");
+    expect(recommended).toBeTruthy();
+    if (recommended?.getAttribute("data-open") !== "true") {
+      await user.click(screen.getByText("Recommended actions").closest("button.page-section-summary")!);
+    }
+
+    const refresh = screen.getByRole("button", { name: /Refresh diagnosis/i });
+    await user.click(refresh);
 
     await waitFor(() => {
-      expect(screen.getByText(/Webhook redelivery completed\./)).toBeTruthy();
+      expect(recommended?.textContent ?? "").toMatch(/Webhook delivery is failing/);
+      expect(recommended?.textContent ?? "").toMatch(/Retry webhooks/);
+    });
+
+    expect(screen.getByRole("button", { name: "Request review" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Apply recommended action" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Apply recommended action" }));
+
+    await waitFor(() => {
+      expect(recommended?.textContent ?? "").toMatch(/Repair completed|Webhook redelivery completed|Run again/);
     });
 
     expect(mockApiFetch).toHaveBeenCalledWith(

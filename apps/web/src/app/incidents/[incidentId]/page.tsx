@@ -18,6 +18,13 @@ import { IncidentGraphView } from "../../../components/incidents/incident-graph-
 import { PageSection } from "../../../components/ui/page-section";
 import type { AutomationPlan, AutomationRunDetails } from "../../../components/incidents/automation-plan-types";
 import type { DiagnosisResult, SuggestedAction } from "../../../components/incidents/incident-diagnosis-types";
+import {
+  buildTopologyDeepLink,
+  primaryActionButtonLabel,
+  resolveConfigureSetupTarget,
+  topologyLinkKindForRecovery,
+  topologyRecoveryLinkLabel
+} from "../../../lib/recovery-navigation";
 type Incident = {
   id: string;
   title: string;
@@ -214,11 +221,21 @@ export default function IncidentDetailPage() {
       setLoading(true);
       setLoadError(null);
       try {
-        const [inc, timelineRows, candidateRows, intelligenceRow] = await Promise.all([
+        const [inc, timelineRows, candidateRows, intelligenceRow, remediationLogs] = await Promise.all([
           apiFetch<Incident>(`/incidents/${incidentId}`),
           apiFetch<IncidentTimelineEvent[]>(`/incidents/${incidentId}/timeline`),
           apiFetch<RootCauseCandidate[]>(`/incidents/${incidentId}/root-cause-candidates`),
-          apiFetch<IncidentIntelligence>(`/incidents/${incidentId}/intelligence`).catch(() => null)
+          apiFetch<IncidentIntelligence>(`/incidents/${incidentId}/intelligence`).catch(() => null),
+          apiFetch<
+            Array<{
+              id: string;
+              action: string;
+              status: string;
+              executedBy: string | null;
+              executedAt: string | null;
+              resultJson: RemediationResult["result"] | null;
+            }>
+          >(`/remediation/logs?incidentId=${encodeURIComponent(incidentId)}`).catch(() => [])
         ]);
         setIncident(inc);
         setStatus(inc.status);
@@ -227,6 +244,41 @@ export default function IncidentDetailPage() {
         setRootCauseCandidates(Array.isArray(candidateRows) ? candidateRows : []);
         setIntelligence(intelligenceRow);
         setAnalysisError(null);
+        if (Array.isArray(remediationLogs) && remediationLogs.length > 0) {
+          const hydrated: Record<string, RemediationResult> = {};
+          for (const log of remediationLogs) {
+            if (hydrated[log.action]) continue;
+            const result = log.resultJson;
+            if (!result || typeof result !== "object") continue;
+            const status =
+              result.status ??
+              (log.status === "SUCCEEDED"
+                ? "COMPLETED"
+                : log.status === "PENDING_APPROVAL"
+                  ? "PENDING_APPROVAL"
+                  : "FAILED");
+            hydrated[log.action] = {
+              action: log.action,
+              logId: log.id,
+              result: {
+                ...result,
+                status: status as RemediationResult["result"]["status"],
+                details: {
+                  ...(result.details ?? {}),
+                  executedAt:
+                    (result.details?.executedAt as string | undefined) ??
+                    log.executedAt ??
+                    undefined,
+                  triggeredBy:
+                    (result.details?.triggeredBy as string | undefined) ??
+                    log.executedBy ??
+                    undefined
+                }
+              }
+            };
+          }
+          setActionResults(hydrated);
+        }
       } catch (err: any) {
         setLoadError(err?.message || "Failed to load incident");
         setAnalysisError(err?.message || "Failed to load timeline and root-cause analysis");
@@ -402,6 +454,12 @@ export default function IncidentDetailPage() {
         }),
       });
       setActionResults((prev) => ({ ...prev, [action]: result }));
+      // Persist-backed refresh so Completed / history / alert status survive reload.
+      const refreshed = await apiFetch<Incident>(`/incidents/${incident.id}`);
+      setIncident(refreshed);
+      setRootCause(refreshed.rootCause ?? "");
+      setStatus(refreshed.status);
+      await runDiagnosis();
     } finally {
       setExecuting(null);
     }
@@ -495,6 +553,71 @@ export default function IncidentDetailPage() {
     return new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime();
   });
   const unresolvedAlertCount = sortedAlerts.filter((alert) => alert.status !== "RESOLVED").length;
+  const resolvedAlertCount = sortedAlerts.length - unresolvedAlertCount;
+
+  const latestRecovery = Object.values(actionResults)
+    .map((row) => row.result.details)
+    .find(
+      (details) =>
+        details &&
+        typeof details === "object" &&
+        ("recoveryUiLabel" in details || "verificationProgress" in details)
+    );
+  const recoveryUiLabel =
+    typeof latestRecovery?.recoveryUiLabel === "string"
+      ? latestRecovery.recoveryUiLabel
+      : unresolvedAlertCount > 0 && resolvedAlertCount > 0
+        ? `Partial recovery — ${resolvedAlertCount} of ${sortedAlerts.length} alerts resolved`
+        : unresolvedAlertCount === 0 && incident.status === "RESOLVED"
+          ? "Recovery verified — incident automatically resolved"
+          : null;
+  const verificationProgress = latestRecovery?.verificationProgress as
+    | { passed?: number; required?: number; met?: boolean }
+    | undefined;
+  const affectedEntityId =
+    diagnosis?.dependencyImpact?.probableRootCause?.serviceId ??
+    incident.alerts?.find((row) => row.status !== "RESOLVED")?.service?.id ??
+    incident.alerts?.[0]?.service?.id ??
+    null;
+  const topologyHref = incident.project?.id
+    ? buildTopologyDeepLink({
+        projectId: incident.project.id,
+        entityId: affectedEntityId,
+        incidentId: incident.id,
+        recoveryState: verificationProgress?.met
+          ? "RECOVERED"
+          : (verificationProgress?.passed ?? 0) > 0
+            ? "VERIFYING"
+            : unresolvedAlertCount > 0
+              ? "RECOVERING"
+              : null
+      })
+    : null;
+  const topologyCtaLabel = topologyRecoveryLinkLabel(
+    topologyLinkKindForRecovery({
+      incidentStatus: incident.status,
+      unresolvedAlertCount,
+      verificationPassed: verificationProgress?.passed ?? null,
+      verificationRequired: verificationProgress?.required ?? null,
+      verificationMet: verificationProgress?.met
+    })
+  );
+  const displayDiagnosis =
+    diagnosis &&
+    unresolvedAlertCount > 0 &&
+    (diagnosis.appHealth === "HEALTHY" || diagnosis.dependencyImpact?.appHealth === "HEALTHY")
+      ? {
+          ...diagnosis,
+          appHealth: "DEGRADED" as const,
+          dependencyImpact: diagnosis.dependencyImpact
+            ? { ...diagnosis.dependencyImpact, appHealth: "DEGRADED" as const }
+            : diagnosis.dependencyImpact,
+          diagnosisReasons: [
+            ...(diagnosis.diagnosisReasons ?? []),
+            `Partial recovery — ${resolvedAlertCount} of ${sortedAlerts.length || unresolvedAlertCount} linked alerts recovered; application remains degraded until remaining alerts clear.`
+          ]
+        }
+      : diagnosis;
 
   return (
     <Shell>
@@ -524,6 +647,18 @@ export default function IncidentDetailPage() {
             </div>
           )}
         </div>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px" }}>
+          {topologyHref ? (
+            <Link className="secondary-button" href={topologyHref}>
+              {topologyCtaLabel}
+            </Link>
+          ) : null}
+        </div>
+        {recoveryUiLabel ? (
+          <p className="dashboard-subtle" style={{ marginTop: "10px" }} data-testid="recovery-status-banner">
+            <strong>{recoveryUiLabel}</strong>
+          </p>
+        ) : null}
       </section>
 
       {incident.correlationGroup ? (
@@ -594,21 +729,21 @@ export default function IncidentDetailPage() {
           <IncidentHealthSummary
             incidentId={incident.id}
             projectName={incident.project?.name ?? "Application"}
-            diagnosis={diagnosis}
+            diagnosis={displayDiagnosis ?? diagnosis}
           />
           <IncidentPropagationChain
             incidentId={incident.id}
-            diagnosis={diagnosis}
+            diagnosis={displayDiagnosis ?? diagnosis}
             projectId={incident.project?.id}
           />
-          {diagnosis.layerImpacts && diagnosis.layerImpacts.length > 0 ? (
+          {(displayDiagnosis ?? diagnosis).layerImpacts && (displayDiagnosis ?? diagnosis).layerImpacts!.length > 0 ? (
             <IncidentLayerImpactPanel
               incidentId={incident.id}
-              layerImpacts={diagnosis.layerImpacts}
+              layerImpacts={(displayDiagnosis ?? diagnosis).layerImpacts!}
               projectId={incident.project?.id}
             />
           ) : null}
-          <IncidentDiagnosisEvidence incidentId={incident.id} diagnosis={diagnosis} />
+          <IncidentDiagnosisEvidence incidentId={incident.id} diagnosis={displayDiagnosis ?? diagnosis} />
         </>
       ) : null}
 
@@ -820,23 +955,78 @@ export default function IncidentDetailPage() {
                       sa.state === "UNSUPPORTED" ||
                       sa.state === "MISSING_CONTEXT" ||
                       sa.state === "MISCONFIGURED_ENV";
+                    const recoveryLabel =
+                      typeof res?.result.details?.recoveryUiLabel === "string"
+                        ? res.result.details.recoveryUiLabel
+                        : null;
+                    const executedAt =
+                      typeof res?.result.details?.executedAt === "string"
+                        ? res.result.details.executedAt
+                        : null;
+                    const triggeredBy =
+                      typeof res?.result.details?.triggeredBy === "string"
+                        ? res.result.details.triggeredBy
+                        : null;
+                    const configureTarget = resolveConfigureSetupTarget({
+                      action: sa.action,
+                      projectId: incident.project?.id,
+                      serviceId: incident.alerts?.[0]?.service?.id,
+                      checkId:
+                        typeof sa.preview?.checkId === "string" ? sa.preview.checkId : undefined,
+                      incidentId: incident.id,
+                      missingFields: sa.missingFields,
+                      missingEnvVars: sa.missingEnvVars,
+                      state: sa.state
+                    });
+                    const statusPill =
+                      res?.result.status === "COMPLETED"
+                        ? recoveryLabel ?? "Completed successfully"
+                        : sa.state === "READY"
+                          ? "Ready"
+                          : sa.state === "APPROVAL_REQUIRED"
+                            ? "Requires approval"
+                            : sa.state === "MISSING_CONTEXT"
+                              ? "Configure required setup →"
+                              : sa.state === "MISCONFIGURED_ENV"
+                                ? "Configure required setup →"
+                                : "Unsupported";
                     return (
                       <div key={sa.action} className="ai-action-card">
                         <div className="ai-action-head">
-                          <strong>{sa.label}</strong>
-                          {sa.state === "READY" ? (
+                          {configureTarget && isBlocked ? (
+                            <Link href={configureTarget.href}>
+                              <strong>{sa.label}</strong>
+                            </Link>
+                          ) : (
+                            <strong>{sa.label}</strong>
+                          )}
+                          {configureTarget && isBlocked ? (
+                            <Link href={configureTarget.href} className="result-pill warn">
+                              {statusPill}
+                            </Link>
+                          ) : res?.result.status === "COMPLETED" ? (
+                            <span className="result-pill pass">{statusPill}</span>
+                          ) : sa.state === "READY" ? (
                             <span className="result-pill pass">Ready</span>
                           ) : sa.state === "APPROVAL_REQUIRED" ? (
                             <span className="result-pill warn">Requires approval</span>
                           ) : sa.state === "MISSING_CONTEXT" ? (
-                            <span className="result-pill pending">Missing context</span>
+                            <span className="result-pill pending">Configure required setup →</span>
                           ) : sa.state === "MISCONFIGURED_ENV" ? (
-                            <span className="result-pill warn">Not configured</span>
+                            <span className="result-pill warn">Configure required setup →</span>
                           ) : (
                             <span className="result-pill pending">Unsupported</span>
                           )}
                         </div>
                         <p className="ai-action-desc">{sa.description}</p>
+                        {configureTarget && isBlocked ? (
+                          <p className="dashboard-subtle">
+                            {configureTarget.banner}
+                            {configureTarget.missingNames && configureTarget.missingNames.length > 0
+                              ? ` Missing: ${configureTarget.missingNames.join(", ")}`
+                              : ""}
+                          </p>
+                        ) : null}
 
                         {/* ── Suppression callout ────────────────────── */}
                         {sa.suppressionInfo?.suppressed && (
@@ -896,37 +1086,65 @@ export default function IncidentDetailPage() {
                         )}
                         {sa.state === "MISCONFIGURED_ENV" && sa.missingEnvVars && sa.missingEnvVars.length > 0 && (
                           <p className="table-subtle" style={{ color: "var(--color-warn, #b45309)" }}>
-                            Env not set: {sa.missingEnvVars.join(", ")}
+                            Settings not set: {sa.missingEnvVars.join(", ")}
                           </p>
                         )}
                         {res ? (
-                          <p
-                            className={`ai-action-result ${
-                              res.result.status === "COMPLETED"
-                                ? "result-pill pass"
-                                : res.result.status === "PENDING_APPROVAL"
-                                ? "result-pill warn"
+                          <div className="ai-action-result-block">
+                            <p
+                              className={`ai-action-result ${
+                                res.result.status === "COMPLETED"
+                                  ? "result-pill pass"
+                                  : res.result.status === "PENDING_APPROVAL"
+                                  ? "result-pill warn"
+                                  : res.result.status === "MISSING_CONTEXT"
+                                  ? "result-pill pending"
+                                  : res.result.status === "MISCONFIGURED_ENV"
+                                  ? "result-pill warn"
+                                  : res.result.status === "UNSUPPORTED"
+                                  ? "result-pill pending"
+                                  : "result-pill fail"
+                              }`}
+                            >
+                              {res.result.status === "PENDING_APPROVAL"
+                                ? "⏳ Pending approval"
+                                : res.result.status === "COMPLETED"
+                                ? `✓ ${recoveryLabel ?? res.result.summary}`
                                 : res.result.status === "MISSING_CONTEXT"
-                                ? "result-pill pending"
+                                ? `⚠ Missing: ${(res.result.missingFields ?? []).join(", ") || res.result.summary}`
                                 : res.result.status === "MISCONFIGURED_ENV"
-                                ? "result-pill warn"
+                                ? `⚙ Configure required setup →`
                                 : res.result.status === "UNSUPPORTED"
-                                ? "result-pill pending"
-                                : "result-pill fail"
-                            }`}
-                          >
-                            {res.result.status === "PENDING_APPROVAL"
-                              ? "⏳ Pending approval"
-                              : res.result.status === "COMPLETED"
-                              ? `✓ ${res.result.summary}`
-                              : res.result.status === "MISSING_CONTEXT"
-                              ? `⚠ Missing: ${(res.result.missingFields ?? []).join(", ") || res.result.summary}`
-                              : res.result.status === "MISCONFIGURED_ENV"
-                              ? `⚙ Not configured: ${(res.result.missingEnvVars ?? []).join(", ") || res.result.summary}`
-                              : res.result.status === "UNSUPPORTED"
-                              ? `⊘ ${res.result.summary}`
-                              : `✗ ${res.result.summary}`}
-                          </p>
+                                ? `⊘ ${res.result.summary}`
+                                : `✗ ${res.result.summary}`}
+                            </p>
+                            {executedAt || triggeredBy ? (
+                              <p className="dashboard-subtle">
+                                {triggeredBy ? `Triggered by ${triggeredBy}` : null}
+                                {triggeredBy && executedAt ? " · " : null}
+                                {executedAt ? new Date(executedAt).toLocaleString() : null}
+                              </p>
+                            ) : null}
+                            {topologyHref && res.result.status === "COMPLETED" ? (
+                              <p style={{ marginTop: "6px" }}>
+                                <Link href={topologyHref}>Verify recovery in Topology</Link>
+                              </p>
+                            ) : null}
+                            <button
+                              className="secondary-button ai-action-btn"
+                              style={{ marginTop: "8px" }}
+                              data-action="api"
+                              data-endpoint="/remediation/execute"
+                              disabled={executing === sa.action || isBlocked}
+                              onClick={() => executeAction(sa.action, sa.requiresApproval)}
+                            >
+                              {executing === sa.action ? "Running…" : "Run again"}
+                            </button>
+                          </div>
+                        ) : configureTarget && isBlocked ? (
+                          <Link className="primary-button ai-action-btn" href={configureTarget.href}>
+                            {primaryActionButtonLabel(sa.action, sa.state)}
+                          </Link>
                         ) : (
                           <button
                             className="primary-button ai-action-btn"
@@ -939,15 +1157,7 @@ export default function IncidentDetailPage() {
                               ? "Running…"
                               : sa.action === "REVIEW_HTTP_EXPECTED_STATUS"
                               ? "Review and approve"
-                              : sa.state === "UNSUPPORTED"
-                              ? "Not available"
-                              : sa.state === "MISSING_CONTEXT"
-                              ? "Context missing"
-                              : sa.state === "MISCONFIGURED_ENV"
-                              ? "Not configured"
-                              : !sa.requiresApproval
-                              ? "Apply fix"
-                              : "Request approval"}
+                              : primaryActionButtonLabel(sa.action, sa.state)}
                           </button>
                         )}
                       </div>
@@ -999,6 +1209,11 @@ export default function IncidentDetailPage() {
             >
               Acknowledge / investigate
             </button>
+          ) : null}
+          {topologyHref ? (
+            <Link className="secondary-button" href={topologyHref}>
+              {topologyCtaLabel}
+            </Link>
           ) : null}
           {incident.status === "INVESTIGATING" || incident.status === "MONITORING" ? (
             <button

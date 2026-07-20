@@ -45,6 +45,7 @@ export type TopologyNodeContext = {
   lastCheckAt: string | null;
   lastCheckStatus: string | null;
   sloStatus: string | null;
+  recoveryState?: "RECOVERING" | "VERIFYING" | "RECOVERED" | null;
   openAlerts: Array<{ id: string; title: string; severity: string; status: string }>;
   unresolvedIncidents: Array<{ id: string; title: string; severity: string; status: string }>;
   upstreamIds: string[];

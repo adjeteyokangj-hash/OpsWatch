@@ -36,7 +36,8 @@ const topology: ProjectTopologyResponse = {
       openAlerts: [{ id: "alert-1", title: "Redis unreachable", severity: "CRITICAL", status: "OPEN" }],
       unresolvedIncidents: [],
       upstreamIds: [],
-      downstreamIds: []
+      downstreamIds: [],
+      recoveryState: "RECOVERING"
     }
   }
 };
@@ -57,6 +58,7 @@ describe("TopologyNodeDrawer", () => {
     expect(screen.getByText(/Why health is unknown/i)).toBeInTheDocument();
     expect(screen.getByText(/no completed check or heartbeat/i)).toBeInTheDocument();
     expect(screen.getByText("Open alerts")).toBeInTheDocument();
+    expect(screen.getByText("Recovering")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /view checks/i })).toHaveAttribute(
       "href",
       "/checks?projectId=proj-1&serviceId=redis"

@@ -388,6 +388,7 @@ export default function ProjectTopologyPage() {
   }, [load, paused]);
 
   // Deep-link restore after Connect provider → returnTo=?edgeId=
+  // Also support ?entityId= / ?nodeId= / ?incidentId= for incident recovery flows.
   useEffect(() => {
     if (!topology || restoredEdgeId) return;
     const edgeId = searchParams.get("edgeId");
@@ -403,6 +404,18 @@ export default function ProjectTopologyPage() {
     setSelectedNodeId(null);
     setRestoredEdgeId(edgeId);
   }, [topology, searchParams, restoredEdgeId]);
+
+  useEffect(() => {
+    if (!topology) return;
+    const entityId = searchParams.get("entityId") ?? searchParams.get("nodeId");
+    if (!entityId) return;
+    const node =
+      topology.nodes.find((row) => row.id === entityId) ??
+      topology.nodes.find((row) => topology.nodeContext[row.id]?.canonical?.legacyServiceId === entityId);
+    if (!node) return;
+    setSelectedNodeId(node.id);
+    setSelectedEdge(null);
+  }, [topology, searchParams]);
 
   const enableAutonomousMode = useCallback(async () => {
     if (!projectId) return;
