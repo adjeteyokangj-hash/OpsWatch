@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Shell } from "../../../../components/layout/shell";
 import { Header } from "../../../../components/layout/header";
+import { PageSection } from "../../../../components/ui/page-section";
 import { apiFetch } from "../../../../lib/api";
 
 export default function ProjectActivityPage() {
@@ -22,19 +23,31 @@ export default function ProjectActivityPage() {
   return (
     <Shell>
       <Header title="Project Activity" />
-      <section className="panel">
-        {!project ? <p>Loading activity...</p> : (
+      <PageSection
+        title="Recent events"
+        description="Latest heartbeat and operational events for this application."
+        persistKey={`project:${params.projectId}:activity:events`}
+      >
+        {!project ? (
+          <p>Loading activity...</p>
+        ) : (
           <>
-            <p><strong>Latest heartbeat:</strong> {project.heartbeats?.[0]?.receivedAt ? new Date(project.heartbeats[0].receivedAt).toLocaleString() : "-"}</p>
-            <h2>Recent events</h2>
+            <p>
+              <strong>Latest heartbeat:</strong>{" "}
+              {project.heartbeats?.[0]?.receivedAt
+                ? new Date(project.heartbeats[0].receivedAt).toLocaleString()
+                : "-"}
+            </p>
             <ul>
               {(project.events || []).map((event: any) => (
-                <li key={event.id}>{new Date(event.createdAt).toLocaleString()} - {event.type}</li>
+                <li key={event.id}>
+                  {new Date(event.createdAt).toLocaleString()} - {event.type}
+                </li>
               ))}
             </ul>
           </>
         )}
-      </section>
+      </PageSection>
     </Shell>
   );
 }

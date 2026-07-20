@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "../../lib/api";
+import { PageSection } from "../ui/page-section";
 import { StatusBadge } from "../ui/status-badge";
 
 type Phase7Run = {
@@ -69,17 +70,17 @@ export function IncidentRemediationTimeline({ incidentId, projectId }: Props) {
   }, [incidentId, projectId]);
 
   return (
-    <section className="panel" data-testid="incident-remediation-timeline">
-      <div className="section-head">
-        <div>
-          <h2>Remediation timeline</h2>
-          <p>Approvals, execution runs, verification, and rollback for this incident.</p>
-        </div>
+    <PageSection
+      title="Remediation timeline"
+      description="Approvals, execution runs, verification, and rollback for this incident."
+      persistKey={`incident:${incidentId}:remediation-timeline`}
+      data-testid="incident-remediation-timeline"
+      actions={
         <Link className="secondary-button" href="/automation">
           Automation workspace
         </Link>
-      </div>
-
+      }
+    >
       {loading ? <p>Loading remediation history…</p> : null}
       {error ? <p className="error-panel">{error}</p> : null}
 
@@ -122,6 +123,6 @@ export function IncidentRemediationTimeline({ incidentId, projectId }: Props) {
           ))}
         </ol>
       ) : null}
-    </section>
+    </PageSection>
   );
 }

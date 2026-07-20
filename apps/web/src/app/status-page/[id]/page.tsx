@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Shell } from "../../../components/layout/shell";
 import { Header } from "../../../components/layout/header";
+import { PageSection } from "../../../components/ui/page-section";
 import { apiFetch } from "../../../lib/api";
 
 export default function StatusPageDetail() {
@@ -24,7 +25,7 @@ export default function StatusPageDetail() {
   return (
     <Shell>
       <Header title="Status Page" />
-      <section className="panel">
+      <PageSection title="Status page details" persistKey="org:status-page:detail">
         {!page ? <p>Loading status page...</p> : (
           <>
             <p><strong>Title:</strong> {page.title}</p>
@@ -35,7 +36,7 @@ export default function StatusPageDetail() {
             <Link className="primary-button" href="/org">Back to Organization</Link>
           </>
         )}
-      </section>
+      </PageSection>
     </Shell>
   );
 }

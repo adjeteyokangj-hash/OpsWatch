@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Shell } from "../../../../components/layout/shell";
 import { Header } from "../../../../components/layout/header";
+import { PageSection } from "../../../../components/ui/page-section";
 import { apiFetch } from "../../../../lib/api";
 
 type ActionAccuracy = {
@@ -97,17 +98,22 @@ export default function ActionAccuracyDetailPage() {
             </article>
           </section>
 
-          <section className="panel">
-            <h2>Policy + suppression</h2>
+          <PageSection
+            title="Policy + suppression"
+            persistKey={`org:accuracy:action:${actionKey}:policy`}
+          >
             <p><strong>Impact tier:</strong> {action.impactTier}</p>
             <p><strong>Suppressed:</strong> {action.suppressed ? "Yes" : "No"}</p>
             <p><strong>Underconfidence count:</strong> {action.underconfidenceCount}</p>
             <p><strong>Auto-run executions:</strong> {autoAction?.total ?? 0}</p>
             <p><strong>Auto-run success:</strong> {autoAction?.successRate ?? "-"}%</p>
-          </section>
+          </PageSection>
 
-          <section className="panel">
-            <h2>Recommended policy changes</h2>
+          <PageSection
+            title="Recommended policy changes"
+            persistKey={`org:accuracy:action:${actionKey}:recommendations`}
+            defaultCollapsed
+          >
             {action.suppressed ? (
               <p>Keep this action in manual or approval mode until error rates improve.</p>
             ) : action.successRate >= 90 ? (
@@ -115,7 +121,7 @@ export default function ActionAccuracyDetailPage() {
             ) : (
               <p>Retain approval-required tier and monitor confidence drift.</p>
             )}
-          </section>
+          </PageSection>
         </>
       )}
     </Shell>

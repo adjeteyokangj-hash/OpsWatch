@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Shell } from "../../../../components/layout/shell";
 import { Header } from "../../../../components/layout/header";
+import { PageSection } from "../../../../components/ui/page-section";
 import { apiFetch } from "../../../../lib/api";
 
 type StripeSettings = {
@@ -320,27 +321,28 @@ export default function PlatformStripeAdminPage() {
     <Shell>
       <Header title="Stripe Billing Infrastructure" />
 
-      <section className="panel platform-billing-info-card">
-        <h2>How billing works</h2>
+      <PageSection
+        title="How billing works"
+        persistKey="org:admin:stripe:overview"
+      >
         <p>
           OpsWatch uses a single Stripe account to process subscription payments. Each customer organization is
           represented as a Stripe Customer within that account and maintains its own subscription, invoices, and billing
           history. This page configures the platform connection only.
         </p>
-      </section>
+      </PageSection>
 
       <section className="two-col settings-grid provider-layout">
-        <section className="panel">
-          <div className="section-head">
-            <div>
-              <h2>Platform payment connection</h2>
-              <p>
-                {loading
-                  ? "Loading..."
-                  : "Configure the single Stripe account OpsWatch uses to collect subscription payments from all organizations."}
-              </p>
-            </div>
-            {needsValidation ? (
+        <PageSection
+          title="Platform payment connection"
+          description={
+            loading
+              ? "Loading..."
+              : "Configure the single Stripe account OpsWatch uses to collect subscription payments from all organizations."
+          }
+          persistKey="org:admin:stripe:connection"
+          actions={
+            needsValidation ? (
               <button
                 type="button"
                 className={`connection-status connection-status--${lifecycleDisplay.tone} connection-status--clickable`}
@@ -355,9 +357,9 @@ export default function PlatformStripeAdminPage() {
                 <span aria-hidden="true">{lifecycleDisplay.icon}</span>
                 <span>{lifecycleDisplay.label}</span>
               </span>
-            )}
-          </div>
-
+            )
+          }
+        >
           {error ? <section className="panel error-panel platform-workflow-banner">{error}</section> : null}
           {message ? <section className="panel success-panel platform-workflow-banner">{message}</section> : null}
 
@@ -434,12 +436,14 @@ export default function PlatformStripeAdminPage() {
               </button>
             </div>
           </form>
-        </section>
+        </PageSection>
 
         <aside className="provider-layout__aside">
-          <section className="panel provider-dashboard">
-            <h2>Connection health</h2>
-
+          <PageSection
+            title="Connection health"
+            className="provider-dashboard"
+            persistKey="org:admin:stripe:health"
+          >
             <div className={`mode-banner mode-banner--${runtimeStatus.tone}`}>
               <strong>{runtimeStatus.title}</strong>
               <p>{runtimeStatus.body}</p>
@@ -499,14 +503,15 @@ export default function PlatformStripeAdminPage() {
             {settings?.mode === "live" ? (
               <div className="mode-banner mode-banner--live">Production payments enabled.</div>
             ) : null}
-          </section>
+          </PageSection>
 
           {legacy.length > 0 ? (
-            <section className="panel">
-              <h2>Legacy project Stripe records</h2>
-              <p className="table-subtle">
-                These project integrations still contain Stripe credentials. Review manually — do not auto-migrate.
-              </p>
+            <PageSection
+              title="Legacy project Stripe records"
+              description="These project integrations still contain Stripe credentials. Review manually — do not auto-migrate."
+              persistKey="org:admin:stripe:legacy"
+              defaultCollapsed
+            >
               <ul className="validation-health-list">
                 {legacy.map((row) => (
                   <li key={row.integrationId}>
@@ -517,7 +522,7 @@ export default function PlatformStripeAdminPage() {
                   </li>
                 ))}
               </ul>
-            </section>
+            </PageSection>
           ) : null}
         </aside>
       </section>

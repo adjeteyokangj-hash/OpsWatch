@@ -22,14 +22,22 @@ export function RecentIncidents({
 }) {
   if (loading) {
     return (
-      <PageSection title="Recent incidents" description="Active incidents requiring operator attention.">
+      <PageSection
+        title="Recent incidents"
+        description="Active incidents requiring operator attention."
+        persistKey="org:dashboard:recent-incidents"
+      >
         <p>Loading incidents…</p>
       </PageSection>
     );
   }
 
   return (
-    <PageSection title="Recent incidents" description="Active incidents requiring operator attention.">
+    <PageSection
+      title="Recent incidents"
+      description="Active incidents requiring operator attention."
+      persistKey="org:dashboard:recent-incidents"
+    >
       {items.length === 0 ? (
         <EmptyState
           title="No active incidents"

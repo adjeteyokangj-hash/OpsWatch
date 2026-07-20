@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Shell } from "../../../../components/layout/shell";
 import { Header } from "../../../../components/layout/header";
+import { PageSection } from "../../../../components/ui/page-section";
 import { apiFetch } from "../../../../lib/api";
 
 export default function NotificationChannelDetailPage() {
@@ -23,7 +24,7 @@ export default function NotificationChannelDetailPage() {
   return (
     <Shell>
       <Header title="Notification Channel" />
-      <section className="panel">
+      <PageSection title="Channel details" persistKey="org:settings:notifications:detail">
         {!channel ? <p>Loading channel...</p> : (
           <>
             <p><strong>Name:</strong> {channel.name}</p>
@@ -35,7 +36,7 @@ export default function NotificationChannelDetailPage() {
             <p><strong>Last successful delivery:</strong> Not yet available</p>
           </>
         )}
-      </section>
+      </PageSection>
     </Shell>
   );
 }

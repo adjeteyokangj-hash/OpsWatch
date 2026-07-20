@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
+import { PageSection } from "../../components/ui/page-section";
 import { apiFetch } from "../../lib/api";
 import {
   canRevokeApiKey,
@@ -365,13 +366,11 @@ export default function OrgPage() {
           </section>
 
           <section className="two-col">
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>Organization details</h2>
-                  <p>Update your organization name.</p>
-                </div>
-              </div>
+            <PageSection
+              title="Organization details"
+              description="Update your organization name."
+              persistKey="org:org:details"
+            >
               <form className="stack-form" onSubmit={(e) => void handleSaveName(e)}>
                 <label>
                   Organization name
@@ -387,15 +386,13 @@ export default function OrgPage() {
                 </label>
                 <button type="submit" disabled={saving} data-action="api" data-endpoint="/org">{saving ? "Saving…" : "Save changes"}</button>
               </form>
-            </section>
+            </PageSection>
 
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>Create status page</h2>
-                  <p>Publish a public-facing status page for your clients.</p>
-                </div>
-              </div>
+            <PageSection
+              title="Create status page"
+              description="Publish a public-facing status page for your clients."
+              persistKey="org:org:status-page-create"
+            >
               <form className="stack-form" onSubmit={(e) => void handleCreateStatusPage(e)}>
                 <label>
                   Title
@@ -448,14 +445,11 @@ export default function OrgPage() {
                 </label>
                 <button type="submit" disabled={saving} data-action="api" data-endpoint="/org/status-pages">{saving ? "Creating…" : "Create status page"}</button>
               </form>
-            </section>
+            </PageSection>
           </section>
 
           {statusPages.length > 0 ? (
-            <section className="panel">
-              <div className="section-head">
-                <div><h2>Status pages</h2></div>
-              </div>
+            <PageSection title="Status pages" persistKey="org:org:status-pages">
               <table className="data-table">
                 <thead>
                   <tr>
@@ -486,18 +480,18 @@ export default function OrgPage() {
                   ))}
                 </tbody>
               </table>
-            </section>
+            </PageSection>
           ) : null}
 
           <section className="api-access-grid">
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>API Keys &amp; Access</h2>
-                  <p>Manage secure access for external systems and integrations.</p>
-                </div>
+            <PageSection
+              title="API Keys & Access"
+              description="Manage secure access for external systems and integrations."
+              persistKey="org:org:api-keys"
+              actions={
                 <button type="button" className="primary-button" onClick={() => setShowCreateKeyModal(true)} data-action="local-ui">+ Create API Key</button>
-              </div>
+              }
+            >
               <div className="hint-panel">
                 <strong>How to create an API key</strong>
                 <ol>
@@ -592,15 +586,13 @@ export default function OrgPage() {
                   </table>
                 </div>
               )}
-            </section>
+            </PageSection>
 
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>API Usage</h2>
-                  <p>Access activity over the last 24 hours.</p>
-                </div>
-              </div>
+            <PageSection
+              title="API Usage"
+              description="Access activity over the last 24 hours."
+              persistKey="org:org:api-usage"
+            >
               <div className="stack-form">
                 <label>
                   Last 24h requests
@@ -615,7 +607,7 @@ export default function OrgPage() {
                   <input value={apiUsage ? String(apiUsage.activeKeys) : "0"} disabled />
                 </label>
               </div>
-            </section>
+            </PageSection>
           </section>
         </>
       ) : null}

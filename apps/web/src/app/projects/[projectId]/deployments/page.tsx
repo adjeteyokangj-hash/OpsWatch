@@ -76,7 +76,11 @@ export default function ProjectDeploymentsPage() {
     >
       {dataError ? <section className="panel error-panel">{dataError}</section> : null}
 
-      <PageSection title="Deploy-related change events" description="Sourced from /change-events for this application.">
+      <PageSection
+        title="Deploy-related change events"
+        description="Sourced from /change-events for this application."
+        persistKey={`project:${projectId}:deployments:change-events`}
+      >
         {dataLoading ? <p>Loading change events…</p> : null}
         {!dataLoading && deployLikeEvents.length === 0 ? (
           <EmptyState
@@ -102,6 +106,7 @@ export default function ProjectDeploymentsPage() {
       <PageSection
         title="Calculated deployment correlation"
         description="Application deployment records with alerts/incidents observed in the configured time window. Correlation is not causation."
+        persistKey={`project:${projectId}:deployments:correlation`}
       >
         {deployments.length === 0 ? (
           <EmptyState title="No deployment intelligence yet" description="Records populate from change events via the intelligence foundation." />

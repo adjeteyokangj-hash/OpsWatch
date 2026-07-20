@@ -74,7 +74,7 @@ export default function ProjectChecksPage() {
           <p>Loading checks…</p>
         </section>
       ) : (
-        <CheckResultsTable rows={checks} />
+        <CheckResultsTable rows={checks} projectId={params.projectId} />
       )}
     </ProjectWorkspaceShell>
   );

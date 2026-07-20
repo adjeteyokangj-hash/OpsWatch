@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ProviderConfigForm } from "../../../../../components/integrations/provider-config-form";
 import { ProviderDashboard } from "../../../../../components/integrations/provider-dashboard";
 import { ProjectWorkspaceShell } from "../../../../../components/projects/project-workspace-shell";
+import { PageSection } from "../../../../../components/ui/page-section";
 import { useProjectWorkspace } from "../../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../../lib/api";
 import {
@@ -250,14 +251,11 @@ export default function ProviderIntegrationDetailPage() {
       ) : null}
 
       <section className="two-col settings-grid provider-layout">
-        <section className="panel">
-          <div className="section-head">
-            <div>
-              <h2>Connection settings</h2>
-              <p>{loading ? "Loading integration..." : "Save credentials and provider settings, then validate the connection."}</p>
-            </div>
-          </div>
-
+        <PageSection
+          title="Connection settings"
+          description={loading ? "Loading integration..." : "Save credentials and provider settings, then validate the connection."}
+          persistKey={`project:${params.projectId}:integrations:${providerType.toLowerCase()}:settings`}
+        >
           <form className="stack-form" onSubmit={saveConfiguration}>
             <ProviderConfigForm
               type={providerType as IntegrationType}
@@ -297,7 +295,7 @@ export default function ProviderIntegrationDetailPage() {
               </button>
             </div>
           </form>
-        </section>
+        </PageSection>
 
         <div className="provider-layout__aside">
           <ProviderDashboard
@@ -307,10 +305,13 @@ export default function ProviderIntegrationDetailPage() {
             onValidate={() => void validateConnection()}
             onDisconnect={() => void disconnectIntegration()}
             disableActions={saving || validating}
+            persistKey={`project:${params.projectId}:integrations:${providerType.toLowerCase()}:dashboard`}
           />
 
-          <aside className="panel">
-            <h2>Setup guide</h2>
+          <PageSection
+            title="Setup guide"
+            persistKey={`project:${params.projectId}:integrations:${providerType.toLowerCase()}:guide`}
+          >
             {providerType === "WEBHOOK" ? (
               <>
                 <p>Ask the client for a public HTTPS webhook URL that accepts OpsWatch events.</p>
@@ -327,7 +328,7 @@ export default function ProviderIntegrationDetailPage() {
             <Link className="secondary-button" href={returnTo ?? `/projects/${params.projectId}`}>
               {returnTo ? "← Back to topology" : "Back to project"}
             </Link>
-          </aside>
+          </PageSection>
         </div>
       </section>
     </ProjectWorkspaceShell>

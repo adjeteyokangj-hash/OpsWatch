@@ -31,6 +31,7 @@ import {
 } from "../../../../components/topology/topology-relationship";
 import { TopologyRelationshipSummary } from "../../../../components/topology/topology-relationship-summary";
 import { TopologyKey } from "../../../../components/topology/topology-key";
+import { PageSection } from "../../../../components/ui/page-section";
 import {
   TopologyRelationshipDrawer,
   evaluateRelationshipAutomation
@@ -692,22 +693,23 @@ export default function ProjectTopologyPage() {
               onViewModeChange={setViewMode}
             />
             <TopologyRelationshipSummary topology={topology} diagnostics={relationshipDiagnostics} />
-            <TopologyKey />
-            <section className="panel" aria-label="Topology history availability" data-testid="topology-history-state">
-              <div className="panel-heading-row">
-                <div>
-                  <h2>Live topology</h2>
-                  <p className="dashboard-subtle">
-                    This map shows the current persisted topology. Historical topology replay is unavailable.
-                  </p>
-                </div>
-                <span className="result-pill pass" data-testid="topology-live-label">Live verified</span>
-              </div>
+            <TopologyKey projectId={projectId} />
+            <PageSection
+              title="Live topology"
+              description="This map shows the current persisted topology. Historical topology replay is unavailable."
+              persistKey={`project:${projectId}:topology:live-info`}
+              data-testid="topology-history-state"
+              actions={
+                <span className="result-pill pass" data-testid="topology-live-label">
+                  Live verified
+                </span>
+              }
+            >
               <p className="field-hint">
                 Use Operations Timeline for persisted alert, incident, check, deployment, dependency, and
                 remediation event history. Timeline events do not reconstruct an earlier graph.
               </p>
-            </section>
+            </PageSection>
             <div className={`topology-workspace${sideStackCollapsed ? " topology-workspace--side-collapsed" : ""}`}>
               {viewMode === "map" ? (
                 <TopologyCanvas
@@ -799,16 +801,17 @@ export default function ProjectTopologyPage() {
                 {!selectedEdge && !selectedNode ? (
                   <TopologyApplicationPanel topology={topology} projectId={projectId} project={project} />
                 ) : null}
-                <section className="panel topology-intel-slot" id="incident-memory">
-                  <h3>Incident memory</h3>
-                  <p className="dashboard-subtle">
-                    Relationship-level learning appears when you select an edge on the map. Predictions stay disabled;
-                    patterns and deploy correlation live on the Intelligence tab when evidence exists.
-                  </p>
+                <PageSection
+                  title="Incident memory"
+                  description="Relationship-level learning appears when you select an edge on the map. Predictions stay disabled; patterns and deploy correlation live on the Intelligence tab when evidence exists."
+                  className="topology-intel-slot"
+                  persistKey={`project:${projectId}:topology:incident-memory`}
+                  defaultCollapsed
+                >
                   <Link className="text-link" href={`/projects/${projectId}/insights`}>
                     Open Intelligence →
                   </Link>
-                </section>
+                </PageSection>
               </div>
             </div>
           </>

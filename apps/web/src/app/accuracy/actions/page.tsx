@@ -5,6 +5,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Shell } from "../../../components/layout/shell";
 import { Header } from "../../../components/layout/header";
+import { PageSection } from "../../../components/ui/page-section";
 import { apiFetch } from "../../../lib/api";
 
 type ActionAccuracy = {
@@ -74,7 +75,12 @@ function AccuracyActionsContent() {
       ) : rows.length === 0 ? (
         <section className="panel">No action analytics found.</section>
       ) : (
-        <section className="panel">
+        <PageSection
+          title="Action analytics"
+          description="Per-action success, overconfidence, and suppression status."
+          persistKey="org:accuracy:actions-list"
+          defaultCollapsed
+        >
           <table className="data-table">
             <thead>
               <tr>
@@ -97,7 +103,7 @@ function AccuracyActionsContent() {
               ))}
             </tbody>
           </table>
-        </section>
+        </PageSection>
       )}
     </Shell>
   );

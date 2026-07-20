@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { HealthBadge } from "./health-badge";
+import { PageSection } from "../ui/page-section";
 
 type AppRow = {
   id: string;
@@ -21,10 +22,9 @@ export function DashboardAppStatusTable({ rows, loading }: { rows: AppRow[]; loa
 
   if (loading) {
     return (
-      <section className="panel">
-        <h2>Application Status</h2>
+      <PageSection title="Application Status" persistKey="org:dashboard:app-status">
         <p>Loading applications…</p>
-      </section>
+      </PageSection>
     );
   }
 
@@ -36,11 +36,11 @@ export function DashboardAppStatusTable({ rows, loading }: { rows: AppRow[]; loa
   };
 
   return (
-    <section className="panel">
-      <div className="panel-heading-row">
-        <h2>Application Status</h2>
-        <Link href="/apps">View all apps</Link>
-      </div>
+    <PageSection
+      title="Application Status"
+      persistKey="org:dashboard:app-status"
+      actions={<Link href="/apps">View all apps</Link>}
+    >
       {rows.length === 0 ? (
         <p>No applications configured yet.</p>
       ) : (
@@ -73,6 +73,6 @@ export function DashboardAppStatusTable({ rows, loading }: { rows: AppRow[]; loa
           </table>
         </div>
       )}
-    </section>
+    </PageSection>
   );
 }

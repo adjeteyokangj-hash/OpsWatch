@@ -153,6 +153,7 @@ export default function AutomationHubPage() {
       <PageSection
         title="Filters"
         description="Organisation-scoped real records. Apply filters then refresh."
+        persistKey="org:automation:filters"
       >
         <div className="form-grid" data-testid="automation-workspace-filters">
           {(
@@ -194,7 +195,11 @@ export default function AutomationHubPage() {
         </div>
       </PageSection>
 
-      <PageSection title="Pending approvals" description="Authorised decisions with expiry and revalidation.">
+      <PageSection
+        title="Pending approvals"
+        description="Authorised decisions with expiry and revalidation."
+        persistKey="org:automation:pending-approvals"
+      >
         {approvals.length === 0 ? (
           <EmptyState title="No pending approvals" description="Approval requests appear when policy requires them." />
         ) : (
@@ -247,6 +252,7 @@ export default function AutomationHubPage() {
       <PageSection
         title="Remediation runs"
         description="Execution, verification, and rollback states with shared correlation IDs."
+        persistKey="org:automation:runs"
       >
         {error ? <p className="error-panel">{error}</p> : null}
         {loading ? <p>Loading remediation runs…</p> : null}

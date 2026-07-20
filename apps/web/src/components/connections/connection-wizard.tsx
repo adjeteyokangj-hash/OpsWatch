@@ -20,6 +20,7 @@ import {
 } from "./connection-form-state";
 import { ConnectionWizardSummary } from "./connection-wizard-summary";
 import { StatusBadge } from "../ui/status-badge";
+import { PageSection } from "../ui/page-section";
 import {
   AUTH_TYPES,
   CONNECTION_ENVIRONMENTS,
@@ -220,19 +221,18 @@ export function ConnectionWizard({
   const discovered = discoveredServiceNames(testResult?.discoveredServices);
 
   return (
-    <section className="panel connection-wizard" aria-label="Add connection">
-      <div className="connection-wizard__header">
-        <div>
-          <h2>{editingConnectionId ? "Edit monitoring connection" : "Connect monitoring source"}</h2>
-          <p className="dashboard-subtle">
-            Guided setup for external monitoring connections. Provider-neutral labels only; credentials stay write-only.
-          </p>
-        </div>
+    <PageSection
+      className="connection-wizard"
+      title={editingConnectionId ? "Edit monitoring connection" : "Connect monitoring source"}
+      description="Guided setup for external monitoring connections. Provider-neutral labels only; credentials stay write-only."
+      persistKey="org:connections:wizard"
+      aria-label="Add connection"
+      actions={
         <button type="button" className="secondary-button" onClick={onCancel}>
           Cancel
         </button>
-      </div>
-
+      }
+    >
       {error ? (
         <div className="panel error-panel" role="alert">
           {error}
@@ -684,6 +684,6 @@ export function ConnectionWizard({
 
         <ConnectionWizardSummary form={form} projects={projects} step={step} testSucceeded={testSucceeded} />
       </div>
-    </section>
+    </PageSection>
   );
 }

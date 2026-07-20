@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PageSection } from "../ui/page-section";
 
 type RelatedIncident = {
   id: string;
@@ -24,12 +25,14 @@ export const IncidentOrgCorrelationPanel = ({ correlationGroup, currentIncidentI
   if (others.length === 0) return null;
 
   return (
-    <section className="panel">
-      <h2>Cross-application correlation</h2>
-      <p className="content">
-        {correlationGroup.rootCauseSummary ??
-          "This incident is linked to related failures across multiple applications in your organization."}
-      </p>
+    <PageSection
+      title="Cross-application correlation"
+      description={
+        correlationGroup.rootCauseSummary ??
+        "This incident is linked to related failures across multiple applications in your organization."
+      }
+      persistKey={`incident:${currentIncidentId}:org-correlation`}
+    >
       <p className="metric-label">Correlation key: {correlationGroup.correlationKey}</p>
       <ul className="list">
         {others.map((row) => (
@@ -43,6 +46,6 @@ export const IncidentOrgCorrelationPanel = ({ correlationGroup, currentIncidentI
       {correlationGroup.primaryIncidentId === currentIncidentId ? (
         <p className="content">This incident is the primary incident for the organization-wide group.</p>
       ) : null}
-    </section>
+    </PageSection>
   );
 };

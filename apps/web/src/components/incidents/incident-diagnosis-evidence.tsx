@@ -1,10 +1,12 @@
+import { PageSection } from "../ui/page-section";
 import type { DiagnosisResult } from "./incident-diagnosis-types";
 
 type Props = {
+  incidentId: string;
   diagnosis: DiagnosisResult;
 };
 
-export function IncidentDiagnosisEvidence({ diagnosis }: Props) {
+export function IncidentDiagnosisEvidence({ incidentId, diagnosis }: Props) {
   const rootName = diagnosis.dependencyImpact?.probableRootCause?.serviceName;
   const reasons = diagnosis.diagnosisReasons ?? [];
   const hasContent = Boolean(rootName) || reasons.length > 0 || (diagnosis.evidence?.length ?? 0) > 0;
@@ -12,8 +14,11 @@ export function IncidentDiagnosisEvidence({ diagnosis }: Props) {
   if (!hasContent) return null;
 
   return (
-    <section className="panel incident-evidence-panel">
-      <h2>Why OpsWatch selected {rootName ?? "this root cause"}</h2>
+    <PageSection
+      title={`Why OpsWatch selected ${rootName ?? "this root cause"}`}
+      className="incident-evidence-panel"
+      persistKey={`incident:${incidentId}:diagnosis-evidence`}
+    >
       {reasons.length > 0 ? (
         <ul className="diagnosis-reason-list">
           {reasons.map((reason) => (
@@ -38,6 +43,6 @@ export function IncidentDiagnosisEvidence({ diagnosis }: Props) {
       {diagnosis.dependencyImpact?.narrative ? (
         <p className="dashboard-subtle incident-evidence-narrative">{diagnosis.dependencyImpact.narrative}</p>
       ) : null}
-    </section>
+    </PageSection>
   );
 }

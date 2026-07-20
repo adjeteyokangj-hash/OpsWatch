@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { ProjectConnectionsPanel } from "../../../components/integrations/project-connections-panel";
 import { ProjectWorkspaceShell } from "../../../components/projects/project-workspace-shell";
+import { PageSection } from "../../../components/ui/page-section";
 import { apiFetch } from "../../../lib/api";
 import {
   formatRelativeTime,
@@ -122,14 +123,18 @@ export default function ProjectIntegrationsPage() {
           <p>Loading connections…</p>
         </section>
       ) : (
-        <section className="panel">
+        <PageSection
+          title="Provider connections"
+          description="Operational integration tiles and validation status for this application."
+          persistKey={`project:${projectId}:integrations:connections`}
+        >
           <ProjectConnectionsPanel
             project={project}
             integrations={integrations}
             validatingKey={validatingKey}
             onValidate={validateIntegration}
           />
-        </section>
+        </PageSection>
       )}
     </ProjectWorkspaceShell>
   );

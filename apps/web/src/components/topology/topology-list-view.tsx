@@ -1,3 +1,4 @@
+import { PageSection } from "../ui/page-section";
 import type { ProjectTopologyResponse, TopologyHealthStatus, TopologyNodeType } from "./topology-types";
 import { canonicalDiscoveryLabel, healthClassName, healthLabel } from "./topology-types";
 
@@ -56,7 +57,12 @@ export function TopologyListView({
   });
 
   return (
-    <section className="topology-list-view panel">
+    <PageSection
+      title="Node list"
+      description="Filtered topology nodes in tabular form."
+      className="topology-list-view"
+      persistKey={`project:${topology.project.id}:topology:list`}
+    >
       <table className="data-table">
         <thead>
           <tr>
@@ -92,6 +98,6 @@ export function TopologyListView({
         </tbody>
       </table>
       {rows.length === 0 ? <p className="dashboard-subtle topology-list-empty">No nodes match the current filters.</p> : null}
-    </section>
+    </PageSection>
   );
 }

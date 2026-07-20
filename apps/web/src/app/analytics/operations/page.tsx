@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Shell } from "../../../components/layout/shell";
 import { Header } from "../../../components/layout/header";
+import { PageSection } from "../../../components/ui/page-section";
 import { StatCard } from "../../../components/dashboard/stat-card";
 import { StatusBadge } from "../../../components/ui/status-badge";
 import { apiFetch } from "../../../lib/api";
@@ -92,45 +93,41 @@ export default function OperationsAnalyticsPage() {
         <section className="panel">Loading analytics…</section>
       ) : (
         <>
-          <section className="panel">
-            <h2>Incident response</h2>
+          <PageSection title="Incident response" persistKey="org:analytics:incidents">
             <div className="four-col">
               <StatCard label="Opened" value={String(data.incidents.opened)} />
               <StatCard label="Resolved" value={String(data.incidents.resolved)} />
               <StatCard label="MTTA" value={formatMinutes(data.incidents.mttaMinutes)} />
               <StatCard label="MTTR" value={formatMinutes(data.incidents.mttrMinutes)} />
             </div>
-          </section>
+          </PageSection>
 
-          <section className="panel">
-            <h2>Automation</h2>
+          <PageSection title="Automation" persistKey="org:analytics:automation">
             <div className="four-col">
               <StatCard label="Total runs" value={String(data.automation.totalRuns)} />
               <StatCard label="Success rate" value={data.automation.successRate != null ? `${data.automation.successRate}%` : "—"} />
               <StatCard label="Autonomous" value={String(data.automation.autonomousRuns)} />
               <StatCard label="Awaiting approval" value={String(data.automation.approvalPendingRuns)} />
             </div>
-          </section>
+          </PageSection>
 
-          <section className="panel">
-            <h2>Correlation &amp; maintenance</h2>
+          <PageSection title="Correlation & maintenance" persistKey="org:analytics:correlation">
             <div className="four-col">
               <StatCard label="Correlated groups" value={String(data.correlation.correlatedGroups)} />
               <StatCard label="Avg alerts / incident" value={data.correlation.avgAlertsPerIncident != null ? String(data.correlation.avgAlertsPerIncident) : "—"} />
               <StatCard label="Active maintenance" value={String(data.maintenance.activeWindows)} />
               <StatCard label="Suppressed alerts" value={String(data.maintenance.suppressedAlerts)} />
             </div>
-          </section>
+          </PageSection>
 
-          <section className="panel">
-            <h2>Playbook governance</h2>
+          <PageSection title="Playbook governance" persistKey="org:analytics:playbooks">
             <div className="four-col">
               <StatCard label="Active playbooks" value={String(data.playbooks.activePlaybooks)} />
               <StatCard label="Approved versions" value={String(data.playbooks.approvedVersions)} />
               <StatCard label="Draft versions" value={String(data.playbooks.draftVersions)} />
               <StatCard label="In review" value={String(data.playbooks.inReviewVersions)} />
             </div>
-          </section>
+          </PageSection>
         </>
       )}
     </Shell>

@@ -5,6 +5,7 @@ import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
 import { IntegrationsOverviewSummary } from "../../components/integrations/integrations-overview-summary";
 import { ProjectIntegrationRow } from "../../components/integrations/project-integration-row";
+import { PageSection } from "../../components/ui/page-section";
 import { apiFetch } from "../../lib/api";
 import {
   summarizeOrganizationIntegrations,
@@ -79,14 +80,11 @@ export default function IntegrationsPage() {
 
       <IntegrationsOverviewSummary summary={orgSummary} projectCount={projects.length} />
 
-      <section className="panel">
-        <div className="section-head">
-          <div>
-            <h2>Applications</h2>
-            <p>{loading ? "Loading applications..." : "Expand one application at a time to review connection health."}</p>
-          </div>
-        </div>
-
+      <PageSection
+        title="Applications"
+        description={loading ? "Loading applications..." : "Expand one application at a time to review connection health."}
+        persistKey="org:integrations:applications"
+      >
         {loading ? (
           <p>Loading integrations...</p>
         ) : projects.length === 0 ? (
@@ -108,7 +106,7 @@ export default function IntegrationsPage() {
             ))}
           </div>
         )}
-      </section>
+      </PageSection>
     </Shell>
   );
 }

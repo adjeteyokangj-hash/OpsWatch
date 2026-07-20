@@ -1,7 +1,9 @@
+import { PageSection } from "../ui/page-section";
 import type { AppHealth, DiagnosisResult } from "./incident-diagnosis-types";
 import { layerLabel, statusLabel } from "./incident-diagnosis-types";
 
 type Props = {
+  incidentId: string;
   projectName: string;
   diagnosis: DiagnosisResult;
 };
@@ -12,7 +14,7 @@ const appHealthClass = (health: AppHealth): string => {
   return "incident-app-health down";
 };
 
-export function IncidentHealthSummary({ projectName, diagnosis }: Props) {
+export function IncidentHealthSummary({ incidentId, projectName, diagnosis }: Props) {
   const appHealth = diagnosis.appHealth ?? diagnosis.dependencyImpact?.appHealth ?? "HEALTHY";
   const root = diagnosis.dependencyImpact?.probableRootCause;
   const modules = diagnosis.layerImpacts?.filter((row) => row.layer === "MODULE") ?? [];
@@ -33,15 +35,13 @@ export function IncidentHealthSummary({ projectName, diagnosis }: Props) {
   }
 
   return (
-    <section className="panel incident-health-summary-panel">
-      <div className="incident-health-summary-head">
-        <div>
-          <p className="metric-label">Application health</p>
-          <h2 className="incident-health-app-name">{projectName}</h2>
-        </div>
-        <span className={appHealthClass(appHealth)}>{statusLabel(appHealth)}</span>
-      </div>
-
+    <PageSection
+      title={projectName}
+      description="Application health from dependency impact analysis."
+      className="incident-health-summary-panel"
+      persistKey={`incident:${incidentId}:health-summary`}
+      actions={<span className={appHealthClass(appHealth)}>{statusLabel(appHealth)}</span>}
+    >
       <div className="incident-health-facts">
         {root ? (
           <p>
@@ -79,6 +79,6 @@ export function IncidentHealthSummary({ projectName, diagnosis }: Props) {
           </p>
         ) : null}
       </div>
-    </section>
+    </PageSection>
   );
 }

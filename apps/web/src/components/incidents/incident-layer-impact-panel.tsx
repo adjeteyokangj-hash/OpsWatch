@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
+import { useState } from "react";
+import { PageSection } from "../ui/page-section";
 import type { LayerImpact, LayerImpactStatus } from "./incident-diagnosis-types";
 import { layerLabel, serviceDetailHref, statusLabel } from "./incident-diagnosis-types";
 
 type Props = {
+  incidentId: string;
   layerImpacts: LayerImpact[];
   projectId?: string;
 };
@@ -24,7 +26,7 @@ const statusRowClass = (status: LayerImpactStatus): string => {
   return "impact-row unaffected";
 };
 
-export function IncidentLayerImpactPanel({ layerImpacts, projectId }: Props) {
+export function IncidentLayerImpactPanel({ incidentId, layerImpacts, projectId }: Props) {
   const [showUnaffected, setShowUnaffected] = useState(false);
 
   if (layerImpacts.length === 0) return null;
@@ -38,8 +40,11 @@ export function IncidentLayerImpactPanel({ layerImpacts, projectId }: Props) {
     .sort((a, b) => a.layer.localeCompare(b.layer) || a.serviceName.localeCompare(b.serviceName));
 
   return (
-    <section className="panel incident-layer-impact-panel">
-      <h2>Four-layer impact</h2>
+    <PageSection
+      title="Four-layer impact"
+      className="incident-layer-impact-panel"
+      persistKey={`incident:${incidentId}:layer-impact`}
+    >
       <div className="impact-table-wrap">
         <table className="impact-table">
           <thead>
@@ -92,6 +97,6 @@ export function IncidentLayerImpactPanel({ layerImpacts, projectId }: Props) {
           ) : null}
         </div>
       ) : null}
-    </section>
+    </PageSection>
   );
 }

@@ -16,7 +16,7 @@ const checkStatusTone = (status: string): string => {
   return "UNKNOWN";
 };
 
-export function CheckResultsTable({ rows }: { rows: CheckRow[] }) {
+export function CheckResultsTable({ rows, projectId }: { rows: CheckRow[]; projectId: string }) {
   const summary = rows.reduce(
     (acc, row) => {
       const status = row.latestResult?.status || "PENDING";
@@ -53,7 +53,7 @@ export function CheckResultsTable({ rows }: { rows: CheckRow[] }) {
         title="Recent checks"
         description={`${rows.length} monitoring check${rows.length === 1 ? "" : "s"} for this application.`}
         className="workspace-section-card"
-        persistKey="project:checks:recent"
+        persistKey={`project:${projectId}:checks:recent`}
       >
         <div className="layer-health-table-wrap">
           <table className="data-table check-results-table">

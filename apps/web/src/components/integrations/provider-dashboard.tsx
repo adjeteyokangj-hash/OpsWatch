@@ -1,5 +1,6 @@
 "use client";
 
+import { PageSection } from "../ui/page-section";
 import {
   connectionStateMeta,
   formatRelativeTime,
@@ -33,6 +34,7 @@ type ProviderDashboardProps = {
   onValidate?: () => void;
   onDisconnect?: () => void;
   disableActions?: boolean;
+  persistKey?: string;
 };
 
 const checkIcon = (status: IntegrationValidationDetails["checks"][number]["status"]) => {
@@ -48,7 +50,8 @@ export const ProviderDashboard = ({
   validating = false,
   onValidate,
   onDisconnect,
-  disableActions = false
+  disableActions = false,
+  persistKey
 }: ProviderDashboardProps) => {
   const state = resolveConnectionState(integration, validating);
   const meta = connectionStateMeta[state];
@@ -56,18 +59,18 @@ export const ProviderDashboard = ({
   const mode = details?.account?.mode;
 
   return (
-    <section className="provider-dashboard panel">
-      <div className="provider-dashboard__header">
-        <div>
-          <h2>{providerName}</h2>
-          <p>Connection health and validation status.</p>
-        </div>
+    <PageSection
+      className="provider-dashboard"
+      title={providerName}
+      description="Connection health and validation status."
+      persistKey={persistKey}
+      actions={
         <span className={`connection-status connection-status--${meta.tone}`}>
           <span aria-hidden="true">{meta.icon}</span>
           <span>{meta.label}</span>
         </span>
-      </div>
-
+      }
+    >
       <dl className="provider-dashboard__stats">
         <div>
           <dt>Status</dt>
@@ -175,7 +178,7 @@ export const ProviderDashboard = ({
           </button>
         ) : null}
       </div>
-    </section>
+    </PageSection>
   );
 };
 

@@ -31,14 +31,22 @@ type Props = {
 export function LayerHealthTable({ rows, loading }: Props) {
   if (loading) {
     return (
-      <PageSection title="System health overview" description="Four-layer health rollup across the estate.">
+      <PageSection
+        title="System health overview"
+        description="Four-layer health rollup across the estate."
+        persistKey="org:dashboard:layer-health"
+      >
         <p>Loading system health overview…</p>
       </PageSection>
     );
   }
 
   return (
-    <PageSection title="System health overview" description="Four-layer health rollup across the estate.">
+    <PageSection
+      title="System health overview"
+      description="Four-layer health rollup across the estate."
+      persistKey="org:dashboard:layer-health"
+    >
       <div className="layer-health-table-wrap">
         <table className="data-table layer-health-table">
           <thead>

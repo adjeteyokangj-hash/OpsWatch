@@ -15,6 +15,7 @@ import { AutomationPlanPanel } from "../../../components/incidents/automation-pl
 import { IncidentRemediationTimeline } from "../../../components/incidents/incident-remediation-timeline";
 import { IncidentOrgCorrelationPanel } from "../../../components/incidents/incident-org-correlation-panel";
 import { IncidentGraphView } from "../../../components/incidents/incident-graph-view";
+import { PageSection } from "../../../components/ui/page-section";
 import type { AutomationPlan, AutomationRunDetails } from "../../../components/incidents/automation-plan-types";
 import type { DiagnosisResult, SuggestedAction } from "../../../components/incidents/incident-diagnosis-types";
 type Incident = {
@@ -565,6 +566,7 @@ export default function IncidentDetailPage() {
             projectId={incident.project?.id}
           />
           <AutomationPlanPanel
+            incidentId={incident.id}
             plan={automationPlan}
             run={automationRun}
             loading={planningAutomation}
@@ -582,33 +584,39 @@ export default function IncidentDetailPage() {
       {activeTab === "overview" ? (
         <>
       {diagnosing && !diagnosis ? (
-        <section className="panel">
+        <PageSection title="Impact analysis" collapsible={false}>
           <p className="content">Analysing incident impact and dependency graph…</p>
-        </section>
+        </PageSection>
       ) : null}
 
       {diagnosis ? (
         <>
           <IncidentHealthSummary
+            incidentId={incident.id}
             projectName={incident.project?.name ?? "Application"}
             diagnosis={diagnosis}
           />
           <IncidentPropagationChain
+            incidentId={incident.id}
             diagnosis={diagnosis}
             projectId={incident.project?.id}
           />
           {diagnosis.layerImpacts && diagnosis.layerImpacts.length > 0 ? (
             <IncidentLayerImpactPanel
+              incidentId={incident.id}
               layerImpacts={diagnosis.layerImpacts}
               projectId={incident.project?.id}
             />
           ) : null}
-          <IncidentDiagnosisEvidence diagnosis={diagnosis} />
+          <IncidentDiagnosisEvidence incidentId={incident.id} diagnosis={diagnosis} />
         </>
       ) : null}
 
-      <section className="panel">
-        <h2>Operational context</h2>        <div className="two-col">
+      <PageSection
+        title="Operational context"
+        persistKey={`incident:${incident.id}:operational-context`}
+      >
+        <div className="two-col">
           <div>
             <p className="metric-label">Project</p>
             <p>
@@ -640,10 +648,12 @@ export default function IncidentDetailPage() {
             <strong>Resolution notes:</strong> {incident.resolutionNotes}
           </p>
         ) : null}
-      </section>
+      </PageSection>
 
-      <section className="panel">
-        <h2>Linked alerts</h2>
+      <PageSection
+        title="Linked alerts"
+        persistKey={`incident:${incident.id}:linked-alerts`}
+      >
         {sortedAlerts.length === 0 ? (
           <p className="dashboard-subtle">No alerts are currently linked to this incident.</p>
         ) : (
@@ -667,11 +677,15 @@ export default function IncidentDetailPage() {
             ))}
           </div>
         )}
-      </section>
+      </PageSection>
 
       {incident.otelEvidence && incident.otelEvidence.length > 0 ? (
-        <section className="panel" data-testid="otel-incident-evidence">
-          <h2>OTEL evidence</h2>
+        <PageSection
+          title="OTEL evidence"
+          persistKey={`incident:${incident.id}:otel-evidence`}
+          defaultCollapsed
+          data-testid="otel-incident-evidence"
+        >
           <ul className="dashboard-list">
             {incident.otelEvidence.map((row) => (
               <li key={row.id}>
@@ -686,14 +700,18 @@ export default function IncidentDetailPage() {
               </li>
             ))}
           </ul>
-        </section>
+        </PageSection>
       ) : null}
 
       {(incident.logEvidence?.length ||
         incident.spanEvidence?.length ||
         incident.apmEvidence?.length) ? (
-        <section className="panel" data-testid="logs-apm-incident-evidence">
-          <h2>Logs / APM evidence</h2>
+        <PageSection
+          title="Logs / APM evidence"
+          persistKey={`incident:${incident.id}:logs-apm-evidence`}
+          defaultCollapsed
+          data-testid="logs-apm-incident-evidence"
+        >
           <ul className="dashboard-list">
             {(incident.logEvidence ?? []).map((row) => (
               <li key={`log-${row.id}`}>
@@ -727,16 +745,16 @@ export default function IncidentDetailPage() {
               </li>
             ))}
           </ul>
-        </section>
+        </PageSection>
       ) : null}
 
       {/* ── Remediation actions ─────────────────────────────────────── */}
-      <section className="panel ai-insight-panel">
-        <div className="section-head">
-          <div>
-            <h2>Recommended actions</h2>
-            <p>Safe automatic fixes, approval-gated changes, and support actions for this incident.</p>
-          </div>
+      <PageSection
+        title="Recommended actions"
+        description="Safe automatic fixes, approval-gated changes, and support actions for this incident."
+        className="ai-insight-panel"
+        persistKey={`incident:${incident.id}:recommended-actions`}
+        actions={
           <div style={{ display: "flex", gap: "8px" }}>
             <button
               className="secondary-button"
@@ -753,8 +771,8 @@ export default function IncidentDetailPage() {
               {autoHealing ? "Auto-healing…" : "Trigger auto-heal"}
             </button>
           </div>
-        </div>
-
+        }
+      >
         {autoHealMessage ? <p className="dashboard-subtle">{autoHealMessage}</p> : null}
 
         {diagnosis && (
@@ -948,7 +966,7 @@ export default function IncidentDetailPage() {
         {!diagnosis && !diagnosing ? (
           <p className="metric-label">Diagnosis has not loaded yet.</p>
         ) : null}
-      </section>
+      </PageSection>
 
       {httpReviewAction ? (
         <HttpStatusReviewModal
@@ -966,8 +984,10 @@ export default function IncidentDetailPage() {
       ) : null}
 
       {/* ── Update incident ────────────────────────────────────────── */}
-      <section className="panel">
-        <h2>Update incident</h2>
+      <PageSection
+        title="Update incident"
+        persistKey={`incident:${incident.id}:update-form`}
+      >
         <div className="incident-status-actions" role="group" aria-label="Incident status actions">
           {incident.status === "OPEN" ? (
             <button
@@ -1056,14 +1076,16 @@ export default function IncidentDetailPage() {
           </button>
           {saveMsg && <p className="metric-label">{saveMsg}</p>}
         </div>
-      </section>
+      </PageSection>
         </>
       ) : null}
 
       {activeTab === "timeline" ? (
         <>
-          <section className="panel">
-            <h2>Incident timeline</h2>
+          <PageSection
+            title="Incident timeline"
+            persistKey={`incident:${incident.id}:timeline`}
+          >
             {analysisError ? <p className="dashboard-subtle">{analysisError}</p> : null}
             {timeline.length === 0 ? (
               <p className="dashboard-subtle">No timeline events available yet.</p>
@@ -1086,10 +1108,13 @@ export default function IncidentDetailPage() {
                 ))}
               </div>
             )}
-          </section>
+          </PageSection>
 
-          <section className="panel">
-            <h2>Correlation intelligence</h2>
+          <PageSection
+            title="Correlation intelligence"
+            persistKey={`incident:${incident.id}:correlation-intelligence`}
+            defaultCollapsed
+          >
             {intelligence ? (
               <div className="dashboard-list">
                 <article className="dashboard-item">
@@ -1114,10 +1139,13 @@ export default function IncidentDetailPage() {
             ) : (
               <p className="dashboard-subtle">Correlation intelligence is unavailable for this incident.</p>
             )}
-          </section>
+          </PageSection>
 
-          <section className="panel">
-            <h2>Root-cause candidates</h2>
+          <PageSection
+            title="Root-cause candidates"
+            persistKey={`incident:${incident.id}:root-cause-candidates`}
+            defaultCollapsed
+          >
             {rootCauseCandidates.length === 0 ? (
               <p className="dashboard-subtle">No ranked root-cause candidates are available yet.</p>
             ) : (
@@ -1151,7 +1179,7 @@ export default function IncidentDetailPage() {
                 ))}
               </div>
             )}
-          </section>
+          </PageSection>
         </>
       ) : null}
 

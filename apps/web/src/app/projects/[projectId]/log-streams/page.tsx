@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { FormEvent, Fragment, useCallback, useEffect, useState } from "react";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
 import { EmptyState } from "../../../../components/ui/empty-state";
+import { PageSection } from "../../../../components/ui/page-section";
 import { ProductTruthStatus } from "../../../../components/ui/product-truth-status";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../lib/api";
@@ -107,18 +108,14 @@ export default function ProjectLogsPage() {
       loading={loading}
       error={error}
     >
-      <section className="panel" data-testid="logs-explorer">
-        <div className="panel-heading-row">
-          <div>
-            <h2>Logs explorer</h2>
-            <p className="dashboard-subtle">
-              Retained OTEL log records with redaction, grouping, and alert/incident correlation.
-              Retention and supported formats follow the current plan and OTEL bridge.
-            </p>
-          </div>
-          <ProductTruthStatus state="Foundation" />
-        </div>
-
+      <PageSection
+        title="Logs explorer"
+        description="Retained OTEL log records with redaction, grouping, and alert/incident correlation. Retention and supported formats follow the current plan and OTEL bridge."
+        persistKey={`project:${projectId}:logs:explorer`}
+        className="logs-explorer"
+        data-testid="logs-explorer"
+        actions={<ProductTruthStatus state="Foundation" />}
+      >
         <p className="dashboard-subtle" data-testid="logs-connection-state">
           Connection: {status?.connectionState ?? "…"} · Ingestion{" "}
           {status?.flags.logsIngestion ? "enabled" : "disabled"} · Explorer{" "}
@@ -262,7 +259,7 @@ export default function ProjectLogsPage() {
             </table>
           </div>
         )}
-      </section>
+      </PageSection>
     </ProjectWorkspaceShell>
   );
 }

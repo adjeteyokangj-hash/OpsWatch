@@ -378,7 +378,11 @@ export default function DashboardPage() {
         />
       </section>
 
-      <PageSection title="Live signal credibility" description="How much of the dashboard is driven by active operational signals.">
+      <PageSection
+        title="Live signal credibility"
+        description="How much of the dashboard is driven by active operational signals."
+        persistKey="org:dashboard:signal-credibility"
+      >
         {loading ? <p>Evaluating live signal quality…</p> : (
           <div className="snapshot-grid">
             <div className="snapshot-item">
@@ -436,7 +440,11 @@ export default function DashboardPage() {
       </section>
 
       <section className="two-col dashboard-secondary">
-        <PageSection title="Check health snapshot" description="Concentrated service failures from active checks.">
+        <PageSection
+          title="Check health snapshot"
+          description="Concentrated service failures from active checks."
+          persistKey="org:dashboard:check-health"
+        >
           {loading ? <p>Loading check health…</p> : (
             <>
               <p>Current checks: {checkSummary?.pass ?? 0} passing, {checkSummary?.fail ?? 0} failing, {checkSummary?.warn ?? 0} warning.</p>
@@ -457,7 +465,11 @@ export default function DashboardPage() {
           )}
         </PageSection>
 
-        <PageSection title="Operations command" description="Automation activity and intelligence posture from real data.">
+        <PageSection
+          title="Operations command"
+          description="Automation activity and intelligence posture from real data."
+          persistKey="org:dashboard:operations-command"
+        >
           {loading ? <p>Loading operations command…</p> : (
             <>
               <div className="snapshot-grid">
@@ -510,7 +522,11 @@ export default function DashboardPage() {
       </section>
 
       <section className="two-col dashboard-secondary">
-        <PageSection title="Actionable recommendations" description="Open insights from product monitoring analysis.">
+        <PageSection
+          title="Actionable recommendations"
+          description="Open insights from product monitoring analysis."
+          persistKey="org:dashboard:recommendations"
+        >
           {loading ? <p>Loading recommendations…</p> : recommendations.length === 0 ? (
             <EmptyState
               title="No active recommendations"
@@ -533,7 +549,12 @@ export default function DashboardPage() {
           <p><Link className="text-link" href="/insights">Open insights page →</Link></p>
         </PageSection>
 
-        <PageSection title="Quick links" description="Primary operational surfaces.">
+        <PageSection
+          title="Quick links"
+          description="Primary operational surfaces."
+          persistKey="org:dashboard:quick-links"
+          defaultCollapsed
+        >
           <div className="snapshot-grid">
             <div className="snapshot-item"><Link href="/incidents">Incidents</Link></div>
             <div className="snapshot-item"><Link href="/alerts">Alerts</Link></div>

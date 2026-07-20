@@ -1,6 +1,8 @@
+import { PageSection } from "../ui/page-section";
 import type { AutomationPlan, AutomationRunDetails } from "./automation-plan-types";
 
 type Props = {
+  incidentId: string;
   plan: AutomationPlan | null;
   run: AutomationRunDetails | null;
   loading: boolean;
@@ -22,6 +24,7 @@ const executionModeLabel: Record<AutomationPlan["executionMode"], string> = {
 const statusLabel = (status: string): string => status.replace(/_/g, " ").toLowerCase();
 
 export function AutomationPlanPanel({
+  incidentId,
   plan,
   run,
   loading,
@@ -61,19 +64,17 @@ export function AutomationPlanPanel({
   };
 
   return (
-    <section className="panel automation-plan-panel">
-      <div className="incident-health-summary-head">
-        <div>
-          <h2>Automation plan</h2>
-          <p className="dashboard-subtle">
-            Multi-step operational playbook proposed by Automation AI. Approved runs execute through the existing remediation safety pipeline.
-          </p>
-        </div>
+    <PageSection
+      title="Automation plan"
+      description="Multi-step operational playbook proposed by Automation AI. Approved runs execute through the existing remediation safety pipeline."
+      className="automation-plan-panel"
+      persistKey={`incident:${incidentId}:automation-plan`}
+      actions={
         <button type="button" className="btn secondary" onClick={onGenerate} disabled={loading || acting}>
           {loading ? "Planning…" : activePlan ? "Regenerate plan" : "Generate plan"}
         </button>
-      </div>
-
+      }
+    >
       {error ? <p className="dashboard-subtle">{error}</p> : null}
 
       {!activePlan && !loading && !error ? (
@@ -172,6 +173,6 @@ export function AutomationPlanPanel({
           ) : null}
         </div>
       ) : null}
-    </section>
+    </PageSection>
   );
 }

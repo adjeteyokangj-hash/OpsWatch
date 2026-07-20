@@ -8,6 +8,7 @@ import { Header } from "../../components/layout/header";
 import { apiFetch } from "../../lib/api";
 import { FilterPresets, type FilterPreset } from "../../components/ui/filter-presets";
 import { CopyFilterLink } from "../../components/ui/copy-filter-link";
+import { PageSection } from "../../components/ui/page-section";
 import { StatCard } from "../../components/dashboard/stat-card";
 
 type ServiceOption = {
@@ -341,7 +342,11 @@ function ChecksPageContent() {
         <StatCard label="Pending" value={loading ? "-" : (serverSummary?.pending ?? checks.filter((row) => row.latestResult === null || row.latestResult.status === "PENDING").length)} href="/checks?latestStatus=PENDING" />
       </section>
 
-      <section className="panel">
+      <PageSection
+        title="Filters"
+        description="Org-wide check filters. Presets and shareable query links."
+        persistKey="org:checks:filters"
+      >
         <div className="section-head" style={{ marginBottom: "10px" }}>
           <FilterPresets basePath="/checks" presets={CHECKS_PRESETS} currentParams={searchParams.toString()} />
           <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -418,19 +423,19 @@ function ChecksPageContent() {
             />
           </label>
         </div>
-      </section>
+      </PageSection>
 
       {error ? <section className="panel error-panel">{error}</section> : null}
 
       {showForm ? (
-        <section className="panel">
-          <div className="section-head">
-            <div>
-              <h2>Create check</h2>
-              <p>Add a new monitoring check to a service.</p>
-            </div>
+        <PageSection
+          title="Create check"
+          description="Add a new monitoring check to a service."
+          persistKey="org:checks:create"
+          actions={
             <button className="secondary-button" onClick={() => setShowForm(false)} data-action="local-ui">Cancel</button>
-          </div>
+          }
+        >
           <form className="stack-form" onSubmit={(e) => void handleCreate(e)}>
             <label>
               Service
@@ -540,20 +545,19 @@ function ChecksPageContent() {
             </div>
             <button type="submit" disabled={saving || Boolean(sslValidationError)} data-action="api" data-endpoint="/services/:serviceId/checks">{saving ? "Creating…" : "Create check"}</button>
           </form>
-        </section>
+        </PageSection>
       ) : null}
 
-      <section className="panel">
-        <div className="section-head">
-          <div>
-            <h2>Check inventory</h2>
-            <p>Failing checks are listed first, followed by warnings, pending checks, and passing checks.</p>
-          </div>
-          {!showForm ? (
+      <PageSection
+        title="Check inventory"
+        description="Failing checks are listed first, followed by warnings, pending checks, and passing checks."
+        persistKey="org:checks:inventory"
+        actions={
+          !showForm ? (
             <button className="primary-button" onClick={() => setShowForm(true)} data-action="local-ui">+ Add check</button>
-          ) : null}
-        </div>
-
+          ) : null
+        }
+      >
         {loading ? (
           <p>Loading checks...</p>
         ) : displayChecks.length === 0 ? (
@@ -651,7 +655,7 @@ function ChecksPageContent() {
             </tbody>
           </table>
         )}
-      </section>
+      </PageSection>
     </Shell>
   );
 }

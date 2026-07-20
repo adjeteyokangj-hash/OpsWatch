@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Shell } from "../../../components/layout/shell";
 import { Header } from "../../../components/layout/header";
+import { PageSection } from "../../../components/ui/page-section";
 import { apiFetch } from "../../../lib/api";
 
 type AlertDetail = {
@@ -166,13 +167,35 @@ export default function AlertDetailPage() {
             </article>
           </section>
 
-          <section className="panel">
-            <div className="section-head">
-              <div>
-                <h2>Alert details</h2>
-                <p>Review timestamps, metadata, and update alert status.</p>
+          <PageSection
+            title="Alert details"
+            description="Review timestamps, metadata, and update alert status."
+            persistKey={`alert:${alertId}:details`}
+            actions={
+              <div className="channel-actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  data-action="api"
+                  data-endpoint="/alerts/:alertId/acknowledge"
+                  onClick={() => void runStatusAction("acknowledge")}
+                  disabled={saving || alert.status !== "OPEN"}
+                >
+                  {saving ? "Saving..." : "Acknowledge"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  data-action="api"
+                  data-endpoint="/alerts/:alertId/resolve"
+                  onClick={() => void runStatusAction("resolve")}
+                  disabled={saving || alert.status === "RESOLVED"}
+                >
+                  {saving ? "Saving..." : "Resolve"}
+                </button>
               </div>
-            </div>
+            }
+          >
             <p>
               <strong>Last seen:</strong> {new Date(alert.lastSeenAt).toLocaleString()}
             </p>
@@ -278,38 +301,15 @@ export default function AlertDetailPage() {
                 ))}
               </ul>
             )}
+          </PageSection>
 
-            <div className="channel-actions">
-              <button
-                type="button"
-                className="secondary-button"
-                data-action="api"
-                data-endpoint="/alerts/:alertId/acknowledge"
-                onClick={() => void runStatusAction("acknowledge")}
-                disabled={saving || alert.status !== "OPEN"}
-              >
-                {saving ? "Saving..." : "Acknowledge"}
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                data-action="api"
-                data-endpoint="/alerts/:alertId/resolve"
-                onClick={() => void runStatusAction("resolve")}
-                disabled={saving || alert.status === "RESOLVED"}
-              >
-                {saving ? "Saving..." : "Resolve"}
-              </button>
-            </div>
-          </section>
-
-          <section className="panel" data-testid="alert-automation-recovery">
-            <div className="section-head">
-              <div>
-                <h2>Automation and recovery</h2>
-                <p>Did OpsWatch only detect this, attempt a repair, or verify recovery?</p>
-              </div>
-            </div>
+          <PageSection
+            title="Automation and recovery"
+            description="Did OpsWatch only detect this, attempt a repair, or verify recovery?"
+            persistKey={`alert:${alertId}:automation`}
+            defaultCollapsed
+            data-testid="alert-automation-recovery"
+          >
             {!automation ? (
               <p className="dashboard-subtle">Automation evaluation is unavailable for this alert.</p>
             ) : (
@@ -422,7 +422,7 @@ export default function AlertDetailPage() {
                 </ol>
               </>
             )}
-          </section>
+          </PageSection>
         </>
       )}
 

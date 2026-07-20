@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
+import { PageSection } from "../../components/ui/page-section";
 import { HealthBadge } from "../../components/health/health-badge";
 import { apiFetch } from "../../lib/api";
 
@@ -56,8 +57,10 @@ function WorkflowsPageContent() {
       </section>
       {loading ? <p>Loading workflows…</p> : null}
       {!loading ? (
-        <section className="panel">
-          <h2>{filtered.length} workflow{filtered.length === 1 ? "" : "s"}</h2>
+        <PageSection
+          title={`${filtered.length} workflow${filtered.length === 1 ? "" : "s"}`}
+          persistKey="org:workflows:inventory"
+        >
           <div className="layer-health-table-wrap">
             <table className="data-table layer-health-table">
               <thead>
@@ -82,7 +85,7 @@ function WorkflowsPageContent() {
               </tbody>
             </table>
           </div>
-        </section>
+        </PageSection>
       ) : null}
     </Shell>
   );

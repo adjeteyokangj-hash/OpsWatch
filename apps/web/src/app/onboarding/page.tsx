@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
+import { PageSection } from "../../components/ui/page-section";
 import { apiFetch } from "../../lib/api";
 
 type OnboardingState = {
@@ -73,7 +74,12 @@ export default function OnboardingPage() {
         <p>Loading onboarding...</p>
       ) : state ? (
         <>
-          <section className="panel onboarding-header">
+          <PageSection
+            title="Setup progress"
+            persistKey="org:onboarding:progress"
+            className="onboarding-header"
+            collapsible={false}
+          >
             <div className="onboarding-progress-label">
               {state.isComplete ? (
                 <strong>Setup complete!</strong>
@@ -84,9 +90,14 @@ export default function OnboardingPage() {
             <div className="onboarding-bar-track">
               <div className="onboarding-bar-fill" style={{ width: `${state.percentComplete}%` }} />
             </div>
-          </section>
+          </PageSection>
 
-          <section className="onboarding-steps">
+          <PageSection
+            title="Setup steps"
+            description="Complete each step to finish onboarding your workspace."
+            persistKey="org:onboarding:steps"
+            className="onboarding-steps"
+          >
             {state.steps.map((step, idx) => {
               const isComplete = state.completedSteps.includes(step);
               const meta = STEP_META[step] || { label: step, description: "" };
@@ -116,7 +127,7 @@ export default function OnboardingPage() {
                 </div>
               );
             })}
-          </section>
+          </PageSection>
         </>
       ) : null}
     </Shell>

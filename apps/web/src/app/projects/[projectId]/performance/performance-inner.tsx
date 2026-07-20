@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
 import { EmptyState } from "../../../../components/ui/empty-state";
+import { PageSection } from "../../../../components/ui/page-section";
 import { ProductTruthStatus } from "../../../../components/ui/product-truth-status";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
 import { apiFetch } from "../../../../lib/api";
@@ -120,18 +121,13 @@ export function ProjectPerformancePageInner() {
       loading={loading}
       error={error}
     >
-      <section className="panel" data-testid="apm-performance">
-        <div className="panel-heading-row">
-          <div>
-            <h2>Application performance</h2>
-            <p className="dashboard-subtle">
-              Service, endpoint, and dependency summaries from retained spans. Percentiles are
-              withheld when sample volume is insufficient.
-            </p>
-          </div>
-          <ProductTruthStatus state="Foundation" />
-        </div>
-
+      <PageSection
+        title="Application performance"
+        description="Service, endpoint, and dependency summaries from retained spans. Percentiles are withheld when sample volume is insufficient."
+        persistKey={`project:${projectId}:performance:apm`}
+        data-testid="apm-performance"
+        actions={<ProductTruthStatus state="Foundation" />}
+      >
         <label>
           Environment
           <input
@@ -293,11 +289,15 @@ export function ProjectPerformancePageInner() {
             </ul>
           </>
         )}
-      </section>
+      </PageSection>
 
       {trace && (
-        <section className="panel" data-testid="trace-evidence">
-          <h2>Trace evidence</h2>
+        <PageSection
+          title="Trace evidence"
+          description="Span sequence and correlation for the selected trace."
+          persistKey={`project:${projectId}:performance:trace`}
+          data-testid="trace-evidence"
+        >
           {trace.warning && <p className="form-error">{trace.warning}</p>}
           <p>
             Status {trace.status} · duration {trace.totalDurationMs ?? "—"}ms · services{" "}
@@ -315,7 +315,7 @@ export function ProjectPerformancePageInner() {
               </li>
             ))}
           </ul>
-        </section>
+        </PageSection>
       )}
     </ProjectWorkspaceShell>
   );

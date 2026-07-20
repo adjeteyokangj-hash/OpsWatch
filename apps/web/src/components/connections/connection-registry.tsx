@@ -20,6 +20,7 @@ import {
 } from "../../lib/credential-status";
 import type { ConnectionRecord } from "./types";
 import { EmptyState } from "../ui/empty-state";
+import { PageSection } from "../ui/page-section";
 import { formatRelativeTime } from "../../lib/relative-time";
 import { useState } from "react";
 
@@ -66,13 +67,12 @@ export function ConnectionRegistry({
   };
 
   return (
-    <section className="panel" aria-label="Connection registry">
-      <div className="panel-heading-row">
-        <div>
-          <h2>Connection registry</h2>
-          <p className="dashboard-subtle">Live connection status without secrets or raw credential references.</p>
-        </div>
-      </div>
+    <PageSection
+      title="Connection registry"
+      description="Live connection status without secrets or raw credential references."
+      persistKey="org:connections:registry"
+      aria-label="Connection registry"
+    >
       {loading ? (
         <p aria-busy="true">Loading connections…</p>
       ) : connections.length === 0 ? (
@@ -280,6 +280,6 @@ export function ConnectionRegistry({
           </table>
         </div>
       )}
-    </section>
+    </PageSection>
   );
 }

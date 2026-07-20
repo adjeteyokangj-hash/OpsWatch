@@ -337,16 +337,16 @@ export default function MembersPage() {
       </section>
 
       {showCreate && isAdmin ? (
-        <section className="panel">
-          <div className="section-head">
-            <div>
-              <h2>Create platform member</h2>
-              <p>Add someone who can log in to OpsWatch with a role and initial password.</p>
-            </div>
+        <PageSection
+          title="Create platform member"
+          description="Add someone who can log in to OpsWatch with a role and initial password."
+          persistKey="org:members:create"
+          actions={
             <button className="secondary-button" onClick={() => setShowCreate(false)} data-action="local-ui">
               Cancel
             </button>
-          </div>
+          }
+        >
           <p className="dashboard-subtle">
             <strong>Organization role</strong> (Admin / Member / Viewer) controls access inside this org only.{" "}
             <strong>Platform Super Admin (all orgs)</strong> is separate — grant it below or from Actions. Email
@@ -426,16 +426,15 @@ export default function MembersPage() {
               {saving ? "Creating…" : "Create member"}
             </button>
           </form>
-        </section>
+        </PageSection>
       ) : null}
 
       {resetTarget && isAdmin ? (
-        <section className="panel">
-          <div className="section-head">
-            <div>
-              <h2>Reset password</h2>
-              <p>Set a new password for {resetTarget.email}.</p>
-            </div>
+        <PageSection
+          title="Reset password"
+          description={`Set a new password for ${resetTarget.email}.`}
+          persistKey="org:members:reset-password"
+          actions={
             <button
               className="secondary-button"
               onClick={() => {
@@ -447,7 +446,8 @@ export default function MembersPage() {
             >
               Cancel
             </button>
-          </div>
+          }
+        >
           <form className="stack-form" onSubmit={(event) => void submitPasswordReset(event)}>
             <label>
               New password
@@ -477,7 +477,7 @@ export default function MembersPage() {
               {saving ? "Saving…" : "Reset password"}
             </button>
           </form>
-        </section>
+        </PageSection>
       ) : null}
 
       {loading ? <section className="panel">Loading platform members…</section> : null}

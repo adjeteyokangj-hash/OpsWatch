@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
 import { ProductTruthStatus } from "../../components/ui/product-truth-status";
+import { PageSection } from "../../components/ui/page-section";
 import { apiFetch } from "../../lib/api";
 
 type CoverageDimension = {
@@ -135,8 +136,11 @@ export default function SecurityPage() {
         {pending ? <p className="dashboard-subtle">Refreshing…</p> : null}
       </section>
 
-      <section className="panel" data-testid="security-coverage">
-        <h2>Security Coverage</h2>
+      <PageSection
+        title="Security Coverage"
+        persistKey="org:security:coverage"
+        data-testid="security-coverage"
+      >
         {coverage ? (
           <>
             <p data-testid="security-coverage-summary">{coverage.honestSummary}</p>
@@ -156,11 +160,13 @@ export default function SecurityPage() {
               : "Loading coverage…"}
           </p>
         )}
-      </section>
+      </PageSection>
 
-      <section className="panel" data-testid="security-findings">
-        <div className="panel-heading-row">
-          <h2>Findings ({openCount} open in view)</h2>
+      <PageSection
+        title={`Findings (${openCount} open in view)`}
+        persistKey="org:security:findings"
+        data-testid="security-findings"
+        actions={
           <div className="dashboard-actions" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <select
               aria-label="State filter"
@@ -192,8 +198,8 @@ export default function SecurityPage() {
               Refresh
             </button>
           </div>
-        </div>
-
+        }
+      >
         {findings.length === 0 ? (
           <p data-testid="security-findings-empty">
             No persisted security findings. Seeded demo detections are not shown as live evidence.
@@ -220,11 +226,14 @@ export default function SecurityPage() {
             ))}
           </ul>
         )}
-      </section>
+      </PageSection>
 
       {selected ? (
-        <section className="panel" data-testid="security-finding-detail">
-          <h2>Finding detail</h2>
+        <PageSection
+          title="Finding detail"
+          persistKey="org:security:finding-detail"
+          data-testid="security-finding-detail"
+        >
           <p>
             <strong>{selected.ruleName}</strong> ({selected.ruleKey})
           </p>
@@ -248,11 +257,16 @@ export default function SecurityPage() {
           <p className="dashboard-subtle">
             Findings are produced by deterministic rules with matched evidence — not AI prediction.
           </p>
-        </section>
+        </PageSection>
       ) : null}
 
-      <section className="panel" data-testid="security-attack-sequences">
-        <h2>Threat sequences</h2>
+      <PageSection
+        title="Threat sequences"
+        description="Correlated attack sequences with sufficient evidence."
+        persistKey="org:security:sequences"
+        defaultCollapsed
+        data-testid="security-attack-sequences"
+      >
         {sequences.length === 0 ? (
           <p>No correlated attack sequences with sufficient evidence.</p>
         ) : (
@@ -269,10 +283,13 @@ export default function SecurityPage() {
             ))}
           </ul>
         )}
-      </section>
+      </PageSection>
 
-      <section className="panel">
-        <h2>Related controls</h2>
+      <PageSection
+        title="Related controls"
+        persistKey="org:security:related-controls"
+        defaultCollapsed
+      >
         <ul className="dashboard-list">
           <li>
             <Link href="/auto-run-policy">Auto-run policy</Link> — governs autonomous remediation boundaries.
@@ -284,7 +301,7 @@ export default function SecurityPage() {
             <Link href="/members">Members &amp; roles</Link> — OpsWatch platform access management.
           </li>
         </ul>
-      </section>
+      </PageSection>
     </Shell>
   );
 }

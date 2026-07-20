@@ -9,6 +9,7 @@ import { ConnectionRegistry } from "../../components/connections/connection-regi
 import { ConnectionWizard } from "../../components/connections/connection-wizard";
 import { connectionFromRecord } from "../../components/connections/connection-form-state";
 import type { ConnectionRecord, GuidedConnectionForm, ProjectOption } from "../../components/connections/types";
+import { PageSection } from "../../components/ui/page-section";
 import { apiFetch } from "../../lib/api";
 import { fetchSessionUser } from "../../lib/auth";
 
@@ -230,11 +231,14 @@ function ConnectionsPageContent() {
         onRotate={(row, secret) => void rotateCredential(row, secret)}
         onDelete={(row) => void deleteConnection(row)}
       />
-      <section className="panel connection-related-links" aria-label="Related surfaces">
-        <h2>Related surfaces</h2>
-        <p className="dashboard-subtle">
-          Operational topology and change history live with each application, not on this page.
-        </p>
+      <PageSection
+        title="Related surfaces"
+        description="Operational topology and change history live with each application, not on this page."
+        persistKey="org:connections:related-surfaces"
+        defaultCollapsed
+        className="connection-related-links"
+        aria-label="Related surfaces"
+      >
         <div className="connection-related-links__grid">
           <Link className="quick-link-card" href="/projects">
             <strong>Applications</strong>
@@ -252,7 +256,7 @@ function ConnectionsPageContent() {
             </Link>
           )}
         </div>
-      </section>
+      </PageSection>
     </Shell>
   );
 }

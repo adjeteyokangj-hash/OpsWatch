@@ -45,7 +45,7 @@ export function AutonomousModeBadge({ mode }: { mode: ProjectAutonomousMode }) {
   );
 }
 
-export function AutonomousModeControl({ projectId, compact = false, onUpdated }: Props) {
+export function AutonomousModeControl({ projectId, compact: _compact = false, onUpdated }: Props) {
   const [state, setState] = useState<ProjectAutonomousModeState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -97,14 +97,8 @@ export function AutonomousModeControl({ projectId, compact = false, onUpdated }:
   const isClamped = state.requestedMode !== state.effectiveMode;
 
   return (
-    <section className="topology-detail-section" data-testid="autonomous-mode-control">
-      <div className="section-head">
-        <div>
-          <h2>{compact ? "Autonomous mode" : "Autonomous remediation mode"}</h2>
-          <p className="dashboard-subtle">
-            Controls how OpsWatch plans and executes repairs for this application.
-          </p>
-        </div>
+    <div className="topology-detail-section" data-testid="autonomous-mode-control">
+      <div className="autonomous-mode-status-row" style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.75rem" }}>
         <AutonomousModeBadge mode={effective} />
       </div>
 
@@ -154,7 +148,7 @@ export function AutonomousModeControl({ projectId, compact = false, onUpdated }:
           );
         })}
       </fieldset>
-    </section>
+    </div>
   );
 }
 

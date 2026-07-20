@@ -6,6 +6,7 @@ import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
 import { StatCard } from "../../components/dashboard/stat-card";
 import { ProductTruthStatus } from "../../components/ui/product-truth-status";
+import { PageSection } from "../../components/ui/page-section";
 import { apiFetch } from "../../lib/api";
 
 type CoverageItem = {
@@ -295,12 +296,11 @@ export default function InsightsPage() {
         <StatCard label="Correlations" value={loading ? "-" : data?.portfolio.activeCorrelations ?? 0} href="/incidents" />
       </section>
 
-      <section className="panel">
-        <div className="section-head">
-          <div>
-            <h2>Product intelligence</h2>
-            <p>Coverage, risks, correlations, and actions that improve resilience.</p>
-          </div>
+      <PageSection
+        title="Product intelligence"
+        description="Coverage, risks, correlations, and actions that improve resilience."
+        persistKey="org:insights:project-selector"
+        actions={
           <select
             aria-label="Select project"
             value={selectedProjectId}
@@ -312,24 +312,25 @@ export default function InsightsPage() {
               </option>
             ))}
           </select>
-        </div>
+        }
+      >
         {loading ? <p>Loading insights...</p> : null}
         {!loading && !selectedProject ? <p>No project insights available yet.</p> : null}
-      </section>
+      </PageSection>
 
       {selectedProject ? (
         <>
           <section className="two-col settings-grid">
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>Coverage map</h2>
-                  <p>{selectedProject.coverageScore}% of key monitoring areas covered.</p>
-                </div>
+            <PageSection
+              title="Coverage map"
+              description={`${selectedProject.coverageScore}% of key monitoring areas covered.`}
+              persistKey="org:insights:coverage-map"
+              actions={
                 <Link className="secondary-button" href={`/projects/${selectedProject.id}`}>
                   Open project
                 </Link>
-              </div>
+              }
+            >
               <div className="insight-list">
                 {selectedProject.coverage.map((item) => (
                   <article key={item.key} className="insight-row">
@@ -343,15 +344,13 @@ export default function InsightsPage() {
                   </article>
                 ))}
               </div>
-            </section>
+            </PageSection>
 
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>Risks</h2>
-                  <p>Owner-facing business impact from open alerts.</p>
-                </div>
-              </div>
+            <PageSection
+              title="Risks"
+              description="Owner-facing business impact from open alerts."
+              persistKey="org:insights:risks"
+            >
               {selectedProject.businessImpact.length === 0 ? (
                 <p>No open business-impact risks for this project.</p>
               ) : (
@@ -369,20 +368,20 @@ export default function InsightsPage() {
                   ))}
                 </div>
               )}
-            </section>
+            </PageSection>
           </section>
 
           <section className="two-col settings-grid">
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>Correlations</h2>
-                  <p>Current linked failures and likely causes.</p>
-                </div>
+            <PageSection
+              title="Correlations"
+              description="Current linked failures and likely causes."
+              persistKey="org:insights:correlations"
+              actions={
                 <span className={`result-pill ${severityClass(selectedProject.rootCause.severity)}`}>
                   {selectedProject.rootCause.severity}
                 </span>
-              </div>
+              }
+            >
               <h3>{selectedProject.rootCause.title}</h3>
               <p>{selectedProject.rootCause.summary}</p>
               <ul className="compact-list">
@@ -390,15 +389,13 @@ export default function InsightsPage() {
                   <li key={signal}>{signal}</li>
                 ))}
               </ul>
-            </section>
+            </PageSection>
 
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>Recommended actions</h2>
-                  <p>Executable fixes with safety levels.</p>
-                </div>
-              </div>
+            <PageSection
+              title="Recommended actions"
+              description="Executable fixes with safety levels."
+              persistKey="org:insights:recommendations"
+            >
               {sortedRecommendations.length === 0 ? (
                 <p>No open recommendations for this project.</p>
               ) : (
@@ -498,17 +495,16 @@ export default function InsightsPage() {
                   ))}
                 </div>
               )}
-            </section>
+            </PageSection>
           </section>
 
           <section className="two-col settings-grid">
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>Critical paths</h2>
-                  <p>Calculated signal coverage across business paths; this is not synthetic execution.</p>
-                </div>
-              </div>
+            <PageSection
+              title="Critical paths"
+              description="Calculated signal coverage across business paths; this is not synthetic execution."
+              persistKey="org:insights:critical-paths"
+              defaultCollapsed
+            >
               <div className="journey-flow">
                 {selectedProject.criticalPaths.map((step, index) => (
                   <article key={step.key} className="journey-step">
@@ -522,19 +518,20 @@ export default function InsightsPage() {
                   </article>
                 ))}
               </div>
-            </section>
+            </PageSection>
 
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>Synthetic templates</h2>
-                  <p>Draft — execution not yet enabled.</p>
-                </div>
+            <PageSection
+              title="Synthetic templates"
+              description="Draft — execution not yet enabled."
+              persistKey="org:insights:synthetic-templates"
+              defaultCollapsed
+              actions={
                 <ProductTruthStatus
                   state="Draft"
                   detail="Definitions can be stored, but no scheduled executor or run evidence exists."
                 />
-              </div>
+              }
+            >
               <p className="dashboard-subtle" data-testid="synthetic-draft-truth">
                 Draft journeys are not active monitoring. Ordered execution, assertions, timeout/retry,
                 screenshots, run history, alerts, incidents, and recovery are not available.
@@ -554,20 +551,20 @@ export default function InsightsPage() {
                   ))}
                 </div>
               )}
-            </section>
+            </PageSection>
           </section>
 
           <section className="two-col settings-grid">
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>Connection profiles</h2>
-                  <p>Provider-aware monitoring that should appear after connecting once.</p>
-                </div>
+            <PageSection
+              title="Connection profiles"
+              description="Provider-aware monitoring that should appear after connecting once."
+              persistKey="org:insights:connection-profiles"
+              actions={
                 <Link className="secondary-button" href="/settings">
                   Manage integrations
                 </Link>
-              </div>
+              }
+            >
               {selectedProject.connectionProfiles.length === 0 ? (
                 <p>No provider profiles are connected yet.</p>
               ) : (
@@ -590,34 +587,34 @@ export default function InsightsPage() {
                   ))}
                 </div>
               )}
-            </section>
+            </PageSection>
 
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>Deep diagnostics</h2>
-                  <p>Extra inspection mode for incidents and active alert windows.</p>
-                </div>
-              </div>
+            <PageSection
+              title="Deep diagnostics"
+              description="Extra inspection mode for incidents and active alert windows."
+              persistKey="org:insights:deep-diagnostics"
+              defaultCollapsed
+            >
               <ul className="diagnostic-list">
                 {selectedProject.deepDiagnostics.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
               </ul>
-            </section>
+            </PageSection>
           </section>
 
           <section className="two-col settings-grid">
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>Remediation learning</h2>
-                  <p>Success rates, failures, and time saved by action.</p>
-                </div>
+            <PageSection
+              title="Remediation learning"
+              description="Success rates, failures, and time saved by action."
+              persistKey="org:insights:remediation-learning"
+              defaultCollapsed
+              actions={
                 <Link className="secondary-button" href="/accuracy">
                   Accuracy
                 </Link>
-              </div>
+              }
+            >
               {data?.remediationLearning.length ? (
                 <div className="table-scroll">
                   <table className="data-table">
@@ -646,20 +643,21 @@ export default function InsightsPage() {
               ) : (
                 <p>No remediation history yet.</p>
               )}
-            </section>
+            </PageSection>
 
-            <section className="panel">
-              <div className="section-head">
-                <div>
-                  <h2>Action history</h2>
-                  <p>Persisted action runs for this project, including who triggered them and what changed.</p>
-                </div>
-                {historyFocusId ? (
+            <PageSection
+              title="Action history"
+              description="Persisted action runs for this project, including who triggered them and what changed."
+              persistKey="org:insights:action-history"
+              defaultCollapsed
+              actions={
+                historyFocusId ? (
                   <button type="button" className="secondary-button" onClick={() => setHistoryFocusId(null)} data-action="local-ui">
                     Clear filter
                   </button>
-                ) : null}
-              </div>
+                ) : null
+              }
+            >
               {selectedProjectActionRuns.length ? (
                 <div className="insight-list">
                   {selectedProjectActionRuns.slice(0, 8).map((entry) => (
@@ -683,7 +681,7 @@ export default function InsightsPage() {
               ) : (
                 <p>{historyFocusId ? "No persisted runs exist for this recommendation yet." : "No insight actions have been run yet."}</p>
               )}
-            </section>
+            </PageSection>
           </section>
         </>
       ) : null}

@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { PageSection } from "../ui/page-section";
 import type { DiagnosisResult } from "./incident-diagnosis-types";
 import { layerLabel, serviceDetailHref, statusLabel } from "./incident-diagnosis-types";
 
 type Props = {
+  incidentId: string;
   diagnosis: DiagnosisResult;
   projectId?: string;
 };
@@ -14,7 +16,7 @@ const nodeStatusClass = (status: string): string => {
   return "propagation-status unaffected";
 };
 
-export function IncidentPropagationChain({ diagnosis, projectId }: Props) {
+export function IncidentPropagationChain({ incidentId, diagnosis, projectId }: Props) {
   const path =
     diagnosis.dependencyImpact?.propagationPath ??
     diagnosis.dependencyImpact?.probableRootCause
@@ -31,11 +33,12 @@ export function IncidentPropagationChain({ diagnosis, projectId }: Props) {
   if (path.length === 0) return null;
 
   return (
-    <section className="panel incident-propagation-panel">
-      <h2>Propagation chain</h2>
-      <p className="dashboard-subtle">
-        Directional cascade from upstream failure through runtime dependencies.
-      </p>
+    <PageSection
+      title="Propagation chain"
+      description="Directional cascade from upstream failure through runtime dependencies."
+      className="incident-propagation-panel"
+      persistKey={`incident:${incidentId}:propagation-chain`}
+    >
       <div className="propagation-chain">
         {path.map((node, index) => (
           <div key={node.serviceId} className="propagation-hop">
@@ -52,6 +55,6 @@ export function IncidentPropagationChain({ diagnosis, projectId }: Props) {
           </div>
         ))}
       </div>
-    </section>
+    </PageSection>
   );
 }

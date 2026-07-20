@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
+import { PageSection } from "../../components/ui/page-section";
 import { apiFetch } from "../../lib/api";
 
 type ProjectOption = {
@@ -116,13 +117,11 @@ export default function SettingsPage() {
       {error ? <section className="panel error-panel">{error}</section> : null}
 
       <section className="two-col settings-grid">
-        <section className="panel">
-          <div className="section-head">
-            <div>
-              <h2>Add notification channel</h2>
-              <p>Create an email destination or webhook target for alerts.</p>
-            </div>
-          </div>
+        <PageSection
+          title="Add notification channel"
+          description="Create an email destination or webhook target for alerts."
+          persistKey="org:settings:notifications:add"
+        >
           <form className="stack-form" onSubmit={handleSubmit}>
             <label>
               Name
@@ -183,16 +182,13 @@ export default function SettingsPage() {
               {saving ? "Saving..." : "Add channel"}
             </button>
           </form>
-        </section>
+        </PageSection>
 
-        <section className="panel">
-          <div className="section-head">
-            <div>
-              <h2>Configured channels</h2>
-              <p>{loading ? "Loading current alert destinations..." : `${channels.length} configured`}</p>
-            </div>
-          </div>
-
+        <PageSection
+          title="Configured channels"
+          description={loading ? "Loading current alert destinations..." : `${channels.length} configured`}
+          persistKey="org:settings:notifications:list"
+        >
           {loading ? (
             <p>Loading channels...</p>
           ) : channels.length === 0 ? (
@@ -225,7 +221,7 @@ export default function SettingsPage() {
               ))}
             </div>
           )}
-        </section>
+        </PageSection>
       </section>
     </Shell>
   );

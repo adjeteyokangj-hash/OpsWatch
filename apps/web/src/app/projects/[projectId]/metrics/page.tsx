@@ -103,7 +103,11 @@ export default function ProjectMetricsPage() {
         ]}
       />
 
-      <PageSection title="Latest check latency" description="Values come from the most recent CheckResult per check.">
+      <PageSection
+        title="Latest check latency"
+        description="Values come from the most recent CheckResult per check."
+        persistKey={`project:${projectId}:metrics:latency`}
+      >
         {checksLoading ? <p>Loading metrics…</p> : null}
         {!checksLoading && projectChecks.length === 0 ? (
           <EmptyState

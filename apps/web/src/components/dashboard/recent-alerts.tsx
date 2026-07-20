@@ -21,14 +21,22 @@ export function RecentAlerts({
 }) {
   if (loading) {
     return (
-      <PageSection title="Recent alerts" description="Latest open signals across your estate.">
+      <PageSection
+        title="Recent alerts"
+        description="Latest open signals across your estate."
+        persistKey="org:dashboard:recent-alerts"
+      >
         <p>Loading alerts…</p>
       </PageSection>
     );
   }
 
   return (
-    <PageSection title="Recent alerts" description="Latest open signals across your estate.">
+    <PageSection
+      title="Recent alerts"
+      description="Latest open signals across your estate."
+      persistKey="org:dashboard:recent-alerts"
+    >
       {items.length === 0 ? (
         <EmptyState
           title="No open alerts"

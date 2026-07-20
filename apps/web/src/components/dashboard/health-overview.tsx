@@ -3,7 +3,11 @@ import { PageSection } from "../ui/page-section";
 
 export function HealthOverview({ healthy, degraded, down }: { healthy: number; degraded: number; down: number }) {
   return (
-    <PageSection title="Health overview" description="Project health distribution across the estate.">
+    <PageSection
+      title="Health overview"
+      description="Project health distribution across the estate."
+      persistKey="org:dashboard:health-overview"
+    >
       <div className="health-pill-grid">
         <Link className="health-pill-card healthy" href="/projects?health=HEALTHY">
           <span className="health-pill-label">Healthy</span>

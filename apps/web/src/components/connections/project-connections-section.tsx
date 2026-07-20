@@ -17,6 +17,7 @@ import {
   MonitoringDepthSummary,
   type MonitoringSetup
 } from "../projects/monitoring-depth-summary";
+import { PageSection } from "../ui/page-section";
 
 type ProjectConnectionsSectionProps = {
   projectId: string;
@@ -87,16 +88,18 @@ export function ProjectConnectionsSection({ projectId }: ProjectConnectionsSecti
   };
 
   return (
-    <section className="panel project-connections-section" aria-label="Connections" data-testid="project-connections-section">
-      <div className="panel-heading-row">
-        <div>
-          <h2>Connections</h2>
-          <p className="dashboard-subtle">Project-scoped operational connections. Secrets and raw credential references stay off this page.</p>
-        </div>
+    <PageSection
+      title="Connections"
+      description="Project-scoped operational connections. Secrets and raw credential references stay off this page."
+      persistKey={`project:${projectId}:monitoring-connections`}
+      className="project-connections-section"
+      data-testid="project-connections-section"
+      actions={
         <Link className="secondary-button" href={`/connections?projectId=${encodeURIComponent(projectId)}`}>
           Manage connections
         </Link>
-      </div>
+      }
+    >
       {error ? (
         <p className="error-panel" role="alert">
           {error}
@@ -199,6 +202,6 @@ export function ProjectConnectionsSection({ projectId }: ProjectConnectionsSecti
           </table>
         </div>
       )}
-    </section>
+    </PageSection>
   );
 }

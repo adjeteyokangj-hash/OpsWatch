@@ -309,6 +309,7 @@ export default function IntelligencePage() {
           <PageSection
             title="Prediction readiness"
             description="Generation stays default-off. Candidates require evidence, expiry, and review for high impact."
+            persistKey="org:intelligence:prediction-readiness"
           >
             <div className="snapshot-grid" data-testid="predictions-disabled-state">
               <div className="snapshot-item">
@@ -340,6 +341,8 @@ export default function IntelligencePage() {
             <PageSection
               title="Learning stages"
               description="Separate flags. Stages default OFF; the UI never invents hidden predictions."
+              persistKey="org:intelligence:learning-stages"
+              defaultCollapsed
             >
               <div className="feature-gate-grid" data-testid="learning-stages">
                 {learningStages.map((stage) => (
@@ -358,7 +361,12 @@ export default function IntelligencePage() {
           ) : null}
 
           {gates.length > 0 ? (
-            <PageSection title="Capability gates" description="Broader platform gates (defaults OFF).">
+            <PageSection
+              title="Capability gates"
+              description="Broader platform gates (defaults OFF)."
+              persistKey="org:intelligence:capability-gates"
+              defaultCollapsed
+            >
               <div className="feature-gate-grid">
                 {gates.map((gate) => (
                   <article className="feature-gate-card" key={gate.key}>
@@ -378,6 +386,7 @@ export default function IntelligencePage() {
             <PageSection
               title="Baselines"
               description="Metric baselines from live checks and APM windows. Insufficient samples stay labelled."
+              persistKey="org:intelligence:baselines"
             >
               {(phase9?.metricBaselines.length ?? 0) === 0 ? (
                 <EmptyState
@@ -409,6 +418,7 @@ export default function IntelligencePage() {
             <PageSection
               title="Current anomalies"
               description="Deterministic above-normal detections — not predictions."
+              persistKey="org:intelligence:anomalies"
             >
               {(phase9?.anomalies.length ?? 0) === 0 ? (
                 <EmptyState
@@ -437,7 +447,11 @@ export default function IntelligencePage() {
           </section>
 
           <section className="two-col">
-            <PageSection title="Deteriorating services" description="Sustained multi-window worsening only.">
+            <PageSection
+              title="Deteriorating services"
+              description="Sustained multi-window worsening only."
+              persistKey="org:intelligence:deterioration"
+            >
               {(phase9?.deterioration.length ?? 0) === 0 ? (
                 <EmptyState title="No deterioration detected" description="Requires sustained rising trends across windows." />
               ) : (
@@ -460,6 +474,7 @@ export default function IntelligencePage() {
             <PageSection
               title="Similar incidents / pattern memory"
               description="Confirmed root-cause patterns only. Similarity ≠ same cause."
+              persistKey="org:intelligence:incident-patterns"
             >
               {(phase9?.incidentPatterns.length ?? 0) === 0 ? (
                 <EmptyState
@@ -485,6 +500,7 @@ export default function IntelligencePage() {
           <PageSection
             title="Prediction candidates"
             description="Future operational risk only. Each row has evidence and expiry. High-impact items need review."
+            persistKey="org:intelligence:prediction-candidates"
           >
             {(phase9?.predictionCandidates.length ?? 0) === 0 ? (
               <EmptyState
@@ -563,6 +579,7 @@ export default function IntelligencePage() {
             <PageSection
               title="Preventive recommendations"
               description="Low-risk Phase 7 registry actions only. Not autonomous high-risk execution."
+              persistKey="org:intelligence:preventive-recommendations"
             >
               {(phase9?.preventiveRecommendations.length ?? 0) === 0 ? (
                 <EmptyState
@@ -585,7 +602,11 @@ export default function IntelligencePage() {
               )}
             </PageSection>
 
-            <PageSection title="Outcome learning" description="Organisation-scoped evaluation metrics.">
+            <PageSection
+              title="Outcome learning"
+              description="Organisation-scoped evaluation metrics."
+              persistKey="org:intelligence:outcome-learning"
+            >
               <div className="snapshot-grid" data-testid="outcome-metrics">
                 <div className="snapshot-item">
                   <span className="snapshot-label">Evaluated</span>
@@ -618,6 +639,8 @@ export default function IntelligencePage() {
           <PageSection
             title="Security risk patterns"
             description="Elevated / above-normal wording only — never predicted breach certainty."
+            persistKey="org:intelligence:security-risk-patterns"
+            defaultCollapsed
           >
             {(phase9?.securityRiskPatterns.length ?? 0) === 0 ? (
               <EmptyState title="No security baselines" description="Built from Phase 8 security event volumes when baselines run." />
@@ -637,7 +660,11 @@ export default function IntelligencePage() {
           </PageSection>
 
           <section className="two-col" data-testid="mobile-intelligence">
-            <PageSection title="Calculated patterns" description="Evidence-ranked correlations are not predictions.">
+            <PageSection
+              title="Calculated patterns"
+              description="Evidence-ranked correlations are not predictions."
+              persistKey="org:intelligence:calculated-patterns"
+            >
               {displayablePatterns.length === 0 ? (
                 <EmptyState
                   title="No display-ready patterns"
@@ -659,7 +686,12 @@ export default function IntelligencePage() {
               )}
             </PageSection>
 
-            <PageSection title="Incident memory" description="Known resolution facts only.">
+            <PageSection
+              title="Incident memory"
+              description="Known resolution facts only."
+              persistKey="org:intelligence:incident-memory"
+              defaultCollapsed
+            >
               {data.incidentMemories.length === 0 ? (
                 <EmptyState title="No incident memories" description="Resolved incidents with diagnosis appear here." />
               ) : (

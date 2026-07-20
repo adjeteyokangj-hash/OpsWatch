@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
+import { PageSection } from "../../components/ui/page-section";
 import { HealthBadge } from "../../components/health/health-badge";
 import { apiFetch } from "../../lib/api";
 
@@ -80,8 +81,10 @@ function ServicesPageContent() {
       </section>
       {loading ? <p>Loading services…</p> : null}
       {!loading ? (
-        <section className="panel">
-          <h2>{filtered.length} service{filtered.length === 1 ? "" : "s"}</h2>
+        <PageSection
+          title={`${filtered.length} service${filtered.length === 1 ? "" : "s"}`}
+          persistKey="org:services:inventory"
+        >
           <div className="layer-health-table-wrap">
             <table className="data-table layer-health-table">
               <thead>
@@ -110,7 +113,7 @@ function ServicesPageContent() {
               </tbody>
             </table>
           </div>
-        </section>
+        </PageSection>
       ) : null}
     </Shell>
   );

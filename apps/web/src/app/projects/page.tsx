@@ -10,6 +10,7 @@ import { ApplicationsPortfolioCards } from "../../components/projects/applicatio
 import { RegisterApplicationWizard } from "../../components/projects/register-application-wizard";
 import { StatCard } from "../../components/dashboard/stat-card";
 import { EmptyState } from "../../components/ui/empty-state";
+import { PageSection } from "../../components/ui/page-section";
 import {
   defaultViewForCount,
   isTestApplication,
@@ -192,7 +193,12 @@ function ProjectsPageContent() {
         <StatCard label="Unresolved incidents" value={unresolvedIncidents} href="/incidents?onlyUnresolved=true" />
       </section>
 
-      <section className="panel applications-search-panel">
+      <PageSection
+        title="Search"
+        description="Search by company name, application name or ID."
+        persistKey="org:projects:search"
+        className="applications-search-panel"
+      >
         <label className="applications-search-label" htmlFor="applications-search">
           Search by company name, application name or ID
         </label>
@@ -218,9 +224,14 @@ function ProjectsPageContent() {
             </button>
           ) : null}
         </div>
-      </section>
+      </PageSection>
 
-      <section className="panel applications-filter-panel">
+      <PageSection
+        title="Filters"
+        description="Health, environment, ownership, and portfolio view."
+        persistKey="org:projects:filters"
+        className="applications-filter-panel"
+      >
         <div className="form-row applications-filter-row">
           <label>
             Health
@@ -301,7 +312,7 @@ function ProjectsPageContent() {
             </button>
           ) : null}
         </div>
-      </section>
+      </PageSection>
 
       {error ? <section className="panel error-panel">{error}</section> : null}
       {loading ? (
@@ -339,7 +350,11 @@ function ProjectsPageContent() {
           />
         </section>
       ) : (
-        <>
+        <PageSection
+          title="Applications"
+          description={`Showing ${paged.start}–${paged.end} of ${paged.total} application${paged.total === 1 ? "" : "s"}.`}
+          persistKey="org:projects:applications"
+        >
           <div className="applications-results-meta" role="status">
             <span>
               Showing {paged.start}–{paged.end} of {paged.total} application
@@ -383,7 +398,7 @@ function ProjectsPageContent() {
               </button>
             </nav>
           ) : null}
-        </>
+        </PageSection>
       )}
       {showWizard ? (
         <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Register application">

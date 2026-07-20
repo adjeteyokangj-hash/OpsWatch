@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Shell } from "../../../components/layout/shell";
 import { Header } from "../../../components/layout/header";
+import { PageSection } from "../../../components/ui/page-section";
 import { apiFetch } from "../../../lib/api";
 import { StatCard } from "../../../components/dashboard/stat-card";
 
@@ -132,8 +133,7 @@ export default function CheckDetailPage() {
         />
       </section>
 
-      <section className="panel">
-        <h2>Configuration</h2>
+      <PageSection title="Configuration" persistKey="org:checks:configuration">
         <p><strong>Project:</strong> <Link href={`/projects/${check.service.project.id}`}>{check.service.project.name}</Link></p>
         <p><strong>Service:</strong> {check.service.name}</p>
         <p><strong>Type:</strong> {check.type}</p>
@@ -153,10 +153,9 @@ export default function CheckDetailPage() {
           <summary>Show raw config JSON</summary>
           <pre>{JSON.stringify(check.configJson ?? {}, null, 2)}</pre>
         </details>
-      </section>
+      </PageSection>
 
-      <section className="panel">
-        <h2>Active exceptions</h2>
+      <PageSection title="Active exceptions" persistKey="org:checks:exceptions">
         {activeExceptions.length === 0 ? (
           <p>No recent failures or warnings. This check is currently stable.</p>
         ) : (
@@ -183,10 +182,13 @@ export default function CheckDetailPage() {
             </tbody>
           </table>
         )}
-      </section>
+      </PageSection>
 
-      <section className="panel">
-        <h2>Run history</h2>
+      <PageSection
+        title="Run history"
+        persistKey="org:checks:history"
+        defaultCollapsed
+      >
         {check.recentResults.length === 0 ? (
           <p>No executions yet.</p>
         ) : (
@@ -213,11 +215,10 @@ export default function CheckDetailPage() {
             </tbody>
           </table>
         )}
-      </section>
+      </PageSection>
 
       <section className="two-col">
-        <section className="panel">
-          <h2>Linked alerts</h2>
+        <PageSection title="Linked alerts" persistKey="org:checks:linked-alerts">
           {linkedAlerts.length === 0 ? (
             <p>No active alerts.</p>
           ) : (
@@ -227,9 +228,8 @@ export default function CheckDetailPage() {
               ))}
             </ul>
           )}
-        </section>
-        <section className="panel">
-          <h2>Linked incidents</h2>
+        </PageSection>
+        <PageSection title="Linked incidents" persistKey="org:checks:linked-incidents">
           {linkedIncidents.length === 0 ? (
             <p>No active incidents.</p>
           ) : (
@@ -239,7 +239,7 @@ export default function CheckDetailPage() {
               ))}
             </ul>
           )}
-        </section>
+        </PageSection>
       </section>
     </Shell>
   );

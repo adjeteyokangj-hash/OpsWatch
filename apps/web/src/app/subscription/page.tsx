@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
+import { PageSection } from "../../components/ui/page-section";
 import { apiFetch } from "../../lib/api";
 
 type UsageRow = {
@@ -174,23 +175,11 @@ function SubscriptionPageContent() {
         <p>Loading subscription…</p>
       ) : summary ? (
         <>
-          <section className="panel billing-plan-summary">
-            <div className="billing-plan-summary__head">
-              <div>
-                <h2>{summary.plan.name} plan</h2>
-                {summary.subscription ? (
-                  <p className="dashboard-subtle">
-                    <span className={`result-pill ${statusClass(summary.subscription.status)}`}>
-                      {summary.subscription.status}
-                    </span>{" "}
-                    {summary.subscription.cancelAtPeriodEnd
-                      ? `Cancels on ${formatDate(summary.subscription.currentPeriodEnd)}`
-                      : `Renews on ${formatDate(summary.subscription.currentPeriodEnd)}`}
-                  </p>
-                ) : (
-                  <p className="dashboard-subtle">No active subscription record.</p>
-                )}
-              </div>
+          <PageSection
+            title={`${summary.plan.name} plan`}
+            className="billing-plan-summary"
+            persistKey="org:subscription:summary"
+            actions={
               <button
                 type="button"
                 className="secondary-button"
@@ -199,16 +188,27 @@ function SubscriptionPageContent() {
               >
                 {portalLoading ? "Opening…" : "Manage billing"}
               </button>
-            </div>
-          </section>
+            }
+          >
+            {summary.subscription ? (
+              <p className="dashboard-subtle">
+                <span className={`result-pill ${statusClass(summary.subscription.status)}`}>
+                  {summary.subscription.status}
+                </span>{" "}
+                {summary.subscription.cancelAtPeriodEnd
+                  ? `Cancels on ${formatDate(summary.subscription.currentPeriodEnd)}`
+                  : `Renews on ${formatDate(summary.subscription.currentPeriodEnd)}`}
+              </p>
+            ) : (
+              <p className="dashboard-subtle">No active subscription record.</p>
+            )}
+          </PageSection>
 
-          <section className="panel">
-            <div className="section-head">
-              <div>
-                <h2>Usage this period</h2>
-                <p>Current consumption against your plan limits.</p>
-              </div>
-            </div>
+          <PageSection
+            title="Usage this period"
+            description="Current consumption against your plan limits."
+            persistKey="org:subscription:usage"
+          >
             <div className="billing-usage-grid">
               {usageRows.map((row) => (
                 <article className="panel metric-card" key={row.featureKey}>
@@ -220,14 +220,13 @@ function SubscriptionPageContent() {
                 </article>
               ))}
             </div>
-          </section>
+          </PageSection>
 
-          <section className="panel">
-            <div className="section-head">
-              <div>
-                <h2>Plans</h2>
-                <p>Upgrade or change your plan. Billing is handled securely by Stripe.</p>
-              </div>
+          <PageSection
+            title="Plans"
+            description="Upgrade or change your plan. Billing is handled securely by Stripe."
+            persistKey="org:subscription:plans"
+            actions={
               <div className="segmented-toggle" role="group" aria-label="Billing interval">
                 <button
                   type="button"
@@ -244,7 +243,8 @@ function SubscriptionPageContent() {
                   Annual
                 </button>
               </div>
-            </div>
+            }
+          >
             <div className="plan-grid">
               {summary.availablePlans.map((plan) => {
                 const isCurrent = plan.code === currentPlanCode;
@@ -273,7 +273,7 @@ function SubscriptionPageContent() {
                 );
               })}
             </div>
-          </section>
+          </PageSection>
         </>
       ) : (
         <section className="panel">No subscription data available.</section>

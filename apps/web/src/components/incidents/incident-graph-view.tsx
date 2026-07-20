@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../lib/api";
+import { PageSection } from "../ui/page-section";
 import { TopologyCanvas } from "../topology/topology-canvas";
 import { TopologyNodeDrawer } from "../topology/topology-node-drawer";
 import type { ProjectTopologyResponse, TopologyOverlays } from "../topology/topology-types";
@@ -88,33 +89,38 @@ export const IncidentGraphView = ({ incidentId, projectId }: Props) => {
   const selectedNode = graph?.topology.nodes.find((row) => row.id === selectedNodeId) ?? null;
 
   if (loading && !graph) {
-    return <section className="panel">Loading causal graph…</section>;
+    return (
+      <PageSection title="Incident graph" collapsible={false}>
+        Loading causal graph…
+      </PageSection>
+    );
   }
 
   if (error || !graph) {
-    return <section className="panel error-panel">{error ?? "Causal graph unavailable."}</section>;
+    return (
+      <PageSection title="Incident graph" className="error-panel" collapsible={false}>
+        {error ?? "Causal graph unavailable."}
+      </PageSection>
+    );
   }
 
   return (
     <>
-      <section className="panel">
-        <div className="topology-summary-head">
-          <div>
-            <h2>Incident graph</h2>
-            <p className="dashboard-subtle">
-              {graph.incident.severity} · {graph.incident.status} · generated{" "}
-              {new Date(graph.generatedAt).toLocaleString()}
-            </p>
-          </div>
+      <PageSection
+        title="Incident graph"
+        description={`${graph.incident.severity} · ${graph.incident.status} · generated ${new Date(graph.generatedAt).toLocaleString()}`}
+        persistKey={`incident:${incidentId}:graph-summary`}
+        actions={
           <button type="button" className="btn ghost" onClick={() => void load()}>
             Refresh graph
           </button>
-        </div>
+        }
+      >
         {graph.explanation.summary ? <p className="content">{graph.explanation.summary}</p> : null}
         {graph.explanation.confidence != null ? (
           <p className="dashboard-subtle">Overall confidence: {graph.explanation.confidence}%</p>
         ) : null}
-      </section>
+      </PageSection>
 
       <section className="panel topology-controls causal-graph-controls">
         <label>
@@ -132,8 +138,10 @@ export const IncidentGraphView = ({ incidentId, projectId }: Props) => {
       </section>
 
       {(graph.overlay.probableRootCauses?.length ?? 0) > 0 ? (
-        <section className="panel">
-          <h3>Root-cause candidates</h3>
+        <PageSection
+          title="Root-cause candidates"
+          persistKey={`incident:${incidentId}:graph-root-causes`}
+        >
           <div className="pill-row">
             {(graph.overlay.probableRootCauses ?? []).map((row) => {
               const node = graph.topology.nodes.find((n) => n.id === row.nodeId);
@@ -161,7 +169,7 @@ export const IncidentGraphView = ({ incidentId, projectId }: Props) => {
               <p className="content">{selectedRoot.reason}</p>
             </div>
           ) : null}
-        </section>
+        </PageSection>
       ) : null}
 
       <div className="topology-layout">
@@ -206,8 +214,12 @@ export const IncidentGraphView = ({ incidentId, projectId }: Props) => {
         ) : null}
       </div>
 
-      <section className="panel">
-        <h3>Evidence</h3>
+      <PageSection
+        title="Evidence"
+        description="Observed facts come from alerts, checks, and recorded events. Inferred and AI-suggested items are hypotheses, not confirmed root cause."
+        persistKey={`incident:${incidentId}:graph-evidence`}
+        defaultCollapsed
+      >
         {graph.explanation.evidence.length === 0 ? (
           <p className="dashboard-subtle">No ranked evidence available yet.</p>
         ) : (
@@ -221,15 +233,15 @@ export const IncidentGraphView = ({ incidentId, projectId }: Props) => {
             ))}
           </ul>
         )}
-        <p className="dashboard-subtle">
-          Observed facts come from alerts, checks, and recorded events. Inferred and AI-suggested items are hypotheses,
-          not confirmed root cause.
-        </p>
-        {paused ? <p className="dashboard-subtle">Graph interaction paused auto-refresh on the project topology page only.</p> : null}
+        {paused ? (
+          <p className="dashboard-subtle">
+            Graph interaction paused auto-refresh on the project topology page only.
+          </p>
+        ) : null}
         <Link className="btn ghost" href={`/projects/${graph.incident.projectId}/topology`}>
           Open full project topology
         </Link>
-      </section>
+      </PageSection>
     </>
   );
 };
