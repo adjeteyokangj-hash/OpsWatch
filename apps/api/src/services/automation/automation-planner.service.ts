@@ -115,10 +115,11 @@ export const planAutomationForIncident = async (input: {
       }
     }
   });
-  const orgExecutionMode = await clampAutomationExecutionMode(
+  const orgMode = await clampAutomationExecutionMode(
     input.organizationId,
-    (policy?.executionMode ?? "OBSERVE") as AutomationPlan["executionMode"]
+    policy?.executionMode ?? "OBSERVE"
   );
+  const orgExecutionMode = toAutomationRunExecutionMode(orgMode) as AutomationPlan["executionMode"];
   const executionMode = toAutomationRunExecutionMode(modeState.effectiveMode) as AutomationPlan["executionMode"];
   const clampedExecutionMode =
     executionMode === "AUTONOMOUS" && orgExecutionMode !== "AUTONOMOUS"

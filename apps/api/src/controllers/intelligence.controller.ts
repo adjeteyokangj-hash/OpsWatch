@@ -200,12 +200,59 @@ export const getFeatureGatesHandler = async (req: AuthRequest, res: Response): P
 
   const gates = listFeatureGates();
   const { listLearningStages } = await import("../services/learning/learning-flags");
+  const { getAiOperatingProfileSnapshot } = await import(
+    "../services/intelligence/ai-operating-profile.service"
+  );
+  const operatingProfile = getAiOperatingProfileSnapshot();
   res.json({
+    operatingProfile,
     gates,
     learningStages: listLearningStages(),
     defaultsOff: gates.every((gate) => gate.defaultEnabled === false),
     anyEnabled: gates.some((gate) => gate.enabled)
   });
+};
+
+export const getAiOperationsStatusHandler = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  const orgId = orgIdOr403(req, res);
+  if (!orgId) return;
+  if (!hasPermission(req.user?.role, "diagnosis:read")) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const projectId =
+    typeof req.query.projectId === "string" && req.query.projectId.trim()
+      ? req.query.projectId.trim()
+      : undefined;
+
+  if (projectId) {
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organizationId: orgId },
+      select: { id: true }
+    });
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+  }
+
+  try {
+    const { buildAiOperationsStatus } = await import(
+      "../services/intelligence/ai-operations-status.service"
+    );
+    const status = await buildAiOperationsStatus({ organizationId: orgId, projectId });
+    res.json(status);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Operations status failed";
+    res.status(503).json({
+      error: "AI operations status temporarily unavailable",
+      detail: message
+    });
+  }
 };
 
 export const reviewPredictionHandler = async (req: AuthRequest, res: Response): Promise<void> => {

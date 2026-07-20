@@ -26,8 +26,10 @@ describe("remediation-governance.service", () => {
       return false;
     });
 
-    await expect(clampAutomationExecutionMode("org-1", "AUTONOMOUS")).resolves.toBe("APPROVAL");
-    await expect(clampAutomationExecutionMode("org-1", "APPROVAL")).resolves.toBe("APPROVAL");
-    await expect(clampAutomationExecutionMode("org-1", "OBSERVE")).resolves.toBe("OBSERVE");
+    await expect(clampAutomationExecutionMode("org-1", "AUTONOMOUS")).resolves.toBe("AUTO_HEAL_SAFE");
+    await expect(clampAutomationExecutionMode("org-1", "FULL_AUTONOMOUS")).resolves.toBe("AUTO_HEAL_SAFE");
+    await expect(clampAutomationExecutionMode("org-1", "APPROVAL")).resolves.toBe("RECOMMEND");
+    await expect(clampAutomationExecutionMode("org-1", "OBSERVE")).resolves.toBe("MONITOR_ONLY");
+    await expect(clampAutomationExecutionMode("org-1", "AUTO_HEAL_SAFE")).resolves.toBe("AUTO_HEAL_SAFE");
   });
 });

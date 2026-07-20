@@ -1,7 +1,10 @@
 /**
  * Phase 9 learning / prediction stage flags.
- * All stages default OFF. Predictions remain disabled unless explicitly enabled.
+ * Default OFF under safety_gated; ai_led_safe profile enables the documented set
+ * unless an individual flag is explicitly "false".
  */
+
+import { resolveEffectiveEnvFlag } from "../intelligence/ai-operating-profile.service";
 
 export type LearningStageKey =
   | "BASELINE_CALCULATION"
@@ -19,48 +22,46 @@ export type LearningStageStatus = {
   description: string;
 };
 
-const envTrue = (name: string): boolean => process.env[name] === "true";
-
 export const listLearningStages = (): LearningStageStatus[] => [
   {
     key: "BASELINE_CALCULATION",
     envVar: "OPSWATCH_LEARNING_BASELINES_ENABLED",
-    enabled: envTrue("OPSWATCH_LEARNING_BASELINES_ENABLED"),
+    enabled: resolveEffectiveEnvFlag("OPSWATCH_LEARNING_BASELINES_ENABLED"),
     defaultEnabled: false,
     description: "Calculate behaviour baselines from live operational evidence"
   },
   {
     key: "ANOMALY_DETECTION",
     envVar: "OPSWATCH_LEARNING_ANOMALIES_ENABLED",
-    enabled: envTrue("OPSWATCH_LEARNING_ANOMALIES_ENABLED"),
+    enabled: resolveEffectiveEnvFlag("OPSWATCH_LEARNING_ANOMALIES_ENABLED"),
     defaultEnabled: false,
     description: "Deterministic anomaly detection against baselines"
   },
   {
     key: "INCIDENT_MATCHING",
     envVar: "OPSWATCH_LEARNING_INCIDENT_MATCHING_ENABLED",
-    enabled: envTrue("OPSWATCH_LEARNING_INCIDENT_MATCHING_ENABLED"),
+    enabled: resolveEffectiveEnvFlag("OPSWATCH_LEARNING_INCIDENT_MATCHING_ENABLED"),
     defaultEnabled: false,
     description: "Similar-incident matching and pattern memory"
   },
   {
     key: "PREDICTION_CANDIDATES",
     envVar: "OPSWATCH_PREDICTIONS_ENABLED",
-    enabled: envTrue("OPSWATCH_PREDICTIONS_ENABLED"),
+    enabled: resolveEffectiveEnvFlag("OPSWATCH_PREDICTIONS_ENABLED"),
     defaultEnabled: false,
-    description: "Generate evidence-backed prediction candidates (default off)"
+    description: "Generate evidence-backed prediction candidates (gated by profile + confidence)"
   },
   {
     key: "PREDICTION_NOTIFICATIONS",
     envVar: "OPSWATCH_PREDICTION_NOTIFICATIONS_ENABLED",
-    enabled: envTrue("OPSWATCH_PREDICTION_NOTIFICATIONS_ENABLED"),
+    enabled: resolveEffectiveEnvFlag("OPSWATCH_PREDICTION_NOTIFICATIONS_ENABLED"),
     defaultEnabled: false,
     description: "Notify on confirmed high-impact prediction candidates"
   },
   {
     key: "PREVENTIVE_RECOMMENDATIONS",
     envVar: "OPSWATCH_PREVENTIVE_RECOMMENDATIONS_ENABLED",
-    enabled: envTrue("OPSWATCH_PREVENTIVE_RECOMMENDATIONS_ENABLED"),
+    enabled: resolveEffectiveEnvFlag("OPSWATCH_PREVENTIVE_RECOMMENDATIONS_ENABLED"),
     defaultEnabled: false,
     description: "Surface low-risk preventive recommendations via Phase 7 registry"
   }

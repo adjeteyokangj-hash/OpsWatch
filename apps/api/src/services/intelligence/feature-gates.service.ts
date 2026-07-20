@@ -1,7 +1,10 @@
 /**
  * Phase 8 — centralized feature gates for learning / prediction / advanced capabilities.
- * All experimental emission paths default OFF unless an env flag is exactly "true".
+ * Under safety_gated, paths stay OFF unless an env flag is exactly "true".
+ * Under ai_led_safe, the documented safe set is on unless explicitly "false".
  */
+
+import { resolveEffectiveEnvFlag } from "./ai-operating-profile.service";
 
 export type FeatureGateKey =
   | "PREDICTIONS"
@@ -19,49 +22,47 @@ export type FeatureGateStatus = {
   description: string;
 };
 
-const envTrue = (name: string): boolean => process.env[name] === "true";
-
 export const listFeatureGates = (): FeatureGateStatus[] => [
   {
     key: "PREDICTIONS",
     envVar: "OPSWATCH_PREDICTIONS_ENABLED",
-    enabled: envTrue("OPSWATCH_PREDICTIONS_ENABLED"),
+    enabled: resolveEffectiveEnvFlag("OPSWATCH_PREDICTIONS_ENABLED"),
     defaultEnabled: false,
     description:
-      "Evidence-backed prediction candidates (Phase 9). Default off; requires review for high-impact items."
+      "Evidence-backed prediction candidates (Phase 9). Still requires confidence thresholds."
   },
   {
     key: "LEARNED_TOPOLOGY",
     envVar: "OPSWATCH_LEARNED_TOPOLOGY_ENABLED",
-    enabled: envTrue("OPSWATCH_LEARNED_TOPOLOGY_ENABLED"),
+    enabled: resolveEffectiveEnvFlag("OPSWATCH_LEARNED_TOPOLOGY_ENABLED"),
     defaultEnabled: false,
     description: "Observation-driven learned relationship auto-creation"
   },
   {
     key: "OTEL_INGESTION",
     envVar: "OPSWATCH_OTEL_INGESTION_ENABLED",
-    enabled: envTrue("OPSWATCH_OTEL_INGESTION_ENABLED"),
+    enabled: resolveEffectiveEnvFlag("OPSWATCH_OTEL_INGESTION_ENABLED"),
     defaultEnabled: false,
     description: "OpenTelemetry collector ingest bridge"
   },
   {
     key: "AUTO_REPAIR",
     envVar: "OPSWATCH_AUTO_REPAIR_ENABLED",
-    enabled: envTrue("OPSWATCH_AUTO_REPAIR_ENABLED"),
+    enabled: resolveEffectiveEnvFlag("OPSWATCH_AUTO_REPAIR_ENABLED"),
     defaultEnabled: false,
     description: "Permit approval-gated high-impact repair actions"
   },
   {
     key: "ADVANCED_RCA",
     envVar: "OPSWATCH_ADVANCED_RCA_ENABLED",
-    enabled: envTrue("OPSWATCH_ADVANCED_RCA_ENABLED"),
+    enabled: resolveEffectiveEnvFlag("OPSWATCH_ADVANCED_RCA_ENABLED"),
     defaultEnabled: false,
     description: "Extra RCA overlays beyond evidence-ranked candidates"
   },
   {
     key: "AUTOMATION_TEST_MODE",
     envVar: "OPSWATCH_AUTOMATION_TEST_MODE",
-    enabled: envTrue("OPSWATCH_AUTOMATION_TEST_MODE"),
+    enabled: resolveEffectiveEnvFlag("OPSWATCH_AUTOMATION_TEST_MODE"),
     defaultEnabled: false,
     description: "Validate automation without mutating production systems"
   }

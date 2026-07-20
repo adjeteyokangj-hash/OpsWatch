@@ -1,6 +1,11 @@
 import { entitlementFeatureDisabled } from "../../lib/entitlement-errors";
 import { ENTITLEMENT_KEYS } from "./entitlement-keys";
 import { isEntitlementEnabled } from "./entitlement.service";
+import {
+  clampModeByRank,
+  normalizeProjectAutonomousMode,
+  type ProjectAutonomousMode
+} from "@opswatch/shared";
 
 export type RemediationGovernanceTier =
   | "MANUAL_ONLY"
@@ -57,16 +62,23 @@ export const assertPolicyControlledRemediationAllowed = async (
   }
 };
 
+/** Entitlement ceiling for project autonomous modes (AI-led safe needs approval tier). */
+export const governanceModeCeiling = (governance: RemediationGovernance): ProjectAutonomousMode => {
+  if (governance.autonomousEnabled) return "FULL_AUTONOMOUS";
+  if (governance.approvalEnabled) return "AUTO_HEAL_SAFE";
+  if (governance.suggestedEnabled) return "MONITOR_ONLY";
+  return "DISABLED";
+};
+
+/**
+ * Clamp an org/project execution mode by entitlements.
+ * Accepts legacy OBSERVE/APPROVAL/AUTONOMOUS and five-mode values.
+ */
 export const clampAutomationExecutionMode = async (
   organizationId: string,
-  requestedMode: "OBSERVE" | "APPROVAL" | "AUTONOMOUS"
-): Promise<"OBSERVE" | "APPROVAL" | "AUTONOMOUS"> => {
+  requestedMode: string
+): Promise<ProjectAutonomousMode> => {
   const governance = await resolveRemediationGovernance(organizationId);
-  if (requestedMode === "AUTONOMOUS") {
-    return governance.autonomousEnabled ? "AUTONOMOUS" : governance.approvalEnabled ? "APPROVAL" : "OBSERVE";
-  }
-  if (requestedMode === "APPROVAL") {
-    return governance.approvalEnabled || governance.autonomousEnabled ? "APPROVAL" : "OBSERVE";
-  }
-  return "OBSERVE";
+  const mode = normalizeProjectAutonomousMode(requestedMode);
+  return clampModeByRank(mode, governanceModeCeiling(governance));
 };

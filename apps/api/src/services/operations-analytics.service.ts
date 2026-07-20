@@ -229,8 +229,25 @@ export const buildAutoRunMetricsReport = async (organizationId: string) => {
     take: 1000
   });
 
-  const succeeded = rows.filter((row) => row.status === "SUCCEEDED").length;
-  const failed = rows.filter((row) => row.status === "FAILED").length;
+  const executedStatuses = new Set(["SUCCEEDED", "FAILED"]);
+  const blockedOrPendingStatuses = new Set([
+    "PENDING_APPROVAL",
+    "APPROVED",
+    "EXECUTING",
+    "MISSING_CONTEXT",
+    "MISCONFIGURED_ENV",
+    "REJECTED"
+  ]);
+
+  const attempted = rows.length;
+  const executedRows = rows.filter((row) => executedStatuses.has(row.status));
+  const succeeded = executedRows.filter((row) => row.status === "SUCCEEDED").length;
+  const failed = executedRows.filter((row) => row.status === "FAILED").length;
+  const executed = succeeded + failed;
+  const blockedOrPendingApproval = rows.filter((row) =>
+    blockedOrPendingStatuses.has(row.status)
+  ).length;
+
   const blockedByPolicy = rows.filter((row) =>
     String(row.resultJson ?? "").includes("policy")
   ).length;
@@ -254,9 +271,16 @@ export const buildAutoRunMetricsReport = async (organizationId: string) => {
     byActionMap.set(row.action, bucket);
   }
 
+  const datasetNote =
+    "Attempted counts all AUTOMATIC remediation logs in the sample. Executed counts terminal SUCCEEDED and FAILED outcomes only. blockedOrPendingApproval includes non-terminal statuses such as PENDING_APPROVAL, APPROVED, and EXECUTING.";
+
   return {
-    totalAutoRuns: rows.length,
-    autoRunSuccessRate: rows.length ? Math.round((succeeded / rows.length) * 1000) / 10 : null,
+    attempted,
+    executed,
+    blockedOrPendingApproval,
+    datasetNote,
+    totalAutoRuns: attempted,
+    autoRunSuccessRate: executed > 0 ? Math.round((succeeded / executed) * 1000) / 10 : null,
     succeeded,
     failed,
     blockedByPolicy,
@@ -268,6 +292,6 @@ export const buildAutoRunMetricsReport = async (organizationId: string) => {
       successRate: row.total ? Math.round((row.success / row.total) * 1000) / 10 : null,
       impactTier: row.impactTier
     })),
-    total: rows.length
+    total: attempted
   };
 };

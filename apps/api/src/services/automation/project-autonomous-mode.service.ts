@@ -10,6 +10,7 @@ import {
 import { prisma } from "../../lib/prisma";
 import {
   clampAutomationExecutionMode,
+  governanceModeCeiling,
   resolveRemediationGovernance,
   type RemediationGovernance
 } from "../entitlements/remediation-governance.service";
@@ -20,6 +21,8 @@ export type AutonomousModePolicyGates = {
   projectAutoRunEnabled: boolean;
   orgAutomationPolicyEnabled: boolean;
   orgAutomationExecutionMode: string;
+  orgPolicySource: string;
+  policyCentreHref: string;
   governanceTier: RemediationGovernance["tier"];
   autonomousEntitled: boolean;
   approvalEntitled: boolean;
@@ -34,18 +37,6 @@ export type ProjectAutonomousModeState = {
   capabilities: AutonomousModeCapabilities;
   policyGates: AutonomousModePolicyGates;
   remediationEmergencyDisabled: boolean;
-};
-
-const orgPolicyToMode = (executionMode: string | null | undefined): ProjectAutonomousMode => {
-  const normalized = normalizeProjectAutonomousMode(executionMode ?? "OBSERVE");
-  return normalized;
-};
-
-const governanceCeiling = (governance: RemediationGovernance): ProjectAutonomousMode => {
-  if (governance.autonomousEnabled) return "FULL_AUTONOMOUS";
-  if (governance.approvalEnabled) return "RECOMMEND";
-  if (governance.suggestedEnabled) return "MONITOR_ONLY";
-  return "DISABLED";
 };
 
 export const resolveProjectAutonomousModeState = async (input: {
@@ -82,13 +73,11 @@ export const resolveProjectAutonomousModeState = async (input: {
     }
   });
 
-  const orgCeiling = orgPolicyToMode(
-    await clampAutomationExecutionMode(
-      input.organizationId,
-      (orgPolicy?.executionMode ?? "OBSERVE") as "OBSERVE" | "APPROVAL" | "AUTONOMOUS"
-    )
+  const orgCeiling = await clampAutomationExecutionMode(
+    input.organizationId,
+    orgPolicy?.executionMode ?? "OBSERVE"
   );
-  const entitlementCeiling = governanceCeiling(governance);
+  const entitlementCeiling = governanceModeCeiling(governance);
 
   let effectiveMode = requestedMode;
   effectiveMode = clampModeByRank(effectiveMode, orgCeiling);
@@ -137,6 +126,8 @@ export const resolveProjectAutonomousModeState = async (input: {
       projectAutoRunEnabled,
       orgAutomationPolicyEnabled: orgPolicy?.enabled ?? false,
       orgAutomationExecutionMode: orgPolicy?.executionMode ?? "OBSERVE",
+      orgPolicySource: "organization.AutomationPolicy.GLOBAL.executionMode",
+      policyCentreHref: "/settings/ai-automation-policies",
       governanceTier: governance.tier,
       autonomousEntitled: governance.autonomousEnabled,
       approvalEntitled: governance.approvalEnabled,

@@ -1,8 +1,11 @@
 /**
  * Adaptive operational-graph health roll-up.
  * Only APPROVED + ACTIVE relationships participate. PENDING LEARNED edges are ignored.
- * Learned topology auto-creation is gated by OPSWATCH_LEARNED_TOPOLOGY_ENABLED (default false).
+ * Learned topology auto-creation is gated by OPSWATCH_LEARNED_TOPOLOGY_ENABLED
+ * (and the ai_led_safe operating profile).
  */
+
+import { resolveEffectiveEnvFlag } from "./intelligence/ai-operating-profile.service";
 
 export const ENTITY_HEALTH_VALUES = [
   "HEALTHY",
@@ -100,7 +103,7 @@ const healthSeverity: Record<EntityHealth, number> = {
 };
 
 export const isLearnedTopologyEnabled = (): boolean =>
-  process.env.OPSWATCH_LEARNED_TOPOLOGY_ENABLED === "true";
+  resolveEffectiveEnvFlag("OPSWATCH_LEARNED_TOPOLOGY_ENABLED");
 
 export const normalizeEntityHealth = (value: string | null | undefined): EntityHealth =>
   ENTITY_HEALTH_VALUES.includes(value as EntityHealth) ? (value as EntityHealth) : "UNKNOWN";

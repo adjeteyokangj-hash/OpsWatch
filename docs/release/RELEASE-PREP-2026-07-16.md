@@ -163,7 +163,7 @@ Names only — no secret values. Sources: `apps/api|.web|.worker/.env.example`, 
 | `SMTP_*` / `ALERT_*` | Optional | Email alerts |
 | `OPENAI_API_KEY` | Optional | Only if LLM diagnosis enabled |
 | `INCIDENT_AI_LLM_ENABLED` | Optional | Default `false` |
-| Feature gates | Keep off until intentional | `OPSWATCH_AUTO_REPAIR_ENABLED`, `OPSWATCH_AUTOMATION_TEST_MODE`, `AUTO_HEAL_DEFAULT_ENABLED`, `OPSWATCH_PREDICTIONS_ENABLED`, `OPSWATCH_OTEL_INGESTION_ENABLED`, `OPSWATCH_LEARNED_TOPOLOGY_ENABLED`, `OPSWATCH_ADVANCED_RCA_ENABLED` |
+| Feature gates | Choose profile explicitly | See [ai-operating-profile.md](../ai-operating-profile.md). `OPSWATCH_AI_OPERATING_PROFILE=ai_led_safe` for AI-led release candidate; individual `=false` overrides still apply. Do not leave LLM/OTEL/prediction-notifications on by accident. |
 
 ### Worker
 
@@ -172,8 +172,9 @@ Names only — no secret values. Sources: `apps/api|.web|.worker/.env.example`, 
 | `DATABASE_URL` | Yes | Same DB |
 | `OPSWATCH_API_URL` | Yes | API base including `/api` |
 | `WORKER_INTERNAL_SECRET` | Yes | Match API |
-| `WORKER_AUTO_HEAL_ENABLED` | Prod default off | `false` until policy ready |
-| `WORKER_AUTOMATION_AUTONOMOUS_ENABLED` | Prod default off | Autonomous sweep |
+| `WORKER_AUTO_HEAL_ENABLED` | Align with profile | `true` under AI-led local/release; see [ai-operating-profile.md](../ai-operating-profile.md) |
+| `WORKER_AUTOMATION_AUTONOMOUS_ENABLED` | Align with profile | Autonomous sweep companion for AI-led |
+| `WORKER_LEARNING_CYCLE_ENABLED` | Align with profile | Learning cycle companion for AI-led |
 | `WORKER_AUTOMATION_AUTONOMOUS_INTERVAL_MS` | Optional | Default 300000 |
 | `WORKER_RETENTION_*` | Optional | Retention sweep |
 | `OPSWATCH_HEARTBEAT_API_KEY` / `OPSWATCH_HEARTBEAT_SIGNING_SECRET` | If heartbeats | Self-monitor |

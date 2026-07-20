@@ -29,7 +29,7 @@ export const evaluatePredictionGate = (
       status: PREDICTION_STATUS.DISABLED,
       emitToProduct: false,
       reason:
-        "Predictions are disabled (OPSWATCH_PREDICTIONS_ENABLED is not true). Building baselines only.",
+        "Predictions are disabled (OPSWATCH_PREDICTIONS_ENABLED is not true, and OPSWATCH_AI_OPERATING_PROFILE is not ai_led_safe). Building baselines only.",
       confidenceScore: confidence.score
     };
   }

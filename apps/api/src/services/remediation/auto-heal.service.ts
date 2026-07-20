@@ -23,6 +23,7 @@ import { findActiveMaintenanceForService } from "../maintenance-window-policy.se
 import { assertPolicyControlledRemediationAllowed } from "../entitlements/remediation-governance.service";
 import { isEntitlementError } from "../entitlements/entitlement.service";
 import { projectAllowsAutonomousExecution } from "../automation/project-autonomous-mode.service";
+import { resolveEffectiveEnvFlag } from "../intelligence/ai-operating-profile.service";
 
 export interface AutoHealAttemptResult {
   incidentId: string;
@@ -37,7 +38,7 @@ export interface AutoHealAttemptResult {
 const isEnabled = (): boolean => process.env.AUTO_REMEDIATION_ENABLED !== "false";
 
 const ensureDefaultPolicy = async (organizationId: string): Promise<void> => {
-  if (process.env.AUTO_HEAL_DEFAULT_ENABLED !== "true") return;
+  if (!resolveEffectiveEnvFlag("AUTO_HEAL_DEFAULT_ENABLED")) return;
   const existing = await prisma.autoRemediationPolicy.findFirst({
     where: { organizationId, policyType: "GLOBAL", policyKey: "" }
   });
@@ -365,7 +366,7 @@ export const runAutoHealSweep = async (organizationId?: string): Promise<AutoHea
 };
 
 export const bootstrapAutoHealPolicies = async (): Promise<void> => {
-  if (process.env.AUTO_HEAL_DEFAULT_ENABLED !== "true") return;
+  if (!resolveEffectiveEnvFlag("AUTO_HEAL_DEFAULT_ENABLED")) return;
   const orgs = await prisma.organization.findMany({ select: { id: true } });
   for (const org of orgs) {
     await ensureDefaultPolicy(org.id);

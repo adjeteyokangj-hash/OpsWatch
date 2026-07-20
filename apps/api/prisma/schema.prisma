@@ -341,6 +341,9 @@ model Organization {
   LearningAlgorithmVersion            LearningAlgorithmVersion[]
   PredictionOutcomeEvaluation         PredictionOutcomeEvaluation[]
   MonitoringSyncRun                   MonitoringSyncRun[]
+  AiAutomationPolicyBundle            AiAutomationPolicyBundle?
+  AiAutomationPolicyRevision          AiAutomationPolicyRevision[]
+  AiPolicyAuditEvent                  AiPolicyAuditEvent[]
 }
 
 model OrganizationIncidentGroup {
@@ -372,7 +375,7 @@ model Project {
   lastSignalAt                        DateTime?
   monitoringEnabled                   Boolean                               @default(true)
   monitoringStartedAt                 DateTime?
-  automationMode                      String                                @default("MONITOR_ONLY")
+  automationMode                      String                                @default("AUTO_HEAL_SAFE")
   /// Emergency kill-switch: blocks all remediator-driven repair execution for this project.
   remediationEmergencyDisabled        Boolean                               @default(false)
   projectOwner                        String?
@@ -923,7 +926,7 @@ model RemediationLock {
   @@index([organizationId, incidentId])
 }
 
-/// Outbound remediator repair attempt — signed request lifecycle + post-action verification.
+/// Outbound remediator repair attempt â€” signed request lifecycle + post-action verification.
 model RemediatorRepairAttempt {
   id                  String                 @id
   organizationId      String
@@ -1095,6 +1098,61 @@ model AutomationPolicy {
   createdAt      DateTime @default(now())
 
   @@unique([organizationId, policyKey])
+}
+
+
+model AiAutomationPolicyBundle {
+  id               String   @id
+  organizationId   String   @unique
+  operatingProfile String   @default("MONITOR_ONLY")
+  status           String   @default("DRAFT")
+  documentJson     Json
+  ownerUserId      String?
+  approverUserId   String?
+  reviewAt         DateTime?
+  expiresAt        DateTime?
+  activatedAt      DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  Organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Revisions        AiAutomationPolicyRevision[]
+  AuditEvents      AiPolicyAuditEvent[]
+}
+
+model AiAutomationPolicyRevision {
+  id             String   @id
+  organizationId String
+  bundleId       String
+  version        Int
+  status         String   @default("ACTIVE")
+  beforeJson     Json?
+  afterJson      Json
+  reason         String?
+  actorUserId    String?
+  activatedAt    DateTime @default(now())
+  supersedesId   String?
+  createdAt      DateTime @default(now())
+  Bundle         AiAutomationPolicyBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([bundleId, version])
+  @@index([organizationId, createdAt])
+}
+
+model AiPolicyAuditEvent {
+  id             String   @id
+  organizationId String
+  bundleId       String?
+  eventType      String
+  summary        String
+  detailJson     Json?
+  actorUserId    String?
+  createdAt      DateTime @default(now())
+  Bundle         AiAutomationPolicyBundle? @relation(fields: [bundleId], references: [id], onDelete: SetNull)
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, eventType, createdAt])
 }
 
 model AutomationOutcome {
@@ -1742,7 +1800,7 @@ model IncidentMemoryEntry {
   title                String
   category             String?
   diagnosisSummary     String
-  /// Only populated when root cause was recorded/known — never invented.
+  /// Only populated when root cause was recorded/known â€” never invented.
   rootCause            String?
   resolutionSummary    String?
   signatureText        String
@@ -2451,7 +2509,7 @@ model OperationalPattern {
   @@index([organizationId, patternType])
 }
 
-/// Evidence-based confidence scores — no recommendation without confidence.
+/// Evidence-based confidence scores â€” no recommendation without confidence.
 model AiConfidenceRecord {
   id                 String       @id
   organizationId     String
@@ -2472,7 +2530,7 @@ model AiConfidenceRecord {
   @@index([organizationId, computedAt])
 }
 
-/// Prediction framework storage — product emission gated OFF by default.
+/// Prediction framework storage â€” product emission gated OFF by default.
 model PredictionCandidate {
   id                 String       @id
   organizationId     String
@@ -2485,7 +2543,7 @@ model PredictionCandidate {
   summary            String
   confidenceScore    Float        @default(0)
   confidenceLabel    String       @default("INSUFFICIENT")
-  /// DISABLED | INSUFFICIENT_DATA | READY — READY only when predictions feature flag is on AND threshold met.
+  /// DISABLED | INSUFFICIENT_DATA | READY â€” READY only when predictions feature flag is on AND threshold met.
   status             String       @default("DISABLED")
   /// DRAFT | NEEDS_REVIEW | CONFIRMED | DISMISSED | EXPIRED | MATERIALISED | PREVENTED | FALSE_POSITIVE
   reviewState        String       @default("DRAFT")

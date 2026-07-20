@@ -21,11 +21,13 @@ export type AutomationGateDecision = {
   cooldownMs: number | null;
 };
 
+import { resolveEffectiveEnvFlag } from "./intelligence/ai-operating-profile.service";
+
 export const isAutomationTestMode = (): boolean =>
-  process.env.OPSWATCH_AUTOMATION_TEST_MODE === "true";
+  resolveEffectiveEnvFlag("OPSWATCH_AUTOMATION_TEST_MODE");
 
 export const isAutoRepairEnabled = (): boolean =>
-  process.env.OPSWATCH_AUTO_REPAIR_ENABLED === "true";
+  resolveEffectiveEnvFlag("OPSWATCH_AUTO_REPAIR_ENABLED");
 
 export const evaluateControlledAutomationGate = (
   action: RemediationAction,

@@ -202,15 +202,25 @@ const verifyPlaybookVersionUnchanged = async (run: {
 
 const evaluateAutomationPolicy = async (
   organizationId: string
-): Promise<{ enabled: boolean; executionMode: string }> => {
+): Promise<{ enabled: boolean; executionMode: string; mode: string }> => {
   const policy = await prisma.automationPolicy.findUnique({
     where: { organizationId_policyKey: { organizationId, policyKey: "GLOBAL" } }
   });
+  const executionMode = policy?.executionMode ?? "OBSERVE";
+  const { normalizeProjectAutonomousMode } = await import("@opswatch/shared");
   return {
     enabled: policy?.enabled ?? false,
-    executionMode: policy?.executionMode ?? "OBSERVE"
+    executionMode,
+    mode: normalizeProjectAutonomousMode(executionMode)
   };
 };
+
+const isOrgMonitorOnly = (policy: { enabled: boolean; mode: string; executionMode: string }) =>
+  !policy.enabled || policy.mode === "MONITOR_ONLY" || policy.mode === "DISABLED";
+
+const orgAllowsAutonomousExec = (policy: { enabled: boolean; mode: string }) =>
+  policy.enabled && (policy.mode === "AUTO_HEAL_SAFE" || policy.mode === "FULL_AUTONOMOUS");
+
 
 const buildRemediationContext = async (input: {
   organizationId: string;
@@ -319,8 +329,8 @@ const reevaluateStepPolicy = async (input: {
   if (!automationPolicy.enabled) {
     return { allowed: false, reason: "Automation policy is disabled", policySnapshot: automationPolicy };
   }
-  if (automationPolicy.executionMode === "OBSERVE") {
-    return { allowed: false, reason: "Automation policy is in observe mode", policySnapshot: automationPolicy };
+  if (isOrgMonitorOnly(automationPolicy)) {
+    return { allowed: false, reason: "Automation policy is in monitor-only mode", policySnapshot: automationPolicy };
   }
 
   const policy = await getAutoRunPolicy(input.organizationId);
@@ -331,7 +341,8 @@ const reevaluateStepPolicy = async (input: {
   const reasons: string[] = [];
   if (!cooldown.cooledDown) reasons.push(cooldown.reason ?? "Cooldown active");
   if (suppression.suppressed) reasons.push(suppression.reason ?? "Suppression active");
-  if (!policyCheck.allowed && automationPolicy.executionMode !== "APPROVAL") {
+  const recommendOnly = automationPolicy.mode === "RECOMMEND";
+  if (!policyCheck.allowed && !recommendOnly) {
     reasons.push(policyCheck.reason);
   }
 
@@ -344,7 +355,7 @@ const reevaluateStepPolicy = async (input: {
   }) as unknown as Record<string, unknown>;
 
   return {
-    allowed: reasons.length === 0 || automationPolicy.executionMode === "APPROVAL",
+    allowed: reasons.length === 0 || recommendOnly,
     reason: reasons.join("; ") || "Allowed",
     policySnapshot: { ...policySnapshot, automationPolicy }
   };
@@ -728,8 +739,8 @@ export const approveAutomationRun = async (input: {
 
   const automationPolicy = await evaluateAutomationPolicy(input.organizationId);
   if (!automationPolicy.enabled) throw new Error("Automation policy is disabled");
-  if (automationPolicy.executionMode === "OBSERVE") {
-    throw new Error("Automation policy is in observe mode");
+  if (isOrgMonitorOnly(automationPolicy)) {
+    throw new Error("Automation policy is in monitor-only mode");
   }
 
   const now = new Date();

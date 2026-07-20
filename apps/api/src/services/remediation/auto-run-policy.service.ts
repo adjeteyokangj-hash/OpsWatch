@@ -18,7 +18,7 @@
 
 import { prisma } from "../../lib/prisma";
 import { randomUUID } from "crypto";
-import type { RemediationAction } from "./actions";
+import { REMEDIATION_REGISTRY, type RemediationAction } from "./actions";
 
 // ── Safe-action allowlist (Phase 9.5) ───────────────────────────────────────
 // Only these low-risk, idempotent actions may run automatically.
@@ -32,6 +32,10 @@ export const AUTO_RUN_ALLOWLIST = new Set<RemediationAction>([
   "CHECK_PROVIDER_STATUS",
   "ACKNOWLEDGE_INCIDENT",
   "ADD_INCIDENT_NOTE",
+  "REFRESH_CONNECTION_STATUS",
+  "REQUEST_FRESH_HEARTBEAT",
+  "REENABLE_CONNECTION",
+  "TEST_CONNECTION",
 ]);
 
 // ── Cooldown windows per action in milliseconds (Phase 9.4) ─────────────────
@@ -44,6 +48,10 @@ export const AUTO_RUN_COOLDOWN_MS: Partial<Record<RemediationAction, number>> = 
   CHECK_PROVIDER_STATUS:  5 * 60 * 1000,  // 5 min
   ACKNOWLEDGE_INCIDENT:   2 * 60 * 1000,  // 2 min
   ADD_INCIDENT_NOTE:      1 * 60 * 1000,  // 1 min
+  REFRESH_CONNECTION_STATUS: 5 * 60 * 1000,  // 5 min
+  REQUEST_FRESH_HEARTBEAT:   5 * 60 * 1000,  // 5 min
+  REENABLE_CONNECTION:      10 * 60 * 1000,  // 10 min
+  TEST_CONNECTION:           5 * 60 * 1000,  // 5 min
 };
 
 // ── Policy resolution ────────────────────────────────────────────────────────
@@ -176,6 +184,57 @@ export async function listPolicies(organizationId: string) {
   });
 }
 
+export type AutoRunAllowlistEntry = {
+  action: RemediationAction;
+  label: string;
+  impactTier: string;
+  policyTier: string;
+  cooldownMinutes: number;
+  autoRunEnabled: boolean;
+  approvalRequired: boolean;
+};
+
+const cooldownMinutesFor = (action: RemediationAction): number =>
+  Math.round((AUTO_RUN_COOLDOWN_MS[action] ?? 5 * 60 * 1000) / 60_000);
+
+const buildAllowlistEntries = (
+  policies: Awaited<ReturnType<typeof listPolicies>>,
+  globalEnabled: boolean
+): AutoRunAllowlistEntry[] => {
+  const entries: AutoRunAllowlistEntry[] = [];
+
+  for (const action of AUTO_RUN_ALLOWLIST) {
+    const def = REMEDIATION_REGISTRY[action];
+    const actionOverride = policies.find((p) => p.policyType === "ACTION" && p.policyKey === action);
+    entries.push({
+      action,
+      label: def.label,
+      impactTier: def.impactTier,
+      policyTier: def.policyTier,
+      cooldownMinutes: cooldownMinutesFor(action),
+      autoRunEnabled: actionOverride ? actionOverride.enabled : globalEnabled,
+      approvalRequired: def.requiresApproval
+    });
+  }
+
+  for (const action of Object.keys(REMEDIATION_REGISTRY) as RemediationAction[]) {
+    if (AUTO_RUN_ALLOWLIST.has(action)) continue;
+    const def = REMEDIATION_REGISTRY[action];
+    if (def.policyTier !== "APPROVAL_REQUIRED" && def.policyTier !== "MANUAL_ONLY") continue;
+    entries.push({
+      action,
+      label: def.label,
+      impactTier: def.impactTier,
+      policyTier: def.policyTier,
+      cooldownMinutes: cooldownMinutesFor(action),
+      autoRunEnabled: false,
+      approvalRequired: def.requiresApproval || def.policyTier === "APPROVAL_REQUIRED"
+    });
+  }
+
+  return entries.sort((a, b) => a.label.localeCompare(b.label));
+};
+
 export async function getAutoRunPolicy(organizationId: string) {
   const policies = await listPolicies(organizationId);
   const global = policies.find((p) => p.policyType === "GLOBAL" && p.policyKey === "");
@@ -186,12 +245,14 @@ export async function getAutoRunPolicy(organizationId: string) {
     return actionOverride ? actionOverride.enabled : true;
   });
 
+  const allowlist = buildAllowlistEntries(policies, enabled);
   const cooldownMinutes = 5;
 
   return {
     enabled,
     allowedActionKeys,
     cooldownMinutes,
+    allowlist,
     policies,
   };
 }

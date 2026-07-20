@@ -42,14 +42,14 @@ export const AUTONOMOUS_MODE_DESCRIPTIONS: Record<ProjectAutonomousMode, string>
 };
 
 export const normalizeProjectAutonomousMode = (raw: string | null | undefined): ProjectAutonomousMode => {
-  const value = String(raw ?? "MONITOR_ONLY").trim().toUpperCase();
+  const value = String(raw ?? "AUTO_HEAL_SAFE").trim().toUpperCase();
   if ((PROJECT_AUTONOMOUS_MODES as readonly string[]).includes(value)) {
     return value as ProjectAutonomousMode;
   }
   if (value === "OBSERVE") return "MONITOR_ONLY";
   if (value === "APPROVAL") return "RECOMMEND";
   if (value === "AUTONOMOUS") return "FULL_AUTONOMOUS";
-  return "MONITOR_ONLY";
+  return "AUTO_HEAL_SAFE";
 };
 
 export type AutonomousModeCapabilities = {

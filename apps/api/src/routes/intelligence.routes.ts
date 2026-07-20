@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requirePermission } from "../middleware/require-permission";
 import {
   getAiDecisionAuditHandler,
+  getAiOperationsStatusHandler,
   getAutomationIntelligenceHistoryHandler,
   getFeatureGatesHandler,
   getIntelligenceSnapshotHandler,
@@ -41,6 +42,11 @@ router.get(
   "/intelligence/feature-gates",
   requirePermission("diagnosis:read"),
   getFeatureGatesHandler
+);
+router.get(
+  "/intelligence/operations-status",
+  requirePermission("diagnosis:read"),
+  getAiOperationsStatusHandler
 );
 router.post(
   "/intelligence/predictions/:predictionId/review",
