@@ -8,6 +8,8 @@ import {
   PATTERN_TYPE,
   isPredictionsEnabled
 } from "./intelligence-constants";
+import { buildPhase9IntelligenceSection, type Phase9IntelligenceSection } from "../learning/learning-intelligence.service";
+import { listLearningStages } from "../learning/learning-flags";
 import { syncDeploymentsFromChangeEvents } from "./deployment-intelligence.service";
 import { randomUUID } from "crypto";
 
@@ -100,6 +102,7 @@ export type IntelligenceSnapshot = {
     candidatesStored: number;
     accuracyLogs: number;
   };
+  phase9: Phase9IntelligenceSection;
   emptyReason: string | null;
 };
 
@@ -386,6 +389,10 @@ export const buildIntelligenceSnapshot = async (
     learningState = "ACTIVE";
   else learningState = "LEARNING";
 
+  const phase9 = await buildPhase9IntelligenceSection(organizationId);
+  const stages = listLearningStages();
+  const enabledStageLabels = stages.filter((s) => s.enabled).map((s) => s.key);
+
   return {
     learningState,
     predictions: {
@@ -471,11 +478,13 @@ export const buildIntelligenceSnapshot = async (
       resolvedAt: row.resolvedAt?.toISOString() ?? null
     })),
     predictionReadiness: {
-      message:
-        "Feature disabled. Phase 9 learning and prediction is not implemented; baseline evidence and calculated patterns are not predictions.",
-      candidatesStored: 0,
+      message: isPredictionsEnabled()
+        ? `Prediction generation is enabled. Stages on: ${enabledStageLabels.join(", ") || "none"}. High-impact candidates require human review.`
+        : `Prediction generation is OFF by default. Enabled learning stages: ${enabledStageLabels.join(", ") || "none"}. No silent prediction generation.`,
+      candidatesStored: phase9.predictionCandidates.length,
       accuracyLogs: predictionAccuracyLogs
     },
+    phase9,
     emptyReason:
       learningState === "EMPTY"
         ? "No operational evidence yet. Heartbeats, checks, alerts, incidents, and deployments will build intelligence automatically."

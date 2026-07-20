@@ -191,9 +191,51 @@ export const getFeatureGatesHandler = async (req: AuthRequest, res: Response): P
   }
 
   const gates = listFeatureGates();
+  const { listLearningStages } = await import("../services/learning/learning-flags");
   res.json({
     gates,
+    learningStages: listLearningStages(),
     defaultsOff: gates.every((gate) => gate.defaultEnabled === false),
     anyEnabled: gates.some((gate) => gate.enabled)
   });
+};
+
+export const reviewPredictionHandler = async (req: AuthRequest, res: Response): Promise<void> => {
+  const orgId = orgIdOr403(req, res);
+  if (!orgId) return;
+  if (!hasPermission(req.user?.role, "remediation:approve")) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  const predictionId = typeof req.params.predictionId === "string" ? req.params.predictionId : "";
+  const action = typeof req.body?.action === "string" ? req.body.action : "";
+  const note = typeof req.body?.note === "string" ? req.body.note : undefined;
+  const confidenceOverride =
+    typeof req.body?.confidenceOverride === "number" ? req.body.confidenceOverride : undefined;
+  const actorUserId = req.user?.id ?? "unknown";
+
+  const { reviewPredictionCandidate } = await import(
+    "../services/learning/prediction-review.service"
+  );
+  const result = await reviewPredictionCandidate({
+    organizationId: orgId,
+    predictionId,
+    action: action as
+      | "confirm"
+      | "dismiss"
+      | "mark_materialised"
+      | "mark_prevented"
+      | "mark_false_positive"
+      | "expire",
+    actorUserId,
+    note,
+    confidenceOverride
+  });
+
+  if (!result.ok) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+  res.json(result);
 };

@@ -6,7 +6,8 @@ import {
   getFeatureGatesHandler,
   getIntelligenceSnapshotHandler,
   getOperationsTimelineHandler,
-  getPredictionStatusHandler
+  getPredictionStatusHandler,
+  reviewPredictionHandler
 } from "../controllers/intelligence.controller";
 
 const router = Router();
@@ -40,6 +41,11 @@ router.get(
   "/intelligence/feature-gates",
   requirePermission("diagnosis:read"),
   getFeatureGatesHandler
+);
+router.post(
+  "/intelligence/predictions/:predictionId/review",
+  requirePermission("remediation:approve"),
+  reviewPredictionHandler
 );
 
 export default router;
