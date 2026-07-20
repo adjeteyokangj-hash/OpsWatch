@@ -34,9 +34,9 @@ describe("PageSection", () => {
       </PageSection>
     );
 
-    const details = screen.getByText("Overview").closest("details");
+    const details = screen.getByText("Overview").closest("section.page-section");
     expect(details).toBeTruthy();
-    expect(details).toHaveAttribute("open");
+    expect(details).toHaveAttribute("data-open", "true");
     expect(screen.getByText("Body content")).toBeInTheDocument();
     expect(details?.querySelector(".page-section-chevron")).toBeTruthy();
   });
@@ -48,8 +48,8 @@ describe("PageSection", () => {
       </PageSection>
     );
 
-    const details = screen.getByText("Timeline").closest("details");
-    expect(details).not.toHaveAttribute("open");
+    const details = screen.getByText("Timeline").closest("section.page-section");
+    expect(details).toHaveAttribute("data-open", "false");
   });
 
   it("toggles open state from the summary header", () => {
@@ -59,15 +59,15 @@ describe("PageSection", () => {
       </PageSection>
     );
 
-    const summary = screen.getByText("Checks").closest("summary");
+    const summary = screen.getByText("Checks").closest("button.page-section-summary");
     expect(summary).toBeTruthy();
     fireEvent.click(summary!);
 
-    const details = screen.getByText("Checks").closest("details");
-    expect(details).not.toHaveAttribute("open");
+    const details = screen.getByText("Checks").closest("section.page-section");
+    expect(details).toHaveAttribute("data-open", "false");
 
     fireEvent.click(summary!);
-    expect(details).toHaveAttribute("open");
+    expect(details).toHaveAttribute("data-open", "true");
   });
 
   it("persists collapse state when persistKey is provided", () => {
@@ -78,7 +78,7 @@ describe("PageSection", () => {
       </PageSection>
     );
 
-    fireEvent.click(screen.getByText("Recent checks").closest("summary")!);
+    fireEvent.click(screen.getByText("Recent checks").closest("button.page-section-summary")!);
     expect(window.localStorage.getItem(pageSectionStorageKey(key))).toBe("collapsed");
     unmount();
 
@@ -88,7 +88,7 @@ describe("PageSection", () => {
       </PageSection>
     );
 
-    expect(screen.getByText("Recent checks").closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByText("Recent checks").closest("section.page-section")).toHaveAttribute("data-open", "false");
   });
 
   it("does not toggle when clicking header actions", () => {
@@ -106,18 +106,94 @@ describe("PageSection", () => {
     );
 
     fireEvent.click(screen.getByTestId("section-action"));
-    expect(screen.getByText("Alerts").closest("details")).toHaveAttribute("open");
+    expect(screen.getByText("Alerts").closest("section.page-section")).toHaveAttribute("data-open", "true");
   });
 
-  it("supports a non-collapsible static panel", () => {
+  it("exposes aria-expanded on the summary control", () => {
     render(
-      <PageSection title="Static" collapsible={false}>
-        <p>Always visible</p>
+      <PageSection title="Registry">
+        <p>Rows</p>
       </PageSection>
     );
 
-    expect(screen.getByText("Static").closest("details")).toBeNull();
-    expect(screen.getByText("Static").closest("section")).toBeTruthy();
-    expect(screen.getByText("Always visible")).toBeInTheDocument();
+    const summary = screen.getByText("Registry").closest("button.page-section-summary");
+    expect(summary).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(summary!);
+    expect(summary).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("toggles via keyboard activation on the summary", () => {
+    render(
+      <PageSection title="Keyboard panel">
+        <p>Body</p>
+      </PageSection>
+    );
+
+    const summary = screen.getByText("Keyboard panel").closest("button.page-section-summary")!;
+    summary.focus();
+    fireEvent.keyDown(summary, { key: "Enter", code: "Enter" });
+    fireEvent.click(summary);
+
+    expect(screen.getByText("Keyboard panel").closest("section.page-section")).toHaveAttribute("data-open", "false");
+  });
+
+  it("keeps form field values when collapsed and reopened", () => {
+    render(
+      <PageSection title="Config form" persistKey="settings:demo-form">
+        <input aria-label="Endpoint" defaultValue="" data-testid="endpoint-input" />
+      </PageSection>
+    );
+
+    const input = screen.getByTestId("endpoint-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "https://example.test/hooks" } });
+    expect(input.value).toBe("https://example.test/hooks");
+
+    const summary = screen.getByText("Config form").closest("button.page-section-summary")!;
+    fireEvent.click(summary);
+    expect(screen.getByText("Config form").closest("section.page-section")).toHaveAttribute("data-open", "false");
+    fireEvent.click(summary);
+
+    expect((screen.getByTestId("endpoint-input") as HTMLInputElement).value).toBe(
+      "https://example.test/hooks"
+    );
+  });
+
+  it("collapses multiple sections independently", () => {
+    render(
+      <>
+        <PageSection title="First" persistKey="demo:first">
+          <p>A</p>
+        </PageSection>
+        <PageSection title="Second" persistKey="demo:second">
+          <p>B</p>
+        </PageSection>
+      </>
+    );
+
+    fireEvent.click(screen.getByText("First").closest("button.page-section-summary")!);
+    expect(screen.getByText("First").closest("section.page-section")).toHaveAttribute("data-open", "false");
+    expect(screen.getByText("Second").closest("section.page-section")).toHaveAttribute("data-open", "true");
+  });
+
+  it("scopes persistence by dynamic project keys", () => {
+    const projectA = "project:proj-a:alerts";
+    const projectB = "project:proj-b:alerts";
+
+    const { unmount } = render(
+      <PageSection title="Alerts" persistKey={projectA}>
+        <p>A alerts</p>
+      </PageSection>
+    );
+    fireEvent.click(screen.getByText("Alerts").closest("button.page-section-summary")!);
+    expect(window.localStorage.getItem(pageSectionStorageKey(projectA))).toBe("collapsed");
+    unmount();
+
+    render(
+      <PageSection title="Alerts" persistKey={projectB}>
+        <p>B alerts</p>
+      </PageSection>
+    );
+    expect(screen.getByText("Alerts").closest("section.page-section")).toHaveAttribute("data-open", "true");
+    expect(window.localStorage.getItem(pageSectionStorageKey(projectB))).toBeNull();
   });
 });

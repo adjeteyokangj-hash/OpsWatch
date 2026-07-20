@@ -63,6 +63,7 @@ export function PageSection({
 }: Props) {
   const reactId = useId();
   const titleId = `${reactId}-title`;
+  const bodyId = `${reactId}-body`;
   const classes = `panel page-section ${className}`.trim();
   const [open, setOpen] = useState(() => !defaultCollapsed);
 
@@ -70,27 +71,6 @@ export function PageSection({
     if (!persistKey) return;
     setOpen(readPersistedOpen(persistKey, !defaultCollapsed));
   }, [persistKey, defaultCollapsed]);
-
-  const head = (
-    <>
-      <div>
-        <h2 id={titleId}>{title}</h2>
-        {description ? <p className="dashboard-subtle">{description}</p> : null}
-      </div>
-      {actions ? (
-        <div
-          className="section-actions"
-          onClick={(event) => {
-            // Keep header action controls from toggling the disclosure.
-            event.preventDefault();
-            event.stopPropagation();
-          }}
-        >
-          {actions}
-        </div>
-      ) : null}
-    </>
-  );
 
   if (!collapsible) {
     return (
@@ -100,29 +80,55 @@ export function PageSection({
         aria-labelledby={ariaLabel ? undefined : titleId}
         data-testid={dataTestId}
       >
-        <div className="section-head">{head}</div>
+        <div className="section-head">
+          <div>
+            <h2 id={titleId}>{title}</h2>
+            {description ? <p className="dashboard-subtle">{description}</p> : null}
+          </div>
+          {actions ? <div className="section-actions">{actions}</div> : null}
+        </div>
         {children}
       </section>
     );
   }
 
+  const toggle = () => {
+    setOpen((current) => {
+      const next = !current;
+      writePersistedOpen(persistKey, next);
+      return next;
+    });
+  };
+
   return (
-    <details className={classes} open={open} aria-label={ariaLabel} data-testid={dataTestId}>
-      <summary
-        className="section-head page-section-summary"
-        aria-labelledby={titleId}
-        aria-expanded={open}
-        onClick={(event) => {
-          event.preventDefault();
-          const next = !open;
-          setOpen(next);
-          writePersistedOpen(persistKey, next);
-        }}
-      >
-        <span className="page-section-chevron" aria-hidden="true" />
-        {head}
-      </summary>
-      <div className="page-section-body">{children}</div>
-    </details>
+    <section
+      className={`${classes}${open ? " is-open" : " is-collapsed"}`}
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabel ? undefined : titleId}
+      data-testid={dataTestId}
+      data-open={open ? "true" : "false"}
+    >
+      <div className="section-head page-section-summary-row">
+        <button
+          type="button"
+          className="page-section-summary"
+          aria-labelledby={titleId}
+          aria-expanded={open}
+          aria-controls={bodyId}
+          onClick={toggle}
+        >
+          <span className="page-section-chevron" aria-hidden="true" />
+          <div>
+            <h2 id={titleId}>{title}</h2>
+            {description ? <p className="dashboard-subtle">{description}</p> : null}
+          </div>
+        </button>
+        {actions ? <div className="section-actions">{actions}</div> : null}
+      </div>
+      {/* Keep children mounted while collapsed so forms retain typed state. */}
+      <div id={bodyId} className="page-section-body" hidden={!open} aria-hidden={!open}>
+        {children}
+      </div>
+    </section>
   );
 }

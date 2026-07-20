@@ -5352,6 +5352,7 @@ button {
   overflow: hidden;
 }
 
+.topology-live-ops.page-section > .page-section-summary-row,
 .topology-live-ops.page-section > .page-section-summary,
 .topology-live-ops.page-section > .section-head {
   margin-bottom: 0;
@@ -5359,6 +5360,7 @@ button {
   border-bottom: 1px solid var(--line);
 }
 
+.topology-detail-panel.page-section > .page-section-summary-row,
 .topology-detail-panel.page-section > .page-section-summary,
 .topology-detail-panel.page-section > .section-head {
   margin-bottom: 0;
@@ -7664,6 +7666,13 @@ button.text-link {
   margin-bottom: 16px;
 }
 
+.page-section-summary-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .page-section-summary {
   list-style: none;
   cursor: pointer;
@@ -7671,6 +7680,15 @@ button.text-link {
   align-items: flex-start;
   justify-content: flex-start;
   gap: 10px;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
 
 .page-section-summary::-webkit-details-marker {
@@ -7693,10 +7711,14 @@ button.text-link {
   transition: transform 0.15s ease;
 }
 
+.page-section.is-open > .page-section-summary-row .page-section-chevron,
+.page-section.is-open > .page-section-summary .page-section-chevron,
 details.page-section[open] > .page-section-summary .page-section-chevron {
   transform: rotate(45deg);
 }
 
+.page-section.is-collapsed > .page-section-summary-row,
+.page-section.is-collapsed > .page-section-summary,
 details.page-section:not([open]) > .page-section-summary {
   margin-bottom: 0;
 }
