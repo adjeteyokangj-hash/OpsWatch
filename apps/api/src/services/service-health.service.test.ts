@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   resolveMonitoringState,
   resolveRelationshipEdgeHealth,
-  resolveServiceHealth
+  resolveServiceHealth,
+  worstHealth
 } from "./service-health.service";
 
 describe("service-health.service", () => {
@@ -64,6 +65,11 @@ describe("service-health.service", () => {
         sloStatus: "HEALTHY"
       })
     ).toBe("HEALTHY");
+  });
+
+  it("keeps open-alert DEGRADED when merging with stored HEALTHY entity health", () => {
+    expect(worstHealth(["DEGRADED", "HEALTHY"])).toBe("DEGRADED");
+    expect(worstHealth(["CRITICAL", "HEALTHY"])).toBe("CRITICAL");
   });
 });
 

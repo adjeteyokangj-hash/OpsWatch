@@ -10,13 +10,21 @@ import {
   buildProjectTopologyResponse,
   type TopologyServiceRecord
 } from "./topology.service";
+import { worstHealth } from "./service-health.service";
 
 const unresolvedIncidentStatuses = [
   "OPEN",
   "INVESTIGATING",
   "MONITORING"
 ] as const;
-const openAlertStatuses = ["OPEN", "ACKNOWLEDGED"] as const;
+/** Include in-flight recovery statuses so nodes stay non-HEALTHY while verification runs. */
+const openAlertStatuses = [
+  "OPEN",
+  "ACKNOWLEDGED",
+  "REMEDIATING",
+  "VERIFYING",
+  "RECOVERING"
+] as const;
 
 const nodeTypeFor = (entityType: string): TopologyNodeType =>
   entityType === "APP" ||
@@ -296,7 +304,8 @@ export const loadCanonicalProjectTopology = async (input: {
   for (const node of topology.nodes) {
     const entity = entityById.get(node.id);
     if (!entity) continue;
-    node.status = topologyHealthFor(entity.health);
+    // Never let stored entity.health paint HEALTHY over live open-alert / check evidence.
+    node.status = worstHealth([node.status, topologyHealthFor(entity.health)]);
     topology.nodeContext[node.id] = {
       ...topology.nodeContext[node.id]!,
       canonical: {
@@ -335,7 +344,7 @@ export const loadCanonicalProjectTopology = async (input: {
   for (const edge of topology.edges) {
     const relationship = relationshipById.get(edge.id);
     if (!relationship) continue;
-    edge.status = topologyHealthFor(relationship.health);
+    edge.status = worstHealth([edge.status, topologyHealthFor(relationship.health)]);
     edge.provenance = relationship.provenance;
     edge.confidence = relationship.confidence;
     edge.discoveryState = relationship.discoveryState;

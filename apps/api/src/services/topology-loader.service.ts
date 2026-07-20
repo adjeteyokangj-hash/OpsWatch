@@ -6,7 +6,13 @@ import { buildProjectTopologyResponse, type TopologyServiceRecord } from "./topo
 import { loadCanonicalProjectTopology } from "./canonical-topology-loader.service";
 
 const unresolvedIncidentStatuses = ["OPEN", "INVESTIGATING", "MONITORING"] as const;
-const openAlertStatuses = ["OPEN", "ACKNOWLEDGED"] as const;
+const openAlertStatuses = [
+  "OPEN",
+  "ACKNOWLEDGED",
+  "REMEDIATING",
+  "VERIFYING",
+  "RECOVERING"
+] as const;
 
 /** Soft cache absorbs Topology auto-refresh (15s) inside the same serverless isolate. */
 const TOPOLOGY_CACHE_TTL_MS = 8_000;
