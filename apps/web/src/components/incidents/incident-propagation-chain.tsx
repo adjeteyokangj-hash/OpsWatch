@@ -17,18 +17,19 @@ const nodeStatusClass = (status: string): string => {
 };
 
 export function IncidentPropagationChain({ incidentId, diagnosis, projectId }: Props) {
+  const rootCause = diagnosis.dependencyImpact?.probableRootCause;
   const path =
     diagnosis.dependencyImpact?.propagationPath ??
-    diagnosis.dependencyImpact?.probableRootCause
+    (rootCause
       ? [
           {
-            serviceId: diagnosis.dependencyImpact.probableRootCause!.serviceId ?? "root",
-            serviceName: diagnosis.dependencyImpact.probableRootCause!.serviceName,
-            layer: diagnosis.dependencyImpact.probableRootCause!.layer as any,
+            serviceId: rootCause.serviceId ?? "root",
+            serviceName: rootCause.serviceName,
+            layer: rootCause.layer as any,
             status: "ROOT_CAUSE" as const
           }
         ]
-      : [];
+      : []);
 
   if (path.length === 0) return null;
 
