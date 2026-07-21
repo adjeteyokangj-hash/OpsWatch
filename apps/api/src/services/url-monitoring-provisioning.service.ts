@@ -309,7 +309,7 @@ const provisionRoleInTransaction = async (
     stableKey: `${input.role.toLowerCase()}:${new URL(input.url).origin}`,
     name,
     source: "URL_ONBOARDING",
-    sourceKey: new URL(input.url).origin,
+    sourceKey: `${input.role.toLowerCase()}:${new URL(input.url).origin}`,
     provenance: "DECLARED",
     criticality: input.role === "PUBLIC" ? "HIGH" : "MEDIUM",
     health: "UNKNOWN",

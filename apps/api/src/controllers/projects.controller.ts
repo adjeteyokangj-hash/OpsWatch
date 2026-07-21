@@ -27,6 +27,19 @@ import {
 } from "../services/url-monitoring-provisioning.service";
 import { loadProjectOtelStatus } from "../services/otel/otel-project-status.service";
 
+const logMonitoringProvisionError = (stage: string, projectId: string, error: unknown): void => {
+	const detail =
+		error && typeof error === "object"
+			? {
+					name: (error as { name?: string }).name,
+					code: (error as { code?: string }).code,
+					message: error instanceof Error ? error.message : String(error),
+					context: (error as { context?: unknown }).context
+				}
+			: { message: String(error) };
+	console.error("PROJECT_MONITORING_PROVISION_ERROR", { stage, projectId, ...detail });
+};
+
 const sendUrlMonitoringError = (res: Response, error: unknown, fallback: string): void => {
 	if (error instanceof UrlMonitorEntitlementError) {
 		res.status(422).json({
@@ -394,6 +407,7 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 			});
 		}
 	} catch (error) {
+		logMonitoringProvisionError("createProject", row.id, error);
 		await prisma.project.delete({ where: { id: row.id } }).catch(() => undefined);
 		sendUrlMonitoringError(res, error, "Monitoring setup failed; registration was rolled back and can be retried");
 		return;
@@ -584,6 +598,7 @@ export const patchProject = async (req: AuthRequest, res: Response) => {
 			});
 		}
 	} catch (error) {
+		logMonitoringProvisionError("updateProject", row.id, error);
 		sendUrlMonitoringError(res, error, "Application saved but monitoring setup failed");
 		return;
 	}
