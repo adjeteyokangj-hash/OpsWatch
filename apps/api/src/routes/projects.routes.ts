@@ -32,7 +32,11 @@ import {
 } from "../controllers/project-automation-mode.controller";
 import {
   getProjectBillingHandler,
-  updateProjectBillingHandler
+  updateProjectBillingHandler,
+  createProjectCheckoutHandler,
+  createProjectPortalHandler,
+  listProjectInvoicesHandler,
+  listBillingPlansHandler
 } from "../controllers/project-billing.controller";
 import { requireAdmin } from "../middleware/auth";
 
@@ -70,3 +74,7 @@ projectsRouter.delete("/projects/:projectId/slos/:sloId", deleteSloDefinitionByP
 projectsRouter.get("/projects/:projectId/slo-windows", listSloWindowsByProject);
 projectsRouter.get("/projects/:projectId/billing", getProjectBillingHandler);
 projectsRouter.patch("/projects/:projectId/billing", updateProjectBillingHandler);
+projectsRouter.post("/projects/:projectId/billing/checkout", createProjectCheckoutHandler);
+projectsRouter.post("/projects/:projectId/billing/portal", createProjectPortalHandler);
+projectsRouter.get("/projects/:projectId/billing/invoices", listProjectInvoicesHandler);
+projectsRouter.get("/projects/:projectId/billing/plans", listBillingPlansHandler);

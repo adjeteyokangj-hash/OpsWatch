@@ -6,9 +6,9 @@ import type { AuthRequest } from "../middleware/auth";
 import { getCheckDetail, listChecksWithSummary } from "../services/checks.service";
 import { handleEntitlementFailure } from "./subscription.controller";
 import {
-	assertCheckIntervalAllowed,
-	assertWithinLimit
-} from "../services/entitlements/entitlement.service";
+	assertProjectCheckIntervalAllowed,
+	assertProjectWithinLimit
+} from "../services/entitlements/project-entitlement.service";
 import { ENTITLEMENT } from "../services/entitlements/entitlement-keys";
 
 const parseDateQuery = (value: unknown): Date | undefined => {
@@ -146,27 +146,27 @@ export const createCheckByService = async (req: AuthRequest, res: Response) => {
 	const orgId = requireOrg(req, res);
 	if (!orgId) return;
 
-	try {
-		await assertWithinLimit(orgId, ENTITLEMENT.MONITORS_MAX);
-	} catch (error) {
-		if (handleEntitlementFailure(res, error)) return;
-		throw error;
-	}
-
 	const service = await prisma.service.findFirst({
 		where: { id: req.params.serviceId, Project: { organizationId: orgId } },
-		select: { id: true, baseUrl: true }
+		select: { id: true, baseUrl: true, projectId: true }
 	});
 	if (!service) {
 		res.status(404).json({ error: "Service not found" });
 		return;
 	}
 
+	try {
+		await assertProjectWithinLimit(orgId, service.projectId, ENTITLEMENT.MONITORS_MAX);
+	} catch (error) {
+		if (handleEntitlementFailure(res, error)) return;
+		throw error;
+	}
+
 	const body = req.body ?? {};
 	const checkType = body.type || "HTTP";
 	const intervalSeconds = Number(body.intervalSeconds || 60);
 	try {
-		await assertCheckIntervalAllowed(orgId, intervalSeconds);
+		await assertProjectCheckIntervalAllowed(orgId, service.projectId, intervalSeconds);
 	} catch (error) {
 		if (handleEntitlementFailure(res, error)) return;
 		throw error;
@@ -210,7 +210,7 @@ export const patchCheck = async (req: AuthRequest, res: Response) => {
 			serviceId: req.params.serviceId,
 			Service: { Project: { organizationId: orgId } }
 		},
-		select: { id: true, type: true, Service: { select: { baseUrl: true } } }
+		select: { id: true, type: true, Service: { select: { baseUrl: true, projectId: true } } }
 	});
 
 	if (!check) {
@@ -222,7 +222,7 @@ export const patchCheck = async (req: AuthRequest, res: Response) => {
 	const nextType = body.type !== undefined ? body.type : check.type;
 	if (body.intervalSeconds !== undefined) {
 		try {
-			await assertCheckIntervalAllowed(orgId, Number(body.intervalSeconds));
+			await assertProjectCheckIntervalAllowed(orgId, check.Service.projectId, Number(body.intervalSeconds));
 		} catch (error) {
 			if (handleEntitlementFailure(res, error)) return;
 			throw error;

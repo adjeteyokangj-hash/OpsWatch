@@ -40,7 +40,7 @@ export const getStripe = async (): Promise<Stripe> => {
   return stripeClient;
 };
 
-const webBaseUrl = (): string =>
+export const webBaseUrl = (): string =>
   (process.env.OPSWATCH_WEB_URL || "http://localhost:3000").replace(/\/+$/, "");
 
 const mapStripeStatus = (status: Stripe.Subscription.Status): SubscriptionStatus => {
@@ -324,6 +324,12 @@ const finishWebhookEvent = async (
 };
 
 const processStripeEvent = async (event: Stripe.Event): Promise<void> => {
+  // Application-scoped billing is the source of truth. Each handler first tries
+  // to reconcile the matching ProjectBilling record and only falls back to the
+  // (legacy) organisation Subscription when the object is not an application
+  // subscription. A webhook for one application never updates another.
+  const projectStripe = await import("./project-stripe.service");
+
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -333,19 +339,32 @@ const processStripeEvent = async (event: Stripe.Event): Promise<void> => {
             ? session.subscription
             : session.subscription.id;
         const stripeSubscription = await (await getStripe()).subscriptions.retrieve(subscriptionId);
-        await syncSubscriptionFromStripe(stripeSubscription);
+        const handledByProject = await projectStripe.syncProjectSubscriptionFromStripe(stripeSubscription);
+        if (!handledByProject) {
+          await syncSubscriptionFromStripe(stripeSubscription);
+        }
       }
       break;
     }
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
-      await syncSubscriptionFromStripe(event.data.object as Stripe.Subscription);
+      const subscription = event.data.object as Stripe.Subscription;
+      const handledByProject = await projectStripe.syncProjectSubscriptionFromStripe(subscription);
+      if (!handledByProject) {
+        await syncSubscriptionFromStripe(subscription);
+      }
+      break;
+    }
+    case "invoice.paid": {
+      const invoice = event.data.object as Stripe.Invoice;
+      await projectStripe.recordProjectInvoicePaid(invoice);
       break;
     }
     case "invoice.payment_failed": {
       const invoice = event.data.object as Stripe.Invoice;
-      if (invoice.customer) {
+      const handledByProject = await projectStripe.markProjectPaymentFailed(invoice);
+      if (!handledByProject && invoice.customer) {
         await markPastDue(invoice.customer);
       }
       break;

@@ -3,7 +3,7 @@ import { Response } from "express";
 import { prisma } from "../lib/prisma";
 import type { AuthRequest } from "../middleware/auth";
 import { handleEntitlementFailure } from "../controllers/subscription.controller";
-import { assertWithinLimit } from "../services/entitlements/entitlement.service";
+import { assertProjectWithinLimit } from "../services/entitlements/project-entitlement.service";
 import { ENTITLEMENT } from "../services/entitlements/entitlement-keys";
 import { computeErrorBudget } from "../services/controlled-automation.service";
 
@@ -73,7 +73,7 @@ export const listSloDefinitionsByProject = async (req: AuthRequest, res: Respons
 export const createSloDefinitionByProject = async (req: AuthRequest, res: Response) => {
   const ctx = await context(req, res); if (!ctx) return;
   try {
-    await assertWithinLimit(ctx.organizationId, ENTITLEMENT.SLOS_MAX);
+    await assertProjectWithinLimit(ctx.organizationId, ctx.projectId, ENTITLEMENT.SLOS_MAX);
   } catch (error) {
     if (handleEntitlementFailure(res, error)) return;
     throw error;

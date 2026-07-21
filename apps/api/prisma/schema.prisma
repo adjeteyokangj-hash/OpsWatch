@@ -1601,6 +1601,9 @@ model ProjectBilling {
   id                 String          @id
   projectId          String          @unique
   plan               BillingPlanType @default(FREE)
+  /// Entitlement plan code referencing Plan.code (PILOT/STARTER/GROWTH/BUSINESS/ENTERPRISE).
+  /// This is the application-scoped source of truth for entitlements and Stripe pricing.
+  planCode           String?
   monthlyPrice       Float           @default(0)
   currency           String          @default("GBP")
   billingStatus      BillingStatus   @default(ACTIVE)
@@ -1618,9 +1621,22 @@ model ProjectBilling {
   paymentExpMonth    Int?
   paymentExpYear     Int?
   paymentUpdatedAt   DateTime?
+  // Application-scoped Stripe subscription state (one independent subscription per application).
+  stripeCustomerId     String?
+  stripeSubscriptionId String?       @unique
+  stripePriceId        String?
+  stripeProductId      String?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean       @default(false)
+  trialEndsAt          DateTime?
+  lastPaymentAt        DateTime?
+  latestInvoiceId      String?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime
   Project            Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([stripeCustomerId])
 }
 
 enum RemediationStatus {

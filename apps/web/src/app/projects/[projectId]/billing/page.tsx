@@ -37,6 +37,7 @@ type ProjectSummary = {
 
 type ProjectBilling = PlanDefaults & {
   plan: BillingPlanId;
+  planCode?: string | null;
   billingStatus: string;
   billingInterval: BillingInterval;
   billingStartDate?: string | null;
@@ -45,8 +46,36 @@ type ProjectBilling = PlanDefaults & {
   pricingLabel?: BillingPlanId;
   isCustomPricing?: boolean;
   paymentMethod?: PaymentMethod | null;
+  stripeSubscriptionId?: string | null;
+  stripeCustomerId?: string | null;
+  currentPeriodEnd?: string | null;
+  cancelAtPeriodEnd?: boolean;
   project?: ProjectSummary;
   usage?: { checks: number; automationRuns: number; users: number };
+};
+
+type BillingPlanOption = {
+  code: string;
+  name: string;
+  monthlyPrice: number;
+  annualPrice: number | null;
+  currency: string;
+  hasMonthlyPrice: boolean;
+  hasAnnualPrice: boolean;
+};
+
+type StripeInvoice = {
+  id: string;
+  number: string | null;
+  status: string | null;
+  amountDue: number;
+  amountPaid: number;
+  currency: string;
+  created: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  hostedInvoiceUrl: string | null;
+  pdfUrl: string | null;
 };
 
 const STANDARD_PLANS: BillingPlanId[] = ["FREE", "STARTER", "PRO", "ENTERPRISE"];
@@ -101,6 +130,10 @@ export default function ProjectBillingPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [selectedInterval, setSelectedInterval] = useState<BillingInterval>("MONTHLY");
   const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>({ ...emptyPaymentDraft });
+  const [stripeConfigured, setStripeConfigured] = useState(false);
+  const [stripePlans, setStripePlans] = useState<BillingPlanOption[]>([]);
+  const [stripeInvoices, setStripeInvoices] = useState<StripeInvoice[]>([]);
+  const [stripeBusy, setStripeBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -137,6 +170,22 @@ export default function ProjectBillingPage() {
       } else {
         setBilling(null);
         throw billingResult.reason;
+      }
+
+      const [plansResult, invoicesResult] = await Promise.allSettled([
+        apiFetch<{ stripeConfigured: boolean; plans: BillingPlanOption[] }>(
+          `/projects/${projectId}/billing/plans`
+        ),
+        apiFetch<{ stripeConfigured: boolean; invoices: StripeInvoice[] }>(
+          `/projects/${projectId}/billing/invoices`
+        )
+      ]);
+      if (plansResult.status === "fulfilled") {
+        setStripeConfigured(plansResult.value.stripeConfigured);
+        setStripePlans(plansResult.value.plans);
+      }
+      if (invoicesResult.status === "fulfilled") {
+        setStripeInvoices(invoicesResult.value.invoices);
       }
 
       setError(null);
@@ -252,6 +301,38 @@ export default function ProjectBillingPage() {
       setError(err?.message ?? "Failed to save payment method");
     } finally {
       setPaymentSaving(false);
+    }
+  };
+
+  const onStripeCheckout = async (planCode: string) => {
+    const key = `checkout:${planCode}:${selectedInterval}`;
+    setStripeBusy(key);
+    setError(null);
+    setNotice(null);
+    try {
+      const session = await apiFetch<{ url: string }>(`/projects/${projectId}/billing/checkout`, {
+        method: "POST",
+        body: JSON.stringify({ planCode, billingInterval: selectedInterval })
+      });
+      window.location.assign(session.url);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to start checkout");
+      setStripeBusy(null);
+    }
+  };
+
+  const onManageBilling = async () => {
+    setStripeBusy("portal");
+    setError(null);
+    setNotice(null);
+    try {
+      const session = await apiFetch<{ url: string }>(`/projects/${projectId}/billing/portal`, {
+        method: "POST"
+      });
+      window.location.assign(session.url);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to open billing portal");
+      setStripeBusy(null);
     }
   };
 
@@ -411,9 +492,101 @@ export default function ProjectBillingPage() {
             </section>
           </PageSection>
 
+          {stripeConfigured ? (
+            <PageSection
+              title="Subscription &amp; payments"
+              description="This application has its own Stripe subscription, independent of every other application."
+              persistKey={`project:${projectId}:billing:stripe`}
+              actions={
+                <div className="segmented-toggle" role="group" aria-label="Billing interval">
+                  <button
+                    type="button"
+                    className={selectedInterval === "MONTHLY" ? "active" : ""}
+                    onClick={() => setSelectedInterval("MONTHLY")}
+                  >
+                    Monthly
+                  </button>
+                  <button
+                    type="button"
+                    className={selectedInterval === "ANNUAL" ? "active" : ""}
+                    onClick={() => setSelectedInterval("ANNUAL")}
+                  >
+                    Annual
+                  </button>
+                </div>
+              }
+            >
+              <div className="billing-usage-grid">
+                <article className="panel metric-card">
+                  <div className="metric-label">Subscription plan</div>
+                  <div className="metric-value">{billing.planCode ?? "Not subscribed"}</div>
+                </article>
+                <article className="panel metric-card">
+                  <div className="metric-label">Stripe status</div>
+                  <div className="metric-value">
+                    <span className={`result-pill ${statusClass(billing.billingStatus)}`}>
+                      {billing.stripeSubscriptionId ? billing.billingStatus : "NONE"}
+                    </span>
+                  </div>
+                </article>
+                <article className="panel metric-card">
+                  <div className="metric-label">Renews / ends</div>
+                  <div className="metric-value">{formatBillingDate(billing.currentPeriodEnd ?? billing.renewalDate)}</div>
+                </article>
+              </div>
+              <div className="plan-grid" style={{ marginTop: "12px" }}>
+                {stripePlans.map((plan) => {
+                  const hasPrice = selectedInterval === "ANNUAL" ? plan.hasAnnualPrice : plan.hasMonthlyPrice;
+                  const rawPrice =
+                    selectedInterval === "ANNUAL" ? plan.annualPrice ?? plan.monthlyPrice * 12 : plan.monthlyPrice;
+                  const isCurrent = billing.planCode === plan.code;
+                  const busyKey = `checkout:${plan.code}:${selectedInterval}`;
+                  return (
+                    <article className={`panel plan-card${isCurrent ? " plan-card--current" : ""}`} key={plan.code}>
+                      <h3>{plan.name}</h3>
+                      <div className="plan-card__price">
+                        <strong>{formatMoney(rawPrice, plan.currency)}</strong> <span>{intervalSuffix(selectedInterval)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        onClick={() => void onStripeCheckout(plan.code)}
+                        disabled={!hasPrice || stripeBusy !== null}
+                      >
+                        {stripeBusy === busyKey
+                          ? "Redirecting…"
+                          : !hasPrice
+                            ? "Price unavailable"
+                            : isCurrent
+                              ? "Change / renew"
+                              : `Subscribe to ${plan.name}`}
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+              {billing.stripeCustomerId ? (
+                <div className="topology-page-actions" style={{ marginTop: "12px" }}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => void onManageBilling()}
+                    disabled={stripeBusy !== null}
+                  >
+                    {stripeBusy === "portal" ? "Opening…" : "Manage billing (payment, cancel, invoices)"}
+                  </button>
+                </div>
+              ) : null}
+            </PageSection>
+          ) : null}
+
           <PageSection
             title="Change plan"
-            description="Upgrade or downgrade the plan for this application only."
+            description={
+              stripeConfigured
+                ? "Internal plan/pricing record for this application (does not charge Stripe)."
+                : "Upgrade or downgrade the plan for this application only."
+            }
             persistKey={`project:${projectId}:billing:plans`}
             actions={
               <div className="segmented-toggle" role="group" aria-label="Billing interval">
@@ -546,10 +719,61 @@ export default function ProjectBillingPage() {
 
           <PageSection
             title="Invoices & billing history"
-            description="Invoices issued for this application, derived from its plan, price, and billing cycle."
+            description={
+              stripeConfigured
+                ? "Invoices issued by Stripe for this application's subscription."
+                : "Estimated invoices derived from this application's plan, price, and billing cycle (Stripe not connected)."
+            }
             persistKey={`project:${projectId}:billing:invoices`}
           >
-            {invoices.length === 0 ? (
+            {stripeConfigured ? (
+              stripeInvoices.length === 0 ? (
+                <p className="dashboard-subtle">
+                  No Stripe invoices yet for this application. They appear here after the first payment.
+                </p>
+              ) : (
+                <div className="table-cards-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Invoice</th>
+                        <th>Date</th>
+                        <th>Billing period</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stripeInvoices.map((invoice) => (
+                        <tr key={invoice.id}>
+                          <td>{invoice.number ?? invoice.id}</td>
+                          <td>{formatBillingDate(invoice.created)}</td>
+                          <td>
+                            {formatBillingDate(invoice.periodStart)} – {formatBillingDate(invoice.periodEnd)}
+                          </td>
+                          <td>{formatMoney(invoice.amountPaid || invoice.amountDue, invoice.currency)}</td>
+                          <td>
+                            <span
+                              className={`result-pill ${invoice.status === "paid" ? "pass" : invoice.status === "open" ? "warn" : "fail"}`}
+                            >
+                              {(invoice.status ?? "unknown").toUpperCase()}
+                            </span>
+                          </td>
+                          <td>
+                            {invoice.hostedInvoiceUrl ? (
+                              <a href={invoice.hostedInvoiceUrl} target="_blank" rel="noreferrer">
+                                View
+                              </a>
+                            ) : null}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : invoices.length === 0 ? (
               <p className="dashboard-subtle">
                 This application&apos;s plan has no charges, so no invoices have been generated.
               </p>
