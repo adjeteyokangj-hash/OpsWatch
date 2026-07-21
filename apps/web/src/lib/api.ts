@@ -171,16 +171,36 @@ export const apiFetch = async <T>(path: string, init?: ApiFetchOptions): Promise
 
   if (!response.ok) {
     let detail = "";
+    let code = "";
     try {
       const contentType = response.headers.get("content-type") || "";
       if (contentType.includes("application/json")) {
-        const payload = (await response.json()) as { error?: string | { message?: string }; message?: string };
+        const payload = (await response.json()) as {
+          error?: string | { message?: string };
+          message?: string;
+          code?: string;
+        };
         detail = typeof payload?.error === "string" ? payload.error : payload?.error?.message || payload?.message || "";
+        code = typeof payload?.code === "string" ? payload.code : "";
       } else {
         detail = (await response.text()).trim();
       }
     } catch {
       detail = "";
+    }
+
+    // A valid session with a stale/mismatched CSRF token cannot perform writes.
+    // There is no silent CSRF-refresh endpoint (only login/rotate re-issue the
+    // cookies), so the only recovery is to force a fresh sign-in, which re-issues
+    // consistent session + CSRF cookies. This never disables or bypasses CSRF.
+    const isCsrfFailure =
+      response.status === 403 && (code === "CSRF_INVALID" || /invalid csrf token/i.test(detail));
+    if (isCsrfFailure && !suppressAuthRedirect && typeof window !== "undefined") {
+      clearAuthCookies();
+      if (!window.location.pathname.startsWith("/login")) {
+        window.location.href = "/login?reason=session_expired";
+      }
+      throw new Error("Your session security token has expired. Please sign in again.");
     }
 
     throw new Error(detail || `Request failed with status ${response.status}`);

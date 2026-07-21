@@ -27,12 +27,23 @@ const parseCookie = (name: string): string | null => {
     return null;
   }
 
-  const row = document.cookie
+  const prefix = `${name}=`;
+  const matches = document.cookie
     .split(";")
     .map((value) => value.trim())
-    .find((value) => value.startsWith(`${name}=`));
+    .filter((value) => value.startsWith(prefix));
 
-  return row ? decodeURIComponent(row.split("=")[1] ?? "") : null;
+  // The API parses the Cookie header with "last occurrence wins" semantics.
+  // If a duplicate cookie exists (e.g. a host-only cookie plus a domain-scoped
+  // one after a cookie-domain change), reading the FIRST match would send a
+  // token the server does not validate against — producing "Invalid CSRF token"
+  // on every write. Mirror the server and read the LAST match.
+  const row = matches.at(-1);
+  if (!row) {
+    return null;
+  }
+  const separator = row.indexOf("=");
+  return decodeURIComponent(row.slice(separator + 1));
 };
 
 export const getCsrfToken = (): string | null => parseCookie("opswatch_csrf");
@@ -52,10 +63,15 @@ export const clearAuthCookies = (): void => {
   }
 
   const domain = resolveSessionCookieDomain(window.location.hostname);
-  const domainAttr = domain ? `; domain=${domain}` : "";
+  // Clear both the domain-scoped and host-only variants. A stale host-only
+  // duplicate left over from an earlier cookie-domain configuration would
+  // otherwise survive re-login and keep breaking CSRF validation.
+  const domainAttrs = domain ? [`; domain=${domain}`, ""] : [""];
 
-  document.cookie = `opswatch_session=; path=/; max-age=0; SameSite=Lax${domainAttr}`;
-  document.cookie = `opswatch_csrf=; path=/; max-age=0; SameSite=Lax${domainAttr}`;
+  for (const domainAttr of domainAttrs) {
+    document.cookie = `opswatch_session=; path=/; max-age=0; SameSite=Lax${domainAttr}`;
+    document.cookie = `opswatch_csrf=; path=/; max-age=0; SameSite=Lax${domainAttr}`;
+  }
 };
 
 /** @deprecated Browser JWT cookies are no longer used. */

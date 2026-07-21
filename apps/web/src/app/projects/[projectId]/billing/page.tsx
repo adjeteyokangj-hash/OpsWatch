@@ -80,20 +80,6 @@ type StripeInvoice = {
 
 const STANDARD_PLANS: BillingPlanId[] = ["FREE", "STARTER", "PRO", "ENTERPRISE"];
 
-type PaymentDraft = { brand: string; last4: string; expMonth: string; expYear: string };
-
-const emptyPaymentDraft: PaymentDraft = { brand: "", last4: "", expMonth: "", expYear: "" };
-
-const paymentDraftFrom = (payment?: PaymentMethod | null): PaymentDraft =>
-  payment
-    ? {
-        brand: payment.brand ?? "",
-        last4: payment.last4 ?? "",
-        expMonth: payment.expMonth ? String(payment.expMonth) : "",
-        expYear: payment.expYear ? String(payment.expYear) : ""
-      }
-    : { ...emptyPaymentDraft };
-
 const toDateInput = (value?: string | null): string => {
   if (!value) return "";
   return value.slice(0, 10);
@@ -122,14 +108,18 @@ const normalizeBilling = (row: ProjectBilling): ProjectBilling => ({
 export default function ProjectBillingPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [project, setProject] = useState<ProjectSummary | null>(null);
+  // `billing` is the server-authoritative record (only updated after a
+  // successful load). `draft` is the editable copy bound to the advanced
+  // configuration form, so in-progress edits never fake the active plan in the
+  // summary/usage cards.
   const [billing, setBilling] = useState<ProjectBilling | null>(null);
+  const [draft, setDraft] = useState<ProjectBilling | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [planSaving, setPlanSaving] = useState<string | null>(null);
-  const [paymentSaving, setPaymentSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [selectedInterval, setSelectedInterval] = useState<BillingInterval>("MONTHLY");
-  const [paymentDraft, setPaymentDraft] = useState<PaymentDraft>({ ...emptyPaymentDraft });
   const [stripeConfigured, setStripeConfigured] = useState(false);
   const [stripePlans, setStripePlans] = useState<BillingPlanOption[]>([]);
   const [stripeInvoices, setStripeInvoices] = useState<StripeInvoice[]>([]);
@@ -165,10 +155,13 @@ export default function ProjectBillingPage() {
           }
         });
         setBilling(normalized);
+        setDraft(normalized);
+        setDirty(false);
         setSelectedInterval(normalized.billingInterval);
-        setPaymentDraft(paymentDraftFrom(normalized.paymentMethod));
       } else {
         setBilling(null);
+        setDraft(null);
+        setDirty(false);
         throw billingResult.reason;
       }
 
@@ -237,22 +230,23 @@ export default function ProjectBillingPage() {
     });
   }, [billing]);
 
-  const updateBilling = (patch: Partial<ProjectBilling>) => {
-    setBilling((current) => (current ? { ...current, ...patch } : current));
+  const updateDraft = (patch: Partial<ProjectBilling>) => {
+    setDraft((current) => (current ? { ...current, ...patch } : current));
+    setDirty(true);
   };
 
   const onPlanChange = (plan: BillingPlanId) => {
-    if (!billing) return;
+    if (!draft) return;
     if (plan === "CUSTOM") {
-      updateBilling({ plan: "CUSTOM" });
+      updateDraft({ plan: "CUSTOM" });
       return;
     }
-    updateBilling({ plan, ...applyPlanDefaults(plan) });
+    updateDraft({ plan, ...applyPlanDefaults(plan) });
   };
 
   const onBillingFieldChange = (patch: Partial<ProjectBilling>) => {
-    if (!billing) return;
-    const next = normalizeBilling({ ...billing, ...patch });
+    if (!draft) return;
+    const next = normalizeBilling({ ...draft, ...patch });
     const selectedPlan = next.plan === "CUSTOM" ? "CUSTOM" : next.plan;
     const label =
       selectedPlan === "CUSTOM"
@@ -260,7 +254,7 @@ export default function ProjectBillingPage() {
         : billingMatchesPlanDefaults(selectedPlan, next)
           ? selectedPlan
           : "CUSTOM";
-    updateBilling({ ...patch, plan: label });
+    updateDraft({ ...patch, plan: label });
   };
 
   const onAllowanceChange = (field: "checkLimit" | "userLimit" | "automationRunLimit", value: AllowanceLimit) => {
@@ -280,27 +274,6 @@ export default function ProjectBillingPage() {
       setError(err?.message ?? "Failed to change plan");
     } finally {
       setPlanSaving(null);
-    }
-  };
-
-  const onSavePayment = async () => {
-    setPaymentSaving(true);
-    setError(null);
-    setNotice(null);
-    try {
-      await patchBilling({
-        paymentMethod: {
-          brand: paymentDraft.brand.trim() || null,
-          last4: paymentDraft.last4.trim() || null,
-          expMonth: paymentDraft.expMonth ? Number(paymentDraft.expMonth) : null,
-          expYear: paymentDraft.expYear ? Number(paymentDraft.expYear) : null
-        }
-      });
-      setNotice("Payment method updated for this application.");
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to save payment method");
-    } finally {
-      setPaymentSaving(false);
     }
   };
 
@@ -336,23 +309,9 @@ export default function ProjectBillingPage() {
     }
   };
 
-  const onRemovePayment = async () => {
-    setPaymentSaving(true);
-    setError(null);
-    setNotice(null);
-    try {
-      await patchBilling({ paymentMethod: null });
-      setNotice("Payment method removed for this application.");
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to remove payment method");
-    } finally {
-      setPaymentSaving(false);
-    }
-  };
-
   const onSave = async (event: FormEvent) => {
     event.preventDefault();
-    if (!billing) return;
+    if (!draft) return;
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -360,18 +319,18 @@ export default function ProjectBillingPage() {
       await apiFetch(`/projects/${projectId}/billing`, {
         method: "PATCH",
         body: JSON.stringify({
-          plan: billing.plan,
-          monthlyPrice: billing.monthlyPrice,
-          currency: billing.currency,
-          billingStatus: billing.billingStatus,
-          billingInterval: billing.billingInterval,
-          billingStartDate: billing.billingStartDate || null,
-          renewalDate: billing.renewalDate || null,
-          dataRetentionDays: billing.dataRetentionDays,
-          checkLimit: billing.checkLimit,
-          userLimit: billing.userLimit,
-          automationRunLimit: billing.automationRunLimit,
-          internalNotes: billing.internalNotes ?? null
+          plan: draft.plan,
+          monthlyPrice: draft.monthlyPrice,
+          currency: draft.currency,
+          billingStatus: draft.billingStatus,
+          billingInterval: draft.billingInterval,
+          billingStartDate: draft.billingStartDate || null,
+          renewalDate: draft.renewalDate || null,
+          dataRetentionDays: draft.dataRetentionDays,
+          checkLimit: draft.checkLimit,
+          userLimit: draft.userLimit,
+          automationRunLimit: draft.automationRunLimit,
+          internalNotes: draft.internalNotes ?? null
         })
       });
       setNotice("Billing configuration saved for this application.");
@@ -400,9 +359,9 @@ export default function ProjectBillingPage() {
             type="submit"
             form="project-billing-form"
             className="primary-button"
-            disabled={saving}
+            disabled={saving || !dirty}
           >
-            {saving ? "Saving…" : "Save configuration"}
+            {saving ? "Saving…" : dirty ? "Save configuration" : "Saved"}
           </button>
         ) : null
       }
@@ -652,7 +611,7 @@ export default function ProjectBillingPage() {
 
           <PageSection
             title="Payment method"
-            description="Payment method on file for this application only."
+            description="Payment method for this application only."
             persistKey={`project:${projectId}:billing:payment`}
           >
             <p className="dashboard-subtle billing-payment-current">
@@ -661,60 +620,34 @@ export default function ProjectBillingPage() {
                 <span className="dashboard-subtle"> · updated {formatBillingDate(billing.paymentMethod.updatedAt)}</span>
               ) : null}
             </p>
-            <div className="billing-form-grid">
-              <label>
-                Card brand
-                <input
-                  type="text"
-                  placeholder="Visa"
-                  value={paymentDraft.brand}
-                  onChange={(event) => setPaymentDraft((draft) => ({ ...draft, brand: event.target.value }))}
-                />
-              </label>
-              <label>
-                Last 4 digits
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={4}
-                  placeholder="4242"
-                  value={paymentDraft.last4}
-                  onChange={(event) => setPaymentDraft((draft) => ({ ...draft, last4: event.target.value }))}
-                />
-              </label>
-              <label>
-                Expiry month
-                <input
-                  type="number"
-                  min={1}
-                  max={12}
-                  placeholder="04"
-                  value={paymentDraft.expMonth}
-                  onChange={(event) => setPaymentDraft((draft) => ({ ...draft, expMonth: event.target.value }))}
-                />
-              </label>
-              <label>
-                Expiry year
-                <input
-                  type="number"
-                  min={2000}
-                  max={2100}
-                  placeholder="2027"
-                  value={paymentDraft.expYear}
-                  onChange={(event) => setPaymentDraft((draft) => ({ ...draft, expYear: event.target.value }))}
-                />
-              </label>
-            </div>
-            <div className="topology-page-actions" style={{ marginTop: "12px" }}>
-              <button type="button" className="primary-button" onClick={() => void onSavePayment()} disabled={paymentSaving}>
-                {paymentSaving ? "Saving…" : "Save payment method"}
-              </button>
-              {billing.paymentMethod ? (
-                <button type="button" className="secondary-button" onClick={() => void onRemovePayment()} disabled={paymentSaving}>
-                  Remove
-                </button>
-              ) : null}
-            </div>
+            {stripeConfigured ? (
+              billing.stripeCustomerId ? (
+                <>
+                  <p className="dashboard-subtle">
+                    Payment methods are managed securely by Stripe. Card details are never entered or stored in OpsWatch.
+                  </p>
+                  <div className="topology-page-actions" style={{ marginTop: "12px" }}>
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={() => void onManageBilling()}
+                      disabled={stripeBusy !== null}
+                    >
+                      {stripeBusy === "portal" ? "Opening…" : "Manage payment method in Stripe"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="dashboard-subtle">
+                  Subscribe to a plan above to add a payment method. It will then be managed securely through Stripe.
+                </p>
+              )
+            ) : (
+              <p className="dashboard-subtle">
+                Stripe is not connected for this workspace, so no payment method can be stored for this application. Card
+                details are never entered or stored in OpsWatch.
+              </p>
+            )}
           </PageSection>
 
           <PageSection
@@ -815,6 +748,13 @@ export default function ProjectBillingPage() {
             persistKey={`project:${projectId}:billing:editor`}
             defaultCollapsed
           >
+            {dirty ? (
+              <p className="dashboard-subtle" role="status" data-testid="billing-unsaved-hint">
+                Unsaved changes. The summary above still shows the saved{" "}
+                <strong>{formatPlanLabel(billing.plan)}</strong> plan until you select{" "}
+                <strong>Save configuration</strong>.
+              </p>
+            ) : null}
             <form
               id="project-billing-form"
               className="billing-form-grid"
@@ -822,7 +762,7 @@ export default function ProjectBillingPage() {
             >
               <label>
                 Plan
-                <select value={billing.plan} onChange={(event) => onPlanChange(event.target.value as BillingPlanId)}>
+                <select value={draft?.plan ?? billing.plan} onChange={(event) => onPlanChange(event.target.value as BillingPlanId)}>
                   {[...STANDARD_PLANS, "CUSTOM"].map((plan) => (
                     <option key={plan} value={plan}>
                       {formatPlanLabel(plan)}
@@ -833,8 +773,8 @@ export default function ProjectBillingPage() {
               <label>
                 Billing interval
                 <select
-                  value={billing.billingInterval}
-                  onChange={(event) => updateBilling({ billingInterval: event.target.value as BillingInterval })}
+                  value={draft?.billingInterval ?? billing.billingInterval}
+                  onChange={(event) => updateDraft({ billingInterval: event.target.value as BillingInterval })}
                 >
                   <option value="MONTHLY">Monthly</option>
                   <option value="ANNUAL">Annual</option>
@@ -846,14 +786,14 @@ export default function ProjectBillingPage() {
                   type="number"
                   min={0}
                   step={1}
-                  value={billing.monthlyPrice}
+                  value={draft?.monthlyPrice ?? billing.monthlyPrice}
                   onChange={(event) => onBillingFieldChange({ monthlyPrice: Number(event.target.value) })}
                 />
               </label>
               <label>
                 Currency
                 <select
-                  value={billing.currency}
+                  value={draft?.currency ?? billing.currency}
                   onChange={(event) => onBillingFieldChange({ currency: event.target.value })}
                 >
                   <option value="GBP">GBP</option>
@@ -864,8 +804,8 @@ export default function ProjectBillingPage() {
               <label>
                 Billing status
                 <select
-                  value={billing.billingStatus}
-                  onChange={(event) => updateBilling({ billingStatus: event.target.value })}
+                  value={draft?.billingStatus ?? billing.billingStatus}
+                  onChange={(event) => updateDraft({ billingStatus: event.target.value })}
                 >
                   {["ACTIVE", "TRIAL", "PAST_DUE", "CANCELLED", "SUSPENDED"].map((status) => (
                     <option key={status} value={status}>
@@ -878,31 +818,31 @@ export default function ProjectBillingPage() {
                 Billing start date
                 <input
                   type="date"
-                  value={toDateInput(billing.billingStartDate)}
-                  onChange={(event) => updateBilling({ billingStartDate: event.target.value || null })}
+                  value={toDateInput(draft?.billingStartDate ?? billing.billingStartDate)}
+                  onChange={(event) => updateDraft({ billingStartDate: event.target.value || null })}
                 />
               </label>
               <label>
                 Renewal date
                 <input
                   type="date"
-                  value={toDateInput(billing.renewalDate)}
-                  onChange={(event) => updateBilling({ renewalDate: event.target.value || null })}
+                  value={toDateInput(draft?.renewalDate ?? billing.renewalDate)}
+                  onChange={(event) => updateDraft({ renewalDate: event.target.value || null })}
                 />
               </label>
               <BillingAllowanceField
                 field="checkLimit"
-                value={billing.checkLimit}
+                value={draft?.checkLimit ?? billing.checkLimit}
                 onChange={(value) => onAllowanceChange("checkLimit", value)}
               />
               <BillingAllowanceField
                 field="userLimit"
-                value={billing.userLimit}
+                value={draft?.userLimit ?? billing.userLimit}
                 onChange={(value) => onAllowanceChange("userLimit", value)}
               />
               <BillingAllowanceField
                 field="automationRunLimit"
-                value={billing.automationRunLimit}
+                value={draft?.automationRunLimit ?? billing.automationRunLimit}
                 onChange={(value) => onAllowanceChange("automationRunLimit", value)}
               />
               <label>
@@ -910,7 +850,7 @@ export default function ProjectBillingPage() {
                 <input
                   type="number"
                   min={1}
-                  value={billing.dataRetentionDays}
+                  value={draft?.dataRetentionDays ?? billing.dataRetentionDays}
                   onChange={(event) => onBillingFieldChange({ dataRetentionDays: Number(event.target.value) })}
                 />
               </label>
@@ -918,8 +858,8 @@ export default function ProjectBillingPage() {
                 Internal notes
                 <textarea
                   rows={4}
-                  value={billing.internalNotes ?? ""}
-                  onChange={(event) => updateBilling({ internalNotes: event.target.value })}
+                  value={draft?.internalNotes ?? ""}
+                  onChange={(event) => updateDraft({ internalNotes: event.target.value })}
                 />
               </label>
             </form>
