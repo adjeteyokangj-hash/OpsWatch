@@ -36,7 +36,19 @@ export type ApiKeyAuthFailureReason =
   | "insufficient_scope"
   | "environment_mismatch";
 
-export type ApiKeyAuthResult = { ok: true } | { ok: false; reason: ApiKeyAuthFailureReason };
+export type ApiKeyAuthResult =
+  | { ok: true; reason?: undefined }
+  | { ok: false; reason: ApiKeyAuthFailureReason };
+
+/**
+ * Read the failure reason without relying on control-flow narrowing of the
+ * discriminated union. `reason` is present on both members (optional on the
+ * success variant), so this compiles cleanly regardless of how a given
+ * TypeScript build narrows `result` after an `ok` check. At runtime a failure
+ * result always carries a reason, so the fallback is never taken.
+ */
+const failureReasonOf = (result: ApiKeyAuthResult): ApiKeyAuthFailureReason =>
+  result.reason ?? "invalid";
 
 export const ENVIRONMENT_HEADER = "x-opswatch-environment";
 
@@ -407,9 +419,10 @@ export const requireApiKeyScopes = (requiredScopes: string[]) => {
       next();
       return;
     }
-    res.status(failureStatus(result.reason)).json({
-      error: failureMessage(result.reason),
-      code: result.reason.toUpperCase()
+    const reason = failureReasonOf(result);
+    res.status(failureStatus(reason)).json({
+      error: failureMessage(reason),
+      code: reason.toUpperCase()
     });
   };
 };
@@ -420,9 +433,10 @@ export const requireAnyApiKeyScopes = (acceptedScopes: string[]) => {
     // Authenticate the key without requiring every accepted scope.
     const result = await authorizeApiKey(req, []);
     if (!result.ok) {
-      res.status(failureStatus(result.reason)).json({
-        error: failureMessage(result.reason),
-        code: result.reason.toUpperCase()
+      const reason = failureReasonOf(result);
+      res.status(failureStatus(reason)).json({
+        error: failureMessage(reason),
+        code: reason.toUpperCase()
       });
       return;
     }
@@ -456,9 +470,10 @@ export const requireApiKeyReadScope = (requiredScopes: string[], _projectIdParam
       return;
     }
 
-    res.status(failureStatus(result.reason)).json({
-      error: failureMessage(result.reason),
-      code: result.reason.toUpperCase()
+    const reason = failureReasonOf(result);
+    res.status(failureStatus(reason)).json({
+      error: failureMessage(reason),
+      code: reason.toUpperCase()
     });
   };
 };

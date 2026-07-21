@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import type { IncidentAnalysisContext } from "./incident-analysis.service";
 
@@ -141,7 +142,7 @@ export const indexIncidentMemory = async (input: {
       affectedServiceIds: input.affectedServiceIds ?? undefined,
       affectedModuleKeys: input.affectedModuleKeys ?? undefined,
       affectedWorkflowKeys: input.affectedWorkflowKeys ?? undefined,
-      recoveryActionsJson: input.recoveryActionsJson ?? undefined,
+      recoveryActionsJson: (input.recoveryActionsJson ?? undefined) as Prisma.InputJsonValue | undefined,
       automationInvolved: input.automationInvolved ?? false,
       verificationSummary: input.verificationSummary ?? null,
       resolutionTimeMs: input.resolutionTimeMs ?? null,
@@ -164,7 +165,7 @@ export const indexIncidentMemory = async (input: {
       affectedServiceIds: input.affectedServiceIds ?? undefined,
       affectedModuleKeys: input.affectedModuleKeys ?? undefined,
       affectedWorkflowKeys: input.affectedWorkflowKeys ?? undefined,
-      recoveryActionsJson: input.recoveryActionsJson ?? undefined,
+      recoveryActionsJson: (input.recoveryActionsJson ?? undefined) as Prisma.InputJsonValue | undefined,
       automationInvolved: input.automationInvolved ?? false,
       verificationSummary: input.verificationSummary ?? null,
       resolutionTimeMs: input.resolutionTimeMs ?? null,
