@@ -3339,3 +3339,60 @@ model PredictionOutcomeEvaluation {
 
   @@index([organizationId, classification, evaluatedAt])
 }
+
+/// Serverless worker tick: one row per POST /api/internal/worker/tick invocation.
+/// Provides runtime evidence (attempted/succeeded/failed/deferred) for the
+/// Supabase-Cron-driven serverless worker mode. Complements, does not replace,
+/// the continuous apps/worker scheduler.
+model WorkerTickRun {
+  id               String    @id
+  triggeredBy      String    @default("supabase-cron")
+  status           String    @default("COMPLETED")
+  startedAt        DateTime  @default(now())
+  completedAt      DateTime?
+  durationMs       Int       @default(0)
+  jobsAttempted    Int       @default(0)
+  jobsSucceeded    Int       @default(0)
+  jobsFailed       Int       @default(0)
+  jobsDeferred     Int       @default(0)
+  jobsSkipped      Int       @default(0)
+  heartbeatUpdated Boolean   @default(false)
+  heartbeatAt      DateTime?
+  errorSummary     String?
+  summaryJson      Json?
+  createdAt        DateTime  @default(now())
+
+  @@index([startedAt])
+  @@index([status, startedAt])
+}
+
+/// Per-job last-run / next-due state for serverless tick cadence enforcement.
+/// Mirrors the interval cadences encoded in the continuous scheduler so that
+/// long-period jobs are not executed on every one-minute tick.
+model WorkerJobState {
+  jobName             String    @id
+  lastRunAt           DateTime?
+  lastFinishedAt      DateTime?
+  lastStatus          String?
+  lastDurationMs      Int?
+  lastError           String?
+  nextDueAt           DateTime?
+  consecutiveFailures Int       @default(0)
+  totalRuns           Int       @default(0)
+  totalFailures       Int       @default(0)
+  updatedAt           DateTime
+
+  @@index([nextDueAt])
+}
+
+/// Cross-process advisory lease. Guarantees a single active serverless tick
+/// even when concurrent Supabase Cron invocations overlap. Pooler-safe
+/// alternative to session-scoped pg_try_advisory_lock (PgBouncer transaction
+/// pooling does not preserve session-level advisory locks).
+model WorkerTickLock {
+  key       String    @id
+  holder    String?
+  lockedAt  DateTime?
+  expiresAt DateTime?
+  updatedAt DateTime
+}

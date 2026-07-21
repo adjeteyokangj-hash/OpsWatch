@@ -3,6 +3,10 @@
 	"version": "0.1.0",
 	"private": true,
 	"main": "dist/index.js",
+	"exports": {
+		".": "./dist/index.js",
+		"./jobs": "./dist/jobs/index.js"
+	},
 	"scripts": {
 		"dev": "tsx watch src/index.ts",
 		"build": "tsc -p tsconfig.json",

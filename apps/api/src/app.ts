@@ -38,6 +38,7 @@ import maintenanceWindowsRouter from "./routes/maintenance-windows.routes";
 import automationRouter from "./routes/automation.routes";
 import intelligenceRouter from "./routes/intelligence.routes";
 import { internalRouter } from "./routes/internal.routes";
+import { workerTickRouter } from "./routes/worker-tick.routes";
 import { webhooksRouter } from "./routes/webhooks.routes";
 import { adminBillingRouter } from "./routes/admin-billing.routes";
 import { connectionsRouter } from "./routes/connections.routes";
@@ -106,6 +107,7 @@ app.use(API_PREFIX, heartbeatsRouter);
 app.use(`${API_PREFIX}/webhooks`, webhookJsonParser, webhooksRouter);
 app.use(API_PREFIX, connectionIngestRouter);
 app.use(API_PREFIX, internalRouter);
+app.use(API_PREFIX, workerTickRouter);
 
 app.use(API_PREFIX, requireAuth, projectsRouter);
 app.use(API_PREFIX, requireAuth, servicesRouter);
