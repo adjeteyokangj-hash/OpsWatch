@@ -81,3 +81,162 @@ export const allowanceFieldLabel: Record<AllowanceFieldKey, string> = {
   userLimit: "User allowance",
   automationRunLimit: "Automation allowance"
 };
+
+export type BillingInterval = "MONTHLY" | "ANNUAL";
+
+export type PaymentMethod = {
+  brand: string | null;
+  last4: string | null;
+  expMonth: number | null;
+  expYear: number | null;
+  updatedAt?: string | null;
+};
+
+export type BillingInvoice = {
+  id: string;
+  number: string;
+  periodStart: string;
+  periodEnd: string;
+  issuedAt: string;
+  amount: number;
+  currency: string;
+  status: "PAID" | "DUE" | "UPCOMING";
+};
+
+export const intervalMonths = (interval: BillingInterval): number => (interval === "ANNUAL" ? 12 : 1);
+
+export const intervalPrice = (monthlyPrice: number, interval: BillingInterval): number =>
+  interval === "ANNUAL" ? monthlyPrice * 12 : monthlyPrice;
+
+export const formatInterval = (interval: BillingInterval): string =>
+  interval === "ANNUAL" ? "Annual" : "Monthly";
+
+export const intervalSuffix = (interval: BillingInterval): string =>
+  interval === "ANNUAL" ? "/ year" : "/ month";
+
+export const formatMoney = (amount: number, currency: string): string => {
+  try {
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: amount % 1 === 0 ? 0 : 2
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount}`;
+  }
+};
+
+export const formatBillingDate = (value?: string | null): string => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+};
+
+export const formatPaymentMethod = (payment?: PaymentMethod | null): string => {
+  if (!payment || (!payment.brand && !payment.last4)) {
+    return "No payment method on file";
+  }
+  const brand = payment.brand?.trim() || "Card";
+  const tail = payment.last4 ? ` •••• ${payment.last4}` : "";
+  const exp =
+    payment.expMonth && payment.expYear
+      ? ` · expires ${String(payment.expMonth).padStart(2, "0")}/${payment.expYear}`
+      : "";
+  return `${brand}${tail}${exp}`;
+};
+
+const addMonths = (date: Date, months: number): Date => {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + months);
+  return next;
+};
+
+/**
+ * Derive the invoice / billing-history list from the application's real billing
+ * configuration: an invoice is issued at the start of each billing period since
+ * the billing start date. Amounts reflect the plan price for the chosen interval.
+ */
+export const computeInvoices = (input: {
+  monthlyPrice: number;
+  currency: string;
+  interval: BillingInterval;
+  billingStartDate?: string | null;
+  renewalDate?: string | null;
+  billingStatus?: string;
+  maxPeriods?: number;
+}): BillingInvoice[] => {
+  const amount = intervalPrice(input.monthlyPrice, input.interval);
+  if (amount <= 0 || !input.billingStartDate) return [];
+
+  const start = new Date(input.billingStartDate);
+  if (Number.isNaN(start.getTime())) return [];
+
+  const now = new Date();
+  const months = intervalMonths(input.interval);
+  const maxPeriods = input.maxPeriods ?? 12;
+  // Only healthy subscriptions surface a forward-dated upcoming invoice.
+  const showUpcoming =
+    input.billingStatus === undefined ||
+    input.billingStatus === "ACTIVE" ||
+    input.billingStatus === "TRIAL";
+
+  const starts: Date[] = [];
+  let cursor = new Date(start);
+  let guard = 0;
+  while (cursor <= now && guard < 600) {
+    starts.push(new Date(cursor));
+    cursor = addMonths(cursor, months);
+    guard += 1;
+  }
+  if (starts.length === 0) return [];
+
+  const nextStart = new Date(cursor);
+  const invoices: BillingInvoice[] = [];
+
+  // Upcoming invoice for the next period (only for healthy subscriptions).
+  if (showUpcoming) {
+    const dueDate = input.renewalDate ? new Date(input.renewalDate) : nextStart;
+    const periodEnd = addMonths(nextStart, months);
+    invoices.push({
+      id: invoiceId(nextStart),
+      number: invoiceNumber(nextStart),
+      periodStart: nextStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+      issuedAt: (Number.isNaN(dueDate.getTime()) ? nextStart : dueDate).toISOString(),
+      amount,
+      currency: input.currency,
+      status: "UPCOMING"
+    });
+  }
+
+  const recentStarts = starts.slice(-maxPeriods);
+  for (let i = recentStarts.length - 1; i >= 0; i -= 1) {
+    const periodStart = recentStarts[i];
+    if (!periodStart) continue;
+    const periodEnd = addMonths(periodStart, months);
+    const isLatestBilled = i === recentStarts.length - 1;
+    const status: BillingInvoice["status"] =
+      isLatestBilled && input.billingStatus === "PAST_DUE" ? "DUE" : "PAID";
+    invoices.push({
+      id: invoiceId(periodStart),
+      number: invoiceNumber(periodStart),
+      periodStart: periodStart.toISOString(),
+      periodEnd: periodEnd.toISOString(),
+      issuedAt: periodStart.toISOString(),
+      amount,
+      currency: input.currency,
+      status
+    });
+  }
+
+  return invoices;
+};
+
+const invoiceId = (periodStart: Date): string =>
+  `${periodStart.getFullYear()}${String(periodStart.getMonth() + 1).padStart(2, "0")}${String(
+    periodStart.getDate()
+  ).padStart(2, "0")}`;
+
+const invoiceNumber = (periodStart: Date): string =>
+  `INV-${periodStart.getFullYear()}${String(periodStart.getMonth() + 1).padStart(2, "0")}`;

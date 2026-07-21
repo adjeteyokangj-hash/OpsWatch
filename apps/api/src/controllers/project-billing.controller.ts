@@ -54,12 +54,36 @@ export const updateProjectBillingHandler = async (req: AuthRequest, res: Respons
   }
 
   const body = req.body ?? {};
+  const billingInterval =
+    body.billingInterval === "MONTHLY" || body.billingInterval === "ANNUAL" ? body.billingInterval : undefined;
+  const paymentMethod =
+    body.paymentMethod === null
+      ? null
+      : body.paymentMethod && typeof body.paymentMethod === "object"
+        ? {
+            brand: typeof body.paymentMethod.brand === "string" ? body.paymentMethod.brand : undefined,
+            last4:
+              typeof body.paymentMethod.last4 === "string" || body.paymentMethod.last4 === null
+                ? body.paymentMethod.last4
+                : undefined,
+            expMonth:
+              typeof body.paymentMethod.expMonth === "number" || body.paymentMethod.expMonth === null
+                ? body.paymentMethod.expMonth
+                : undefined,
+            expYear:
+              typeof body.paymentMethod.expYear === "number" || body.paymentMethod.expYear === null
+                ? body.paymentMethod.expYear
+                : undefined
+          }
+        : undefined;
   await updateProjectBilling({
     projectId: project.id,
     plan: body.plan,
     monthlyPrice: typeof body.monthlyPrice === "number" ? body.monthlyPrice : undefined,
     currency: typeof body.currency === "string" ? body.currency : undefined,
     billingStatus: body.billingStatus,
+    billingInterval,
+    paymentMethod,
     billingStartDate: body.billingStartDate ? new Date(body.billingStartDate) : undefined,
     renewalDate: body.renewalDate ? new Date(body.renewalDate) : body.renewalDate === null ? null : undefined,
     dataRetentionDays: typeof body.dataRetentionDays === "number" ? body.dataRetentionDays : undefined,

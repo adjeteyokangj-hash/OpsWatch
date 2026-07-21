@@ -1,6 +1,13 @@
 import { randomUUID } from "crypto";
-import type { BillingPlanType, BillingStatus } from "@prisma/client";
+import type { BillingInterval, BillingPlanType, BillingStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
+
+export type PaymentMethodInput = {
+  brand?: string | null;
+  last4?: string | null;
+  expMonth?: number | null;
+  expYear?: number | null;
+};
 
 export type AllowanceLimit = number | null;
 
@@ -116,11 +123,22 @@ export const getProjectBilling = async (projectId: string, options?: { includeIn
 
   const { Project: _project, internalNotes, ...billingFields } = billing;
 
+  const hasPaymentMethod = Boolean(billing.paymentBrand || billing.paymentLast4);
+
   const payload = {
     ...billingFields,
     ...normalized,
     pricingLabel,
     isCustomPricing: pricingLabel === "CUSTOM",
+    paymentMethod: hasPaymentMethod
+      ? {
+          brand: billing.paymentBrand ?? null,
+          last4: billing.paymentLast4 ?? null,
+          expMonth: billing.paymentExpMonth ?? null,
+          expYear: billing.paymentExpYear ?? null,
+          updatedAt: billing.paymentUpdatedAt ?? null
+        }
+      : null,
     project: project
       ? {
           id: project.id,
@@ -143,12 +161,36 @@ export const getProjectBilling = async (projectId: string, options?: { includeIn
   return payload;
 };
 
+const normalizeExpMonth = (value: number | null | undefined): number | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!Number.isFinite(value)) return undefined;
+  const month = Math.trunc(value);
+  return month >= 1 && month <= 12 ? month : undefined;
+};
+
+const normalizeExpYear = (value: number | null | undefined): number | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!Number.isFinite(value)) return undefined;
+  const year = Math.trunc(value);
+  return year >= 2000 && year <= 2100 ? year : undefined;
+};
+
+const normalizeLast4 = (value: string | null | undefined): string | null | undefined => {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  const digits = value.replace(/\D/g, "").slice(-4);
+  return digits.length ? digits : null;
+};
+
 export const updateProjectBilling = async (input: {
   projectId: string;
   plan?: BillingPlanType;
   monthlyPrice?: number;
   currency?: string;
   billingStatus?: BillingStatus;
+  billingInterval?: BillingInterval;
   billingStartDate?: Date | null;
   renewalDate?: Date | null;
   dataRetentionDays?: number;
@@ -157,6 +199,7 @@ export const updateProjectBilling = async (input: {
   automationRunLimit?: number | null;
   customLimits?: Record<string, unknown> | null;
   internalNotes?: string | null;
+  paymentMethod?: PaymentMethodInput | null;
   updatedById?: string;
 }) => {
   const existing = await prisma.projectBilling.findUnique({ where: { projectId: input.projectId } });
@@ -198,6 +241,40 @@ export const updateProjectBilling = async (input: {
     plan = "CUSTOM";
   }
 
+  let paymentData: {
+    paymentBrand?: string | null;
+    paymentLast4?: string | null;
+    paymentExpMonth?: number | null;
+    paymentExpYear?: number | null;
+    paymentUpdatedAt?: Date | null;
+  } = {};
+  if (input.paymentMethod === null) {
+    paymentData = {
+      paymentBrand: null,
+      paymentLast4: null,
+      paymentExpMonth: null,
+      paymentExpYear: null,
+      paymentUpdatedAt: null
+    };
+  } else if (input.paymentMethod) {
+    const brand =
+      input.paymentMethod.brand === undefined
+        ? undefined
+        : input.paymentMethod.brand?.trim()
+          ? input.paymentMethod.brand.trim()
+          : null;
+    const last4 = normalizeLast4(input.paymentMethod.last4);
+    const expMonth = normalizeExpMonth(input.paymentMethod.expMonth);
+    const expYear = normalizeExpYear(input.paymentMethod.expYear);
+    paymentData = {
+      ...(brand !== undefined ? { paymentBrand: brand } : {}),
+      ...(last4 !== undefined ? { paymentLast4: last4 } : {}),
+      ...(expMonth !== undefined ? { paymentExpMonth: expMonth } : {}),
+      ...(expYear !== undefined ? { paymentExpYear: expYear } : {}),
+      paymentUpdatedAt: now
+    };
+  }
+
   const row = existing
     ? await prisma.projectBilling.update({
         where: { projectId: input.projectId },
@@ -206,6 +283,7 @@ export const updateProjectBilling = async (input: {
           monthlyPrice: merged.monthlyPrice,
           currency: merged.currency,
           ...(input.billingStatus !== undefined ? { billingStatus: input.billingStatus } : {}),
+          ...(input.billingInterval !== undefined ? { billingInterval: input.billingInterval } : {}),
           ...(input.billingStartDate !== undefined ? { billingStartDate: input.billingStartDate } : {}),
           ...(input.renewalDate !== undefined ? { renewalDate: input.renewalDate } : {}),
           dataRetentionDays: merged.dataRetentionDays,
@@ -214,6 +292,7 @@ export const updateProjectBilling = async (input: {
           automationRunLimit: merged.automationRunLimit,
           ...(input.customLimits !== undefined ? { customLimits: input.customLimits as object } : {}),
           ...(input.internalNotes !== undefined ? { internalNotes: input.internalNotes } : {}),
+          ...paymentData,
           updatedAt: now
         }
       })
@@ -225,6 +304,7 @@ export const updateProjectBilling = async (input: {
           monthlyPrice: merged.monthlyPrice,
           currency: merged.currency,
           billingStatus: input.billingStatus ?? "ACTIVE",
+          billingInterval: input.billingInterval ?? "MONTHLY",
           billingStartDate: input.billingStartDate ?? now,
           renewalDate: input.renewalDate ?? null,
           dataRetentionDays: merged.dataRetentionDays,
@@ -233,6 +313,7 @@ export const updateProjectBilling = async (input: {
           automationRunLimit: merged.automationRunLimit,
           customLimits: input.customLimits as object | undefined,
           internalNotes: input.internalNotes ?? null,
+          ...paymentData,
           updatedAt: now
         }
       });

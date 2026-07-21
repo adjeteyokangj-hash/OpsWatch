@@ -1604,6 +1604,7 @@ model ProjectBilling {
   monthlyPrice       Float           @default(0)
   currency           String          @default("GBP")
   billingStatus      BillingStatus   @default(ACTIVE)
+  billingInterval    BillingInterval @default(MONTHLY)
   billingStartDate   DateTime?
   renewalDate        DateTime?
   dataRetentionDays  Int             @default(30)
@@ -1612,6 +1613,11 @@ model ProjectBilling {
   automationRunLimit Int?
   customLimits       Json?
   internalNotes      String?
+  paymentBrand       String?
+  paymentLast4       String?
+  paymentExpMonth    Int?
+  paymentExpYear     Int?
+  paymentUpdatedAt   DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime
   Project            Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)

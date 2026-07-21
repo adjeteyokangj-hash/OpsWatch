@@ -40,7 +40,6 @@ const baseNavGroups = [
     links: [
       ["Reports", "/reports"],
       ["Members", "/members"],
-      ["Subscription", "/subscription"],
       ["Settings", "/settings"],
       ["AI Policies", "/settings/ai-automation-policies"]
     ] as const
@@ -49,10 +48,7 @@ const baseNavGroups = [
 
 const platformAdminGroup = {
   label: "Platform Administration",
-  links: [
-    ["Subscription Plans", "/subscription"],
-    ["Stripe", "/admin/billing/stripe"]
-  ] as const
+  links: [["Stripe", "/admin/billing/stripe"]] as const
 };
 
 const navIcons: Record<string, string> = {
@@ -111,16 +107,7 @@ export function Sidebar() {
       return baseNavGroups;
     }
 
-    const adminWithoutSubscription = baseNavGroups.map((group) =>
-      group.label === "Admin"
-        ? {
-            ...group,
-            links: group.links.filter(([label]) => label !== "Subscription")
-          }
-        : group
-    );
-
-    return [...adminWithoutSubscription, platformAdminGroup];
+    return [...baseNavGroups, platformAdminGroup];
   }, [sessionUser?.role, sessionUser?.isPlatformSuperAdmin]);
 
   const toggleCollapsed = () => {
