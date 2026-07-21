@@ -2,7 +2,10 @@
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
 		"outDir": "dist",
-		"types": ["node"]
+		"rootDir": "src",
+		"types": ["node"],
+		"paths": {}
 	},
-	"include": ["src"]
+	"include": ["src"],
+	"exclude": ["src/**/*.test.ts", "src/**/*.database-e2e.test.ts"]
 }

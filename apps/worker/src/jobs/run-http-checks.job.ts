@@ -440,7 +440,7 @@ export const runHttpChecksJob = async (
       const recovered =
         recentResults.length >= check.recoveryThreshold &&
         recentResults.every((result) => result.status === "PASS");
-      if (recovered) {
+      if (recovered && check.Service.Project.organizationId) {
         await resolveCheckAlerts({
           checkId: check.id,
           projectId: check.Service.projectId,
