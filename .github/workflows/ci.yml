@@ -76,6 +76,7 @@ jobs:
           pnpm --filter @opswatch/api exec vitest run --config vitest.config.ts
           'src/controllers/auth.logout.test.ts'
           'src/lib/session-cookie.test.ts'
+          'src/services/intelligence/ai-operations-runtime-status.service.test.ts'
           'src/services/worker-tick/serverless-tick.service.test.ts'
           'src/services/worker-tick/worker-runtime-status.service.test.ts'
           'src/services/learning/learning-cycle.service.test.ts'
@@ -84,6 +85,7 @@ jobs:
         run: >-
           pnpm --filter @opswatch/web exec vitest run --config vitest.config.ts
           'src/components/auth/logout-button.test.tsx'
+          'src/components/intelligence/ai-operations-status.test.tsx'
           'src/app/dashboard/page.test.tsx'
           'src/app/projects/[projectId]/billing/page.test.tsx'
           'src/lib/api.csrf.test.ts'
