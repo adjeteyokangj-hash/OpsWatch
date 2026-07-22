@@ -6,6 +6,7 @@ import type { TickLock, TickLockPrisma } from "./serverless-tick-lock";
 type JobStateRow = {
   jobName: string;
   nextDueAt: Date | null;
+  lastFinishedAt?: Date | null;
   consecutiveFailures: number;
   totalRuns: number;
   totalFailures: number;
@@ -35,9 +36,7 @@ const makeFakePrisma = (states: JobStateRow[] = []) => {
       }),
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: any }) => {
         const run = runs.find((row) => row.id === where.id);
-        if (run) {
-          Object.assign(run, data);
-        }
+        if (run) Object.assign(run, data);
         return run as unknown;
       })
     },
@@ -61,16 +60,17 @@ const cadences: JobCadence[] = [
 const now = new Date("2026-07-21T07:00:00.000Z");
 
 const acquireGranted = (release = vi.fn(async () => undefined)) => {
+  const renew = vi.fn(async () => true);
   const acquire = vi.fn(
-    async (): Promise<TickLock> => ({ acquired: true, holder: "h", release })
+    async (): Promise<TickLock> => ({ acquired: true, holder: "h", renew, release })
   );
-  return { acquire, release };
+  return { acquire, renew, release };
 };
 
 describe("runServerlessWorkerTick", () => {
   it("runs all due jobs, advances each nextDueAt by its cadence, and reports success", async () => {
     const prisma = makeFakePrisma();
-    const { acquire, release } = acquireGranted();
+    const { acquire, renew, release } = acquireGranted();
     const runners: JobRunners = {
       a: vi.fn(async () => undefined),
       b: vi.fn(async () => undefined)
@@ -97,6 +97,7 @@ describe("runServerlessWorkerTick", () => {
     expect(summary.heartbeatUpdated).toBe(true);
     expect(runners.a).toHaveBeenCalledTimes(1);
     expect(runners.b).toHaveBeenCalledTimes(1);
+    expect(renew).toHaveBeenCalledTimes(2);
     expect(release).toHaveBeenCalledTimes(1);
 
     const upsertA = prisma._upserts.find((call) => call.jobName === "a")!;
@@ -132,7 +133,7 @@ describe("runServerlessWorkerTick", () => {
     expect(summary.jobsSucceeded).toBe(1);
   });
 
-  it("marks a failing job as immediately re-due and increments failure counters (retry semantics)", async () => {
+  it("applies bounded exponential backoff and increments failure counters", async () => {
     const prisma = makeFakePrisma([
       { jobName: "a", nextDueAt: null, consecutiveFailures: 2, totalRuns: 5, totalFailures: 2 }
     ]);
@@ -162,11 +163,36 @@ describe("runServerlessWorkerTick", () => {
 
     const upsertA = prisma._upserts.find((call) => call.jobName === "a")!;
     expect(upsertA.update.lastStatus).toBe("FAILED");
-    // Immediately re-due: nextDueAt equals now (not now + cadence).
-    expect((upsertA.update.nextDueAt as Date).getTime()).toBe(now.getTime());
+    expect((upsertA.update.nextDueAt as Date).getTime()).toBe(now.getTime() + 240_000);
     expect(upsertA.update.consecutiveFailures).toBe(3);
     expect(upsertA.update.totalRuns).toBe(6);
     expect(upsertA.update.totalFailures).toBe(3);
+  });
+
+  it("records configuration-disabled jobs as skipped rather than successful", async () => {
+    const prisma = makeFakePrisma();
+    const { acquire } = acquireGranted();
+
+    const summary = await runServerlessWorkerTick({
+      prismaClient: prisma,
+      runners: {
+        a: vi.fn(async () => ({ status: "DISABLED", reason: "feature switch is off" }))
+      },
+      cadences: [cadences[0]],
+      now,
+      env: {},
+      clock: () => 0,
+      acquireLock: acquire,
+      recordHeartbeat: vi.fn(async () => true)
+    });
+
+    expect(summary.ok).toBe(true);
+    expect(summary.jobsAttempted).toBe(0);
+    expect(summary.jobsSucceeded).toBe(0);
+    expect(summary.jobsSkipped).toBe(1);
+    expect(summary.jobs[0]?.status).toBe("DISABLED");
+    const upsertA = prisma._upserts.find((call) => call.jobName === "a")!;
+    expect(upsertA.update.lastStatus).toBe("DISABLED");
   });
 
   it("defers remaining jobs once the time budget is exhausted, leaving them due", async () => {
@@ -175,7 +201,6 @@ describe("runServerlessWorkerTick", () => {
     let elapsed = 0;
     const runners: JobRunners = {
       a: vi.fn(async () => {
-        // First job consumes the entire budget.
         elapsed = 1_000;
       }),
       b: vi.fn(async () => undefined)
@@ -197,13 +222,11 @@ describe("runServerlessWorkerTick", () => {
     expect(runners.b).not.toHaveBeenCalled();
     expect(summary.jobsDeferred).toBe(1);
     expect(summary.deferred).toEqual(["b"]);
-    // Deferred job must NOT have its nextDueAt advanced.
     expect(prisma._upserts.find((call) => call.jobName === "b")).toBeUndefined();
-    // No failures => still COMPLETED even with deferrals.
     expect(summary.status).toBe("COMPLETED");
   });
 
-  it("skips fast without running jobs when the lease cannot be acquired (overlap)", async () => {
+  it("skips fast without running jobs when the lease cannot be acquired", async () => {
     const prisma = makeFakePrisma();
     const runner = vi.fn(async () => undefined);
     const acquire = vi.fn(
@@ -225,11 +248,10 @@ describe("runServerlessWorkerTick", () => {
     expect(summary.skippedDueToLock).toBe(true);
     expect(summary.ok).toBe(true);
     expect(runner).not.toHaveBeenCalled();
-    // A skip run row is persisted for observability.
     expect(prisma._runs.some((row) => row.status === "SKIPPED_LOCK")).toBe(true);
   });
 
-  it("counts a due job with no registered runner as a failure and re-dues it", async () => {
+  it("counts a due job with no registered runner as a failure with retry backoff", async () => {
     const prisma = makeFakePrisma();
     const { acquire } = acquireGranted();
 
@@ -248,7 +270,7 @@ describe("runServerlessWorkerTick", () => {
     expect(summary.jobsFailed).toBe(1);
     expect(summary.jobs[0].status).toBe("MISSING_RUNNER");
     const upsertA = prisma._upserts.find((call) => call.jobName === "a")!;
-    expect((upsertA.update.nextDueAt as Date).getTime()).toBe(now.getTime());
+    expect((upsertA.update.nextDueAt as Date).getTime()).toBe(now.getTime() + 60_000);
   });
 
   it("still releases the lease when heartbeat recording throws", async () => {
