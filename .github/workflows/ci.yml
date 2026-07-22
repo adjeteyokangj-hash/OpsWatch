@@ -55,7 +55,19 @@ jobs:
         run: pnpm lint
 
       - name: Typecheck
-        run: pnpm typecheck
+        run: |
+          set +e
+          pnpm typecheck 2>&1 | tee typecheck.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload typecheck diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typecheck-diagnostics
+          path: typecheck.log
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Unit tests only
         run: pnpm test
