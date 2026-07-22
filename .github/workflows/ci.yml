@@ -70,11 +70,23 @@ jobs:
           retention-days: 3
 
       - name: Unit tests only
-        run: pnpm test
         env:
           NODE_ENV: test
           RUN_DATABASE_E2E: "false"
           RUN_BROWSER_E2E: "false"
+        run: |
+          set +e
+          pnpm test 2>&1 | tee unit-tests.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload unit-test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-diagnostics
+          path: unit-tests.log
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Build
         run: pnpm build
