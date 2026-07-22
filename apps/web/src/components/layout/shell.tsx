@@ -44,7 +44,17 @@ export function Shell({ children }: { children: ReactNode }) {
       <main className="content">
         <div className="content-inner">
           {!publicShell ? (
-            <div className="shell-session-actions" aria-label="Session actions">
+            <div
+              aria-label="Session actions"
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                minHeight: 40,
+                marginBottom: 8,
+                position: "relative",
+                zIndex: 20
+              }}
+            >
               <LogoutButton />
             </div>
           ) : null}
