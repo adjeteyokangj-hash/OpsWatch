@@ -35,7 +35,8 @@ export interface TickLockPrisma {
 export type TickLock = {
   acquired: boolean;
   holder: string;
-  renew: (ttlMs?: number) => Promise<boolean>;
+  /** Optional for backwards-compatible injected test locks. Production locks provide it. */
+  renew?: (ttlMs?: number) => Promise<boolean>;
   release: () => Promise<void>;
 };
 
