@@ -1,12 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ReactNode } from "react";
 import { Shell } from "../layout/shell";
 import { HealthBadge } from "../health/health-badge";
-import { clearAuthCookies, getCsrfToken } from "../../lib/auth";
-import { API_BASE_URL } from "../../lib/constants";
 import { ProjectWorkspaceNav } from "./project-workspace-nav";
 import { ProductTruthStatus } from "../ui/product-truth-status";
 
@@ -74,7 +71,6 @@ export function ProjectWorkspaceShell({
   actions,
   showProjectStrip = false
 }: Props) {
-  const router = useRouter();
   const projectName = project?.name ?? "Application";
   const crumb = breadcrumbLabel ?? title;
   const healthLabel =
@@ -83,23 +79,6 @@ export function ProjectWorkspaceShell({
   const latestSignal =
     project?.lastSignalAt ?? project?.lastCompletedCheckAt ?? project?.heartbeats?.[0]?.receivedAt;
   const testDataState = projectTestDataState(project);
-
-  const handleLogout = async () => {
-    const csrfToken = getCsrfToken();
-    try {
-      await fetch(`${API_BASE_URL}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-        headers: csrfToken ? { "x-opswatch-csrf": csrfToken } : undefined,
-        cache: "no-store"
-      });
-    } catch {
-      // Local sign-out still clears client auth state.
-    } finally {
-      clearAuthCookies();
-      router.replace("/login");
-    }
-  };
 
   return (
     <Shell>
@@ -118,18 +97,7 @@ export function ProjectWorkspaceShell({
             <h1 data-testid="page-heading">{title}</h1>
             {subtitle ? <p>{subtitle}</p> : null}
           </div>
-          <div className="topology-page-actions">
-            {actions}
-            <button
-              type="button"
-              className="secondary-button header-logout"
-              onClick={() => void handleLogout()}
-              data-action="api"
-              data-endpoint="/auth/logout"
-            >
-              Logout
-            </button>
-          </div>
+          {actions ? <div className="topology-page-actions">{actions}</div> : null}
         </header>
 
         <section className="panel topology-nav-panel">
