@@ -2,10 +2,9 @@
  * Serverless worker tick orchestrator.
  *
  * Executes due worker jobs inside a bounded time budget, under a cross-process
- * lease, and persists truthful per-job outcomes. The orchestrator deliberately
- * distinguishes disabled work from successful work, applies bounded retry
- * backoff, renews its lease during long runs and prevents one slow job from
- * silently consuming the whole tick.
+ * lease, and persists truthful per-job outcomes. Disabled work is distinct from
+ * successful work, failures use bounded retry backoff, and long-running jobs
+ * keep renewing the lease until the underlying runner has actually settled.
  */
 
 import { randomUUID } from "crypto";
@@ -25,10 +24,9 @@ import {
 } from "./serverless-tick-lock";
 import { recordServerlessWorkerHeartbeat } from "./serverless-tick-heartbeat";
 
-export type JobRunOutcome = {
-  status: "DISABLED";
-  reason: string;
-};
+export type JobRunOutcome =
+  | { status: "DISABLED"; reason: string }
+  | { status: "TIMED_OUT"; reason: string };
 
 export type JobRunner = () => Promise<void | JobRunOutcome>;
 export type JobRunners = Record<string, JobRunner>;
@@ -67,7 +65,6 @@ export type TickSummary = {
   errorSummary: string | null;
 };
 
-/** Minimal Prisma surface required by the orchestrator (satisfied by PrismaClient). */
 export interface TickPrisma extends TickLockPrisma {
   workerTickRun: {
     create(args: { data: unknown }): Promise<{ id: string }>;
@@ -142,28 +139,80 @@ const resolveFailureBackoffMs = (
   return Math.min(max, base * 2 ** exponent);
 };
 
-class JobTimeoutError extends Error {
-  constructor(jobName: string, timeoutMs: number) {
-    super(`${jobName} exceeded its ${timeoutMs}ms timeout`);
-    this.name = "JobTimeoutError";
-  }
-}
+/**
+ * Observe a job timeout without abandoning the running promise.
+ *
+ * JavaScript promises cannot be cancelled safely unless the underlying job is
+ * explicitly AbortSignal-aware. Rejecting a Promise.race would let the tick
+ * release its lease while the original runner continued mutating data. Instead
+ * we mark the overrun, keep renewing the lease, wait for the runner to settle,
+ * and only then return a TIMED_OUT outcome or propagate its real failure.
+ */
+const runWithLeaseAwareSoftTimeout = async (input: {
+  jobName: string;
+  runner: JobRunner;
+  timeoutMs: number;
+  lock: TickLock;
+  lockTtlMs: number;
+  logger: Pick<Console, "error" | "info">;
+}): Promise<void | JobRunOutcome> => {
+  let timedOut = false;
+  let leaseLost = false;
+  let renewing = false;
 
-const runWithTimeout = async (
-  jobName: string,
-  runner: JobRunner,
-  timeoutMs: number
-): Promise<void | JobRunOutcome> => {
-  let timer: NodeJS.Timeout | undefined;
+  const timeoutTimer = setTimeout(() => {
+    timedOut = true;
+    input.logger.info(
+      `[serverless-tick] job ${input.jobName} exceeded ${input.timeoutMs}ms; retaining lease until it settles`
+    );
+  }, input.timeoutMs);
+
+  const renewLease = input.lock.renew;
+  const renewEveryMs = Math.max(1_000, Math.min(10_000, Math.floor(input.lockTtlMs / 3)));
+  const renewalTimer = renewLease
+    ? setInterval(() => {
+        if (renewing || leaseLost) return;
+        renewing = true;
+        void renewLease(input.lockTtlMs)
+          .then((renewed) => {
+            if (!renewed) {
+              leaseLost = true;
+              input.logger.error(
+                `[serverless-tick] lost lease while ${input.jobName} was still running`
+              );
+            }
+          })
+          .catch((error) => {
+            leaseLost = true;
+            input.logger.error(
+              `[serverless-tick] failed to renew lease while ${input.jobName} was running`,
+              error
+            );
+          })
+          .finally(() => {
+            renewing = false;
+          });
+      }, renewEveryMs)
+    : undefined;
+
   try {
-    return await Promise.race([
-      runner(),
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new JobTimeoutError(jobName, timeoutMs)), timeoutMs);
-      })
-    ]);
+    const outcome = await input.runner();
+
+    if (leaseLost) {
+      throw new Error(`Worker lease was lost while ${input.jobName} was running`);
+    }
+
+    if (timedOut) {
+      return {
+        status: "TIMED_OUT",
+        reason: `${input.jobName} exceeded its ${input.timeoutMs}ms soft timeout and completed before lease release`
+      };
+    }
+
+    return outcome;
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timeoutTimer);
+    if (renewalTimer) clearInterval(renewalTimer);
   }
 };
 
@@ -200,7 +249,7 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
   const triggeredBy = options.triggeredBy ?? "supabase-cron";
   const acquire = options.acquireLock ?? acquireTickLock;
   const recordHeartbeat = options.recordHeartbeat ?? (() => recordServerlessWorkerHeartbeat());
-  const lockTtlMs = options.lockTtlMs ?? budgetMs + 15_000;
+  const lockTtlMs = options.lockTtlMs ?? Math.max(budgetMs + 15_000, jobTimeoutMs * 3);
   const logger = options.logger ?? console;
   const holder = `${TICK_LOCK_KEY}:${randomUUID()}`;
 
@@ -307,7 +356,14 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
       }
 
       try {
-        const outcome = await runWithTimeout(jobName, runner, jobTimeoutMs);
+        const outcome = await runWithLeaseAwareSoftTimeout({
+          jobName,
+          runner,
+          timeoutMs: jobTimeoutMs,
+          lock,
+          lockTtlMs,
+          logger
+        });
         const durationMs = clock() - jobStart;
 
         if (outcome?.status === "DISABLED") {
@@ -325,6 +381,23 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
             nextDueAt: new Date(now.getTime() + cadenceMs),
             previous
           });
+        } else if (outcome?.status === "TIMED_OUT") {
+          const message = truncate(outcome.reason);
+          const backoffMs = resolveFailureBackoffMs(previous?.consecutiveFailures ?? 0, env);
+          jobResults.push({
+            job: jobName,
+            status: "TIMED_OUT",
+            durationMs,
+            error: message
+          });
+          await persistJobState(prisma, jobName, {
+            now,
+            durationMs,
+            status: "FAILED",
+            error: message,
+            nextDueAt: new Date(now.getTime() + backoffMs),
+            previous
+          });
         } else {
           jobResults.push({ job: jobName, status: "SUCCEEDED", durationMs });
           await persistJobState(prisma, jobName, {
@@ -339,12 +412,11 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
       } catch (error) {
         const durationMs = clock() - jobStart;
         const message = truncate(errorText(error));
-        const timedOut = error instanceof JobTimeoutError;
         const backoffMs = resolveFailureBackoffMs(previous?.consecutiveFailures ?? 0, env);
-        logger.error(`[serverless-tick] job ${jobName} ${timedOut ? "timed out" : "failed"}`, error);
+        logger.error(`[serverless-tick] job ${jobName} failed`, error);
         jobResults.push({
           job: jobName,
-          status: timedOut ? "TIMED_OUT" : "FAILED",
+          status: "FAILED",
           durationMs,
           error: message
         });
