@@ -3,6 +3,10 @@ import { ProjectStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { logger } from "../lib/logger";
 import { dispatchAlertNotifications } from "../services/notifications/notification.service";
+import {
+  inheritedHeartbeatStatus,
+  updateInheritedModuleHeartbeatHealth
+} from "../services/inherited-module-heartbeat.service";
 
 /** Matches API heartbeat recovery verification thresholds. */
 const HEARTBEAT_RECOVERY_MIN_COUNT = 3;
@@ -143,32 +147,36 @@ export const processHeartbeatStaleJob = async (): Promise<void> => {
 
     const ageMs = Date.now() - latest.receivedAt.getTime();
     const ageMin = ageMs / 60000;
+    const inheritedStatus = inheritedHeartbeatStatus({
+      heartbeatStatus: latest.status,
+      ageMinutes: ageMin
+    });
+
+    await prisma.project.update({
+      where: { id: project.id },
+      data: { status: inheritedStatus }
+    });
+    await updateInheritedModuleHeartbeatHealth({
+      projectId: project.id,
+      organizationId: project.organizationId,
+      heartbeatStatus: latest.status,
+      ageMinutes: ageMin,
+      observedAt: latest.receivedAt
+    });
 
     if (ageMin >= 20) {
-      await prisma.project.update({
-        where: { id: project.id },
-        data: { status: ProjectStatus.DEGRADED }
-      });
       await upsertHeartbeatStaleAlert(
         project.id,
         "HIGH",
         `No heartbeat from ${project.slug} for ${Math.floor(ageMin)} minutes`
       );
     } else if (ageMin >= 10) {
-      await prisma.project.update({
-        where: { id: project.id },
-        data: { status: ProjectStatus.DEGRADED }
-      });
       await upsertHeartbeatStaleAlert(
         project.id,
         "MEDIUM",
         `No heartbeat from ${project.slug} for ${Math.floor(ageMin)} minutes`
       );
-    } else {
-      await prisma.project.update({
-        where: { id: project.id },
-        data: { status: ProjectStatus.HEALTHY }
-      });
+    } else if (inheritedStatus === ProjectStatus.HEALTHY) {
       await progressHeartbeatStaleRecovery(project.id);
     }
   }
