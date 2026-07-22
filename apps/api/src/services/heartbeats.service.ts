@@ -10,7 +10,84 @@ import { OBSERVATION_SOURCE, TIMELINE_EVENT } from "./intelligence/intelligence-
 import { progressHeartbeatAlertRecovery } from "./alert-automation-evaluation.service";
 import { canonicalGraph } from "./canonical-graph.service";
 
+export const projectStatusFromHeartbeat = (status: unknown): ProjectStatus => {
+  if (status === "DOWN") return ProjectStatus.DOWN;
+  if (status === "DEGRADED") return ProjectStatus.DEGRADED;
+  if (status === "PAUSED") return ProjectStatus.PAUSED;
+  return ProjectStatus.HEALTHY;
+};
+
+const canonicalHealthFromHeartbeat = (status: unknown): string => {
+  if (status === "DOWN") return "DOWN";
+  if (status === "DEGRADED") return "DEGRADED";
+  if (status === "PAUSED") return "PAUSED";
+  return "HEALTHY";
+};
+
+/**
+ * TrueNumeris modules are declared logical areas inside one application process.
+ * Until a module has its own checks/telemetry, the application heartbeat is the
+ * only truthful liveness evidence. Only connection-discovered modules inherit it.
+ */
+export const inheritHeartbeatToDiscoveredModules = async (params: {
+  projectId: string;
+  organizationId: string | null;
+  status: unknown;
+  message?: string | null;
+  observedAt?: Date;
+}): Promise<number> => {
+  const observedAt = params.observedAt ?? new Date();
+  const status = projectStatusFromHeartbeat(params.status);
+  const canonicalHealth = canonicalHealthFromHeartbeat(params.status);
+  const modules = await prisma.service.findMany({
+    where: {
+      projectId: params.projectId,
+      type: "MODULE",
+      OutgoingDependencies: {
+        some: {
+          dependencyType: "HIERARCHY",
+          source: "CONNECTION_DISCOVERY",
+          isActive: true
+        }
+      }
+    },
+    select: { id: true }
+  });
+
+  const moduleIds = modules.map((module) => module.id);
+  if (moduleIds.length === 0) return 0;
+
+  await prisma.service.updateMany({
+    where: { id: { in: moduleIds } },
+    data: { status, updatedAt: observedAt }
+  });
+
+  if (params.organizationId) {
+    await prisma.operationalEntity.updateMany({
+      where: {
+        organizationId: params.organizationId,
+        projectId: params.projectId,
+        legacyServiceId: { in: moduleIds }
+      },
+      data: {
+        health: canonicalHealth,
+        healthReason:
+          params.message ||
+          `Inherited from application heartbeat (${String(params.status || "HEALTHY")})`,
+        lastSeenAt: observedAt,
+        freshUntil: new Date(observedAt.getTime() + 5 * 60_000),
+        lastSignalKind: "APPLICATION_HEARTBEAT",
+        signalCount: { increment: 1 },
+        updatedAt: observedAt
+      }
+    });
+  }
+
+  return moduleIds.length;
+};
+
 export const ingestHeartbeat = async (projectId: string, body: any): Promise<void> => {
+  const observedAt = new Date();
   await prisma.heartbeat.create({
     data: {
       id: randomUUID(),
@@ -20,16 +97,25 @@ export const ingestHeartbeat = async (projectId: string, body: any): Promise<voi
       commitSha: body.commitSha,
       status: body.status,
       message: body.message,
-      payloadJson: body.payload
+      payloadJson: body.payload,
+      receivedAt: observedAt
     }
   });
 
   const project = await prisma.project.update({
     where: { id: projectId },
     data: {
-      status: body.status === "DOWN" ? ProjectStatus.DOWN : ProjectStatus.HEALTHY
+      status: projectStatusFromHeartbeat(body.status)
     },
     select: { id: true, name: true, organizationId: true }
+  });
+
+  await inheritHeartbeatToDiscoveredModules({
+    projectId,
+    organizationId: project.organizationId,
+    status: body.status,
+    message: body.message,
+    observedAt
   });
 
   if (project.organizationId) {
@@ -44,10 +130,10 @@ export const ingestHeartbeat = async (projectId: string, body: any): Promise<voi
       source: "HEARTBEAT",
       sourceKey: projectId,
       provenance: "DISCOVERED",
-      health: isDown ? "DOWN" : "HEALTHY",
+      health: canonicalHealthFromHeartbeat(body.status),
       healthReason: body.message || `Heartbeat reports ${body.status}`,
-      observedAt: new Date(),
-      freshUntil: new Date(Date.now() + 5 * 60_000),
+      observedAt,
+      freshUntil: new Date(observedAt.getTime() + 5 * 60_000),
       confirmationState: "CONFIRMED"
     });
     try {
