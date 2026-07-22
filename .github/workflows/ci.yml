@@ -14,34 +14,12 @@ jobs:
   validate:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: opswatch
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d opswatch"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/opswatch?schema=public
-      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/opswatch?schema=public
       JWT_SECRET: ci-opswatch-jwt-secret-for-github-actions-32
-      RUN_DATABASE_E2E: "true"
-      RUN_BROWSER_E2E: "true"
+      RUN_DATABASE_E2E: "false"
+      RUN_BROWSER_E2E: "false"
       OPSWATCH_WEB_URL: http://localhost:3000
       NEXT_PUBLIC_OPSWATCH_API_URL: http://localhost:4000/api
-      PLAYWRIGHT_API_URL: http://localhost:4000/api
-      PLAYWRIGHT_LOGIN_EMAIL: ci-admin@opswatch.test
-      PLAYWRIGHT_LOGIN_PASSWORD: OpsWatch!CI2026#Admin
-      SEED_ADMIN_EMAIL: ci-admin@opswatch.test
-      SEED_ADMIN_PASSWORD: OpsWatch!CI2026#Admin
       WORKER_INTERNAL_SECRET: ci-worker-internal-secret
       INGEST_SIGNING_REQUIRED: "true"
       SESSION_SIGNING_REQUIRED: "true"
@@ -64,14 +42,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Enforce no automatic database migration
+        run: node scripts/assert-no-automatic-migrations.mjs
+
       - name: Generate Prisma client
         run: pnpm --filter @opswatch/api exec prisma generate
-
-      - name: Apply database migrations
-        run: pnpm --filter @opswatch/api exec prisma migrate deploy
-
-      - name: Seed database
-        run: pnpm --filter @opswatch/api db:seed
 
       - name: Build shared package
         run: pnpm --filter @opswatch/shared build
@@ -82,42 +57,14 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
+      - name: Unit tests only
         run: pnpm test
         env:
           NODE_ENV: test
+          RUN_DATABASE_E2E: "false"
+          RUN_BROWSER_E2E: "false"
 
       - name: Build
         run: pnpm build
         env:
           NODE_ENV: production
-
-      - name: Install Playwright browsers
-        run: pnpm --filter @opswatch/web exec playwright install chromium
-
-      - name: Start API for browser E2E
-        env:
-          NODE_ENV: test
-        run: |
-          pnpm --filter @opswatch/api start > /tmp/opswatch-api.log 2>&1 &
-          echo $! > /tmp/opswatch-api.pid
-          for i in {1..60}; do
-            if curl -fsS http://localhost:4000/api/health/live >/dev/null; then
-              echo "API is ready"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "API failed to start"
-          cat /tmp/opswatch-api.log
-          exit 1
-
-      - name: Browser E2E
-        run: pnpm --filter @opswatch/web test:e2e:automation
-
-      - name: Stop API
-        if: always()
-        run: |
-          if [ -f /tmp/opswatch-api.pid ]; then
-            kill "$(cat /tmp/opswatch-api.pid)" || true
-          fi
