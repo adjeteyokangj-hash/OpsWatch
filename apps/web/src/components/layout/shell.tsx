@@ -2,8 +2,13 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "./sidebar";
+import { LogoutButton } from "../auth/logout-button";
 import { hasSessionCookie, refreshAuthSession } from "../../lib/auth";
+
+const isPublicShellRoute = (pathname: string): boolean =>
+  pathname === "/status" || pathname.startsWith("/status-page/");
 
 /**
  * Authenticated app chrome. Middleware already enforced the session cookie;
@@ -11,6 +16,7 @@ import { hasSessionCookie, refreshAuthSession } from "../../lib/auth";
  * fetches previously left mobile (and desktop) stuck on “Loading workspace…”.
  */
 export function Shell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [sessionDegraded, setSessionDegraded] = useState(false);
 
   const warmSession = (force = false) => {
@@ -30,11 +36,18 @@ export function Shell({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only warm
   }, []);
 
+  const publicShell = isPublicShellRoute(pathname);
+
   return (
     <div className="shell">
       <Sidebar />
       <main className="content">
         <div className="content-inner">
+          {!publicShell ? (
+            <div className="shell-session-actions" aria-label="Session actions">
+              <LogoutButton />
+            </div>
+          ) : null}
           {sessionDegraded ? (
             <section
               className="panel error-panel session-degraded-banner"
