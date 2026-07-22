@@ -77,10 +77,16 @@ jobs:
           'src/controllers/auth.logout.test.ts'
           'src/lib/session-cookie.test.ts'
           'src/services/connections/connection-topology-discovery.service.test.ts'
+          'src/services/heartbeats.service.test.ts'
           'src/services/intelligence/ai-operations-runtime-status.service.test.ts'
           'src/services/worker-tick/serverless-tick.service.test.ts'
           'src/services/worker-tick/worker-runtime-status.service.test.ts'
           'src/services/learning/learning-cycle.service.test.ts'
+
+      - name: Affected worker regression tests
+        run: >-
+          pnpm --filter @opswatch/worker exec vitest run --config vitest.config.ts
+          'src/services/inherited-module-heartbeat.service.test.ts'
 
       - name: Affected web regression tests
         run: >-
@@ -89,6 +95,7 @@ jobs:
           'src/components/intelligence/ai-operations-status.test.tsx'
           'src/components/integrations/project-connections-panel.test.tsx'
           'src/components/projects/project-layer-page.discovery.test.tsx'
+          'src/components/projects/service-card-grid.heartbeat.test.tsx'
           'src/components/ui/product-truth-status.test.tsx'
           'src/app/dashboard/page.test.tsx'
           'src/app/projects/[projectId]/billing/page.test.tsx'
