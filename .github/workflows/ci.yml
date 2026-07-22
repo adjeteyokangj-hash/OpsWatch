@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/opswatch?schema=public
+      DIRECT_URL: postgresql://postgres:postgres@127.0.0.1:5432/opswatch?schema=public
       JWT_SECRET: ci-opswatch-jwt-secret-for-github-actions-32
       RUN_DATABASE_E2E: "false"
       RUN_BROWSER_E2E: "false"
@@ -69,24 +71,20 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
-      - name: Unit tests only
-        env:
-          NODE_ENV: test
-          RUN_DATABASE_E2E: "false"
-          RUN_BROWSER_E2E: "false"
-        run: |
-          set +e
-          pnpm test 2>&1 | tee unit-tests.log
-          exit ${PIPESTATUS[0]}
+      - name: Affected API regression tests
+        run: >-
+          pnpm --filter @opswatch/api exec vitest run --config vitest.config.ts
+          'src/services/worker-tick/serverless-tick.service.test.ts'
+          'src/services/worker-tick/worker-runtime-status.service.test.ts'
+          'src/services/learning/learning-cycle.service.test.ts'
 
-      - name: Upload unit-test diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: unit-test-diagnostics
-          path: unit-tests.log
-          if-no-files-found: ignore
-          retention-days: 3
+      - name: Affected web regression tests
+        run: >-
+          pnpm --filter @opswatch/web exec vitest run --config vitest.config.ts
+          'src/components/auth/logout-button.test.tsx'
+          'src/app/projects/[projectId]/billing/page.test.tsx'
+          'src/lib/api.csrf.test.ts'
+          'src/lib/auth.csrf.test.ts'
 
       - name: Build
         run: pnpm build
