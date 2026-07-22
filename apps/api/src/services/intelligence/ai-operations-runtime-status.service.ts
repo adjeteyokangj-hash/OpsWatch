@@ -66,13 +66,14 @@ export const mergeAiOperationsRuntimeStatus = (
         worker.capability.tone === "amber"
           ? worker.capability.summary
           : lastDecision?.summary ?? "AI is configured and waiting for operational evidence.";
+    } else if (prediction?.tone === "amber" || learning?.tone === "amber") {
+      modeLabel = "AI operations — building evidence";
+      tone = "amber";
+      summary = "AI operations are running; one capability is still building evidence.";
     } else {
       modeLabel = "AI operations active";
-      tone = prediction?.tone === "amber" || learning?.tone === "amber" ? "amber" : "green";
-      summary =
-        tone === "green"
-          ? "Worker runtime, learning and AI decision evidence are active."
-          : "AI operations are running; one capability is still building evidence.";
+      tone = "green";
+      summary = "Worker runtime, learning and AI decision evidence are active.";
     }
   } else if (worker.capability.tone === "red") {
     modeLabel = "Safety-gated — worker unavailable";
