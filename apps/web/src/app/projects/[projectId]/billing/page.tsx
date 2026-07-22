@@ -78,12 +78,31 @@ type StripeInvoice = {
   pdfUrl: string | null;
 };
 
+type PlanSelection =
+  | {
+      kind: "INTERNAL";
+      id: BillingPlanId;
+      name: string;
+      monthlyPrice: number;
+      annualPrice: number;
+      currency: string;
+      monthlyAvailable: true;
+      annualAvailable: true;
+    }
+  | {
+      kind: "STRIPE";
+      id: string;
+      name: string;
+      monthlyPrice: number;
+      annualPrice: number | null;
+      currency: string;
+      monthlyAvailable: boolean;
+      annualAvailable: boolean;
+    };
+
 const STANDARD_PLANS: BillingPlanId[] = ["FREE", "STARTER", "PRO", "ENTERPRISE"];
 
-const toDateInput = (value?: string | null): string => {
-  if (!value) return "";
-  return value.slice(0, 10);
-};
+const toDateInput = (value?: string | null): string => (value ? value.slice(0, 10) : "");
 
 const statusClass = (status: string): "pass" | "warn" | "fail" => {
   if (status === "ACTIVE" || status === "TRIAL") return "pass";
@@ -105,25 +124,36 @@ const normalizeBilling = (row: ProjectBilling): ProjectBilling => ({
   automationRunLimit: normalizeAllowanceLimit(row.automationRunLimit)
 });
 
+const assertSafeRedirectUrl = (value: string): string => {
+  const url = new URL(value);
+  if (url.protocol !== "https:") {
+    throw new Error("Billing provider returned an unsafe redirect URL.");
+  }
+  return url.toString();
+};
+
+const intervalAvailable = (selection: PlanSelection, interval: BillingInterval): boolean =>
+  interval === "ANNUAL" ? selection.annualAvailable : selection.monthlyAvailable;
+
+const selectionPrice = (selection: PlanSelection, interval: BillingInterval): number | null =>
+  interval === "ANNUAL" ? selection.annualPrice : selection.monthlyPrice;
+
 export default function ProjectBillingPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [project, setProject] = useState<ProjectSummary | null>(null);
-  // `billing` is the server-authoritative record (only updated after a
-  // successful load). `draft` is the editable copy bound to the advanced
-  // configuration form, so in-progress edits never fake the active plan in the
-  // summary/usage cards.
   const [billing, setBilling] = useState<ProjectBilling | null>(null);
   const [draft, setDraft] = useState<ProjectBilling | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [planSaving, setPlanSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [selectedInterval, setSelectedInterval] = useState<BillingInterval>("MONTHLY");
   const [stripeConfigured, setStripeConfigured] = useState(false);
   const [stripePlans, setStripePlans] = useState<BillingPlanOption[]>([]);
   const [stripeInvoices, setStripeInvoices] = useState<StripeInvoice[]>([]);
   const [stripeBusy, setStripeBusy] = useState<string | null>(null);
+  const [planSelection, setPlanSelection] = useState<PlanSelection | null>(null);
+  const [selectionInterval, setSelectionInterval] = useState<BillingInterval>("MONTHLY");
+  const [planBusy, setPlanBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -132,10 +162,7 @@ export default function ProjectBillingPage() {
         apiFetch<ProjectBilling>(`/projects/${projectId}/billing`)
       ]);
 
-      if (projectResult.status !== "fulfilled") {
-        throw projectResult.reason;
-      }
-
+      if (projectResult.status !== "fulfilled") throw projectResult.reason;
       const projectRow = projectResult.value;
       setProject({
         id: projectRow.id,
@@ -144,26 +171,14 @@ export default function ProjectBillingPage() {
         environment: projectRow.environment
       });
 
-      if (billingResult.status === "fulfilled") {
-        const normalized = normalizeBilling({
-          ...billingResult.value,
-          project: billingResult.value.project ?? {
-            id: projectRow.id,
-            name: projectRow.name,
-            clientName: projectRow.clientName,
-            environment: projectRow.environment
-          }
-        });
-        setBilling(normalized);
-        setDraft(normalized);
-        setDirty(false);
-        setSelectedInterval(normalized.billingInterval);
-      } else {
-        setBilling(null);
-        setDraft(null);
-        setDirty(false);
-        throw billingResult.reason;
-      }
+      if (billingResult.status !== "fulfilled") throw billingResult.reason;
+      const normalized = normalizeBilling({
+        ...billingResult.value,
+        project: billingResult.value.project ?? projectRow
+      });
+      setBilling(normalized);
+      setDraft(normalized);
+      setDirty(false);
 
       const [plansResult, invoicesResult] = await Promise.allSettled([
         apiFetch<{ stripeConfigured: boolean; plans: BillingPlanOption[] }>(
@@ -173,22 +188,27 @@ export default function ProjectBillingPage() {
           `/projects/${projectId}/billing/invoices`
         )
       ]);
+
       if (plansResult.status === "fulfilled") {
         setStripeConfigured(plansResult.value.stripeConfigured);
         setStripePlans(plansResult.value.plans);
+      } else {
+        setStripeConfigured(false);
+        setStripePlans([]);
       }
       if (invoicesResult.status === "fulfilled") {
         setStripeInvoices(invoicesResult.value.invoices);
-      }
-
-      setError(null);
-    } catch (err: any) {
-      const message = err?.message ?? "Failed to load billing";
-      if (/project not found/i.test(message)) {
-        setError("Project not found. Your session may be stale after a database repair — refresh the page or log out and back in.");
       } else {
-        setError(message);
+        setStripeInvoices([]);
       }
+      setError(null);
+    } catch (loadError: any) {
+      const message = loadError?.message ?? "Failed to load billing";
+      setError(
+        /project not found/i.test(message)
+          ? "Project not found. Refresh the page or log out and back in."
+          : message
+      );
     }
   }, [projectId]);
 
@@ -196,29 +216,22 @@ export default function ProjectBillingPage() {
     void load();
   }, [load]);
 
-  const patchBilling = useCallback(
-    async (patch: Record<string, unknown>) => {
-      await apiFetch(`/projects/${projectId}/billing`, {
-        method: "PATCH",
-        body: JSON.stringify(patch)
-      });
-      await load();
-    },
-    [projectId, load]
-  );
-
-  const projectMeta = project
-    ? `${project.environment} · ${project.clientName}`
-    : billing?.project
-      ? `${billing.project.environment} · ${billing.project.clientName}`
-      : null;
+  useEffect(() => {
+    if (!dirty) return;
+    const warnBeforeLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeave);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeave);
+  }, [dirty]);
 
   const pricingLabel = useMemo(() => {
     if (!billing) return null;
     return billing.pricingLabel ?? resolvePricingLabel(billing.plan, billing);
   }, [billing]);
 
-  const invoices = useMemo(() => {
+  const estimatedInvoices = useMemo(() => {
     if (!billing) return [];
     return computeInvoices({
       monthlyPrice: billing.monthlyPrice,
@@ -231,12 +244,24 @@ export default function ProjectBillingPage() {
   }, [billing]);
 
   const updateDraft = (patch: Partial<ProjectBilling>) => {
-    setDraft((current) => (current ? { ...current, ...patch } : current));
+    setDraft((current) => (current ? normalizeBilling({ ...current, ...patch }) : current));
     setDirty(true);
   };
 
-  const onPlanChange = (plan: BillingPlanId) => {
+  const updatePricingDraft = (patch: Partial<ProjectBilling>) => {
     if (!draft) return;
+    const next = normalizeBilling({ ...draft, ...patch });
+    const selectedPlan = next.plan === "CUSTOM" ? "CUSTOM" : next.plan;
+    const plan =
+      selectedPlan === "CUSTOM"
+        ? "CUSTOM"
+        : billingMatchesPlanDefaults(selectedPlan, next)
+          ? selectedPlan
+          : "CUSTOM";
+    updateDraft({ ...patch, plan });
+  };
+
+  const onPlanChange = (plan: BillingPlanId) => {
     if (plan === "CUSTOM") {
       updateDraft({ plan: "CUSTOM" });
       return;
@@ -244,74 +269,121 @@ export default function ProjectBillingPage() {
     updateDraft({ plan, ...applyPlanDefaults(plan) });
   };
 
-  const onBillingFieldChange = (patch: Partial<ProjectBilling>) => {
-    if (!draft) return;
-    const next = normalizeBilling({ ...draft, ...patch });
-    const selectedPlan = next.plan === "CUSTOM" ? "CUSTOM" : next.plan;
-    const label =
-      selectedPlan === "CUSTOM"
-        ? "CUSTOM"
-        : billingMatchesPlanDefaults(selectedPlan, next)
-          ? selectedPlan
-          : "CUSTOM";
-    updateDraft({ ...patch, plan: label });
-  };
-
-  const onAllowanceChange = (field: "checkLimit" | "userLimit" | "automationRunLimit", value: AllowanceLimit) => {
-    onBillingFieldChange({ [field]: value });
-  };
-
-  const onChoosePlan = async (plan: BillingPlanId) => {
-    if (!billing) return;
-    const key = `${plan}:${selectedInterval}`;
-    setPlanSaving(key);
+  const openInternalPlan = (plan: BillingPlanId) => {
+    const defaults = PLAN_DEFAULTS[plan];
+    setPlanSelection({
+      kind: "INTERNAL",
+      id: plan,
+      name: formatPlanLabel(plan),
+      monthlyPrice: defaults.monthlyPrice,
+      annualPrice: defaults.monthlyPrice * 12,
+      currency: defaults.currency,
+      monthlyAvailable: true,
+      annualAvailable: true
+    });
+    setSelectionInterval(billing?.billingInterval ?? "MONTHLY");
     setError(null);
     setNotice(null);
-    try {
-      await patchBilling({ plan, billingInterval: selectedInterval });
-      setNotice(`Updated to the ${formatPlanLabel(plan)} plan, billed ${formatInterval(selectedInterval).toLowerCase()}.`);
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to change plan");
-    } finally {
-      setPlanSaving(null);
+  };
+
+  const openStripePlan = (plan: BillingPlanOption) => {
+    setPlanSelection({
+      kind: "STRIPE",
+      id: plan.code,
+      name: plan.name,
+      monthlyPrice: plan.monthlyPrice,
+      annualPrice: plan.annualPrice,
+      currency: plan.currency,
+      monthlyAvailable: plan.hasMonthlyPrice,
+      annualAvailable: plan.hasAnnualPrice
+    });
+    const preferred = billing?.billingInterval ?? "MONTHLY";
+    setSelectionInterval(
+      intervalAvailable(
+        {
+          kind: "STRIPE",
+          id: plan.code,
+          name: plan.name,
+          monthlyPrice: plan.monthlyPrice,
+          annualPrice: plan.annualPrice,
+          currency: plan.currency,
+          monthlyAvailable: plan.hasMonthlyPrice,
+          annualAvailable: plan.hasAnnualPrice
+        },
+        preferred
+      )
+        ? preferred
+        : plan.hasMonthlyPrice
+          ? "MONTHLY"
+          : "ANNUAL"
+    );
+    setError(null);
+    setNotice(null);
+  };
+
+  const confirmPlanSelection = async () => {
+    if (!planSelection || planBusy) return;
+    if (!intervalAvailable(planSelection, selectionInterval)) {
+      setError(`${formatInterval(selectionInterval)} pricing is not configured for ${planSelection.name}.`);
+      return;
     }
-  };
 
-  const onStripeCheckout = async (planCode: string) => {
-    const key = `checkout:${planCode}:${selectedInterval}`;
-    setStripeBusy(key);
+    setPlanBusy(true);
     setError(null);
     setNotice(null);
     try {
-      const session = await apiFetch<{ url: string }>(`/projects/${projectId}/billing/checkout`, {
-        method: "POST",
-        body: JSON.stringify({ planCode, billingInterval: selectedInterval })
+      if (planSelection.kind === "STRIPE") {
+        setStripeBusy(`checkout:${planSelection.id}:${selectionInterval}`);
+        const session = await apiFetch<{ url: string }>(`/projects/${projectId}/billing/checkout`, {
+          method: "POST",
+          body: JSON.stringify({
+            planCode: planSelection.id,
+            billingInterval: selectionInterval
+          })
+        });
+        window.location.assign(assertSafeRedirectUrl(session.url));
+        return;
+      }
+
+      await apiFetch(`/projects/${projectId}/billing`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          plan: planSelection.id,
+          billingInterval: selectionInterval
+        })
       });
-      window.location.assign(session.url);
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to start checkout");
+      setPlanSelection(null);
+      setNotice(
+        `${planSelection.name} was saved for ${project?.name ?? "this application"}, billed ${formatInterval(selectionInterval).toLowerCase()}.`
+      );
+      await load();
+    } catch (planError: any) {
+      setError(planError?.message ?? "Failed to update the plan");
       setStripeBusy(null);
+    } finally {
+      setPlanBusy(false);
     }
   };
 
   const onManageBilling = async () => {
+    if (stripeBusy) return;
     setStripeBusy("portal");
     setError(null);
-    setNotice(null);
     try {
       const session = await apiFetch<{ url: string }>(`/projects/${projectId}/billing/portal`, {
         method: "POST"
       });
-      window.location.assign(session.url);
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to open billing portal");
+      window.location.assign(assertSafeRedirectUrl(session.url));
+    } catch (portalError: any) {
+      setError(portalError?.message ?? "Failed to open billing portal");
       setStripeBusy(null);
     }
   };
 
   const onSave = async (event: FormEvent) => {
     event.preventDefault();
-    if (!draft) return;
+    if (!draft || saving || !dirty) return;
+
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -333,21 +405,25 @@ export default function ProjectBillingPage() {
           internalNotes: draft.internalNotes ?? null
         })
       });
-      setNotice("Billing configuration saved for this application.");
+      setNotice(`Billing configuration saved for ${project?.name ?? "this application"}.`);
       await load();
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to save billing");
+    } catch (saveError: any) {
+      setError(saveError?.message ?? "Failed to save billing");
     } finally {
       setSaving(false);
     }
   };
+
+  const saveButtonLabel = saving ? "Saving…" : dirty ? "Save configuration" : "Saved";
 
   return (
     <ProjectWorkspaceShell
       projectId={projectId}
       title="Billing"
       subtitle={
-        project ? `Plan, usage, and billing for ${project.name} (${project.environment}).` : "Plan, usage, and billing for this application only."
+        project
+          ? `Plan, usage, and billing for ${project.name} (${project.environment}).`
+          : "Plan, usage, and billing for this application only."
       }
       breadcrumbLabel="Billing"
       project={project}
@@ -360,8 +436,9 @@ export default function ProjectBillingPage() {
             form="project-billing-form"
             className="primary-button"
             disabled={saving || !dirty}
+            data-testid="billing-save-top"
           >
-            {saving ? "Saving…" : dirty ? "Save configuration" : "Saved"}
+            {saveButtonLabel}
           </button>
         ) : null
       }
@@ -385,7 +462,7 @@ export default function ProjectBillingPage() {
         </p>
       </section>
 
-      {!billing ? (
+      {!billing || !draft ? (
         <section className="panel workspace-loading">
           <div className="loading-pulse" />
           <p>Loading billing…</p>
@@ -451,158 +528,139 @@ export default function ProjectBillingPage() {
             </section>
           </PageSection>
 
+          {planSelection ? (
+            <section className="panel" role="dialog" aria-modal="false" aria-labelledby="plan-review-title">
+              <h2 id="plan-review-title">Review {planSelection.name} plan</h2>
+              <p className="dashboard-subtle">
+                Choose how this application should be billed before continuing.
+              </p>
+              <div className="segmented-toggle" role="group" aria-label="Billing interval">
+                <button
+                  type="button"
+                  className={selectionInterval === "MONTHLY" ? "active" : ""}
+                  onClick={() => setSelectionInterval("MONTHLY")}
+                  disabled={!planSelection.monthlyAvailable || planBusy}
+                >
+                  Monthly
+                </button>
+                <button
+                  type="button"
+                  className={selectionInterval === "ANNUAL" ? "active" : ""}
+                  onClick={() => setSelectionInterval("ANNUAL")}
+                  disabled={!planSelection.annualAvailable || planBusy}
+                >
+                  Annual
+                </button>
+              </div>
+              <p style={{ fontSize: "1.25rem", fontWeight: 700 }}>
+                {selectionPrice(planSelection, selectionInterval) == null
+                  ? "Price unavailable"
+                  : `${formatMoney(selectionPrice(planSelection, selectionInterval)!, planSelection.currency)} ${intervalSuffix(selectionInterval)}`}
+              </p>
+              {!intervalAvailable(planSelection, selectionInterval) ? (
+                <p className="dashboard-subtle" role="alert">
+                  {formatInterval(selectionInterval)} pricing is not configured for this plan.
+                </p>
+              ) : null}
+              <div className="topology-page-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => void confirmPlanSelection()}
+                  disabled={planBusy || !intervalAvailable(planSelection, selectionInterval)}
+                  data-testid="billing-plan-confirm"
+                >
+                  {planBusy ? "Processing…" : planSelection.kind === "STRIPE" ? "Continue to secure checkout" : "Save plan"}
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setPlanSelection(null)}
+                  disabled={planBusy}
+                >
+                  Cancel
+                </button>
+              </div>
+            </section>
+          ) : null}
+
           {stripeConfigured ? (
             <PageSection
-              title="Subscription &amp; payments"
-              description="This application has its own Stripe subscription, independent of every other application."
+              title="Subscription & payments"
+              description="Select a paid plan, then choose Monthly or Annual before secure checkout."
               persistKey={`project:${projectId}:billing:stripe`}
-              actions={
-                <div className="segmented-toggle" role="group" aria-label="Billing interval">
-                  <button
-                    type="button"
-                    className={selectedInterval === "MONTHLY" ? "active" : ""}
-                    onClick={() => setSelectedInterval("MONTHLY")}
-                  >
-                    Monthly
-                  </button>
-                  <button
-                    type="button"
-                    className={selectedInterval === "ANNUAL" ? "active" : ""}
-                    onClick={() => setSelectedInterval("ANNUAL")}
-                  >
-                    Annual
-                  </button>
-                </div>
-              }
             >
-              <div className="billing-usage-grid">
-                <article className="panel metric-card">
-                  <div className="metric-label">Subscription plan</div>
-                  <div className="metric-value">{billing.planCode ?? "Not subscribed"}</div>
-                </article>
-                <article className="panel metric-card">
-                  <div className="metric-label">Stripe status</div>
-                  <div className="metric-value">
-                    <span className={`result-pill ${statusClass(billing.billingStatus)}`}>
-                      {billing.stripeSubscriptionId ? billing.billingStatus : "NONE"}
-                    </span>
-                  </div>
-                </article>
-                <article className="panel metric-card">
-                  <div className="metric-label">Renews / ends</div>
-                  <div className="metric-value">{formatBillingDate(billing.currentPeriodEnd ?? billing.renewalDate)}</div>
-                </article>
-              </div>
-              <div className="plan-grid" style={{ marginTop: "12px" }}>
+              <div className="plan-grid">
                 {stripePlans.map((plan) => {
-                  const hasPrice = selectedInterval === "ANNUAL" ? plan.hasAnnualPrice : plan.hasMonthlyPrice;
-                  const rawPrice =
-                    selectedInterval === "ANNUAL" ? plan.annualPrice ?? plan.monthlyPrice * 12 : plan.monthlyPrice;
                   const isCurrent = billing.planCode === plan.code;
-                  const busyKey = `checkout:${plan.code}:${selectedInterval}`;
                   return (
                     <article className={`panel plan-card${isCurrent ? " plan-card--current" : ""}`} key={plan.code}>
                       <h3>{plan.name}</h3>
-                      <div className="plan-card__price">
-                        <strong>{formatMoney(rawPrice, plan.currency)}</strong> <span>{intervalSuffix(selectedInterval)}</span>
-                      </div>
+                      <p className="dashboard-subtle">
+                        Monthly {formatMoney(plan.monthlyPrice, plan.currency)}
+                        {plan.annualPrice != null ? ` · Annual ${formatMoney(plan.annualPrice, plan.currency)}` : ""}
+                      </p>
                       <button
                         type="button"
                         className="primary-button"
-                        onClick={() => void onStripeCheckout(plan.code)}
-                        disabled={!hasPrice || stripeBusy !== null}
+                        onClick={() => openStripePlan(plan)}
+                        disabled={stripeBusy !== null || (!plan.hasMonthlyPrice && !plan.hasAnnualPrice)}
                       >
-                        {stripeBusy === busyKey
-                          ? "Redirecting…"
-                          : !hasPrice
-                            ? "Price unavailable"
-                            : isCurrent
-                              ? "Change / renew"
-                              : `Subscribe to ${plan.name}`}
+                        {!plan.hasMonthlyPrice && !plan.hasAnnualPrice
+                          ? "Price unavailable"
+                          : isCurrent
+                            ? "Review / change billing"
+                            : `Choose ${plan.name}`}
                       </button>
                     </article>
                   );
                 })}
               </div>
               {billing.stripeCustomerId ? (
-                <div className="topology-page-actions" style={{ marginTop: "12px" }}>
+                <div className="topology-page-actions" style={{ marginTop: 12 }}>
                   <button
                     type="button"
                     className="secondary-button"
                     onClick={() => void onManageBilling()}
                     disabled={stripeBusy !== null}
                   >
-                    {stripeBusy === "portal" ? "Opening…" : "Manage billing (payment, cancel, invoices)"}
+                    {stripeBusy === "portal" ? "Opening…" : "Manage payment, cancellation and invoices"}
                   </button>
                 </div>
               ) : null}
             </PageSection>
-          ) : null}
+          ) : (
+            <section className="panel">
+              <h2>Secure subscription checkout</h2>
+              <p className="dashboard-subtle">
+                Stripe is not connected, so paid checkout is unavailable. Administrators can still save an internal or custom application plan below.
+              </p>
+            </section>
+          )}
 
           <PageSection
-            title="Change plan"
-            description={
-              stripeConfigured
-                ? "Internal plan/pricing record for this application (does not charge Stripe)."
-                : "Upgrade or downgrade the plan for this application only."
-            }
+            title="Change internal plan"
+            description="Choose a plan, then confirm Monthly or Annual. This updates this application only and does not charge Stripe."
             persistKey={`project:${projectId}:billing:plans`}
-            actions={
-              <div className="segmented-toggle" role="group" aria-label="Billing interval">
-                <button
-                  type="button"
-                  className={selectedInterval === "MONTHLY" ? "active" : ""}
-                  onClick={() => setSelectedInterval("MONTHLY")}
-                >
-                  Monthly
-                </button>
-                <button
-                  type="button"
-                  className={selectedInterval === "ANNUAL" ? "active" : ""}
-                  onClick={() => setSelectedInterval("ANNUAL")}
-                >
-                  Annual
-                </button>
-              </div>
-            }
           >
-            {billing.plan === "CUSTOM" ? (
-              <p className="dashboard-subtle">
-                This application is on a <strong>Custom</strong> plan. Choosing a standard plan below will replace it with that
-                tier&apos;s pricing and limits.
-              </p>
-            ) : null}
             <div className="plan-grid">
               {STANDARD_PLANS.map((plan) => {
                 const defaults = PLAN_DEFAULTS[plan];
-                const price = intervalPrice(defaults.monthlyPrice, selectedInterval);
-                const isCurrentPlan = billing.plan === plan;
-                const isCurrentSelection = isCurrentPlan && billing.billingInterval === selectedInterval;
-                const busyKey = `${plan}:${selectedInterval}`;
+                const current = billing.plan === plan;
                 return (
-                  <article className={`panel plan-card${isCurrentSelection ? " plan-card--current" : ""}`} key={plan}>
+                  <article className={`panel plan-card${current ? " plan-card--current" : ""}`} key={plan}>
                     <h3>{formatPlanLabel(plan)}</h3>
-                    <div className="plan-card__price">
-                      <strong>{formatMoney(price, defaults.currency)}</strong> <span>{intervalSuffix(selectedInterval)}</span>
-                    </div>
-                    {isCurrentSelection ? (
-                      <button type="button" className="secondary-button" disabled>
-                        Current plan
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="primary-button"
-                        onClick={() => void onChoosePlan(plan)}
-                        disabled={planSaving !== null}
-                      >
-                        {planSaving === busyKey
-                          ? "Applying…"
-                          : isCurrentPlan
-                            ? `Switch to ${formatInterval(selectedInterval).toLowerCase()}`
-                            : `Choose ${formatPlanLabel(plan)}`}
-                      </button>
-                    )}
+                    <p className="dashboard-subtle">
+                      {formatMoney(defaults.monthlyPrice, defaults.currency)} / month · {formatMoney(defaults.monthlyPrice * 12, defaults.currency)} / year
+                    </p>
+                    <button
+                      type="button"
+                      className={current ? "secondary-button" : "primary-button"}
+                      onClick={() => openInternalPlan(plan)}
+                      disabled={planBusy}
+                    >
+                      {current ? "Review current plan" : `Choose ${formatPlanLabel(plan)}`}
+                    </button>
                   </article>
                 );
               })}
@@ -614,38 +672,19 @@ export default function ProjectBillingPage() {
             description="Payment method for this application only."
             persistKey={`project:${projectId}:billing:payment`}
           >
-            <p className="dashboard-subtle billing-payment-current">
-              {formatPaymentMethod(billing.paymentMethod)}
-              {billing.paymentMethod?.updatedAt ? (
-                <span className="dashboard-subtle"> · updated {formatBillingDate(billing.paymentMethod.updatedAt)}</span>
-              ) : null}
-            </p>
-            {stripeConfigured ? (
-              billing.stripeCustomerId ? (
-                <>
-                  <p className="dashboard-subtle">
-                    Payment methods are managed securely by Stripe. Card details are never entered or stored in OpsWatch.
-                  </p>
-                  <div className="topology-page-actions" style={{ marginTop: "12px" }}>
-                    <button
-                      type="button"
-                      className="primary-button"
-                      onClick={() => void onManageBilling()}
-                      disabled={stripeBusy !== null}
-                    >
-                      {stripeBusy === "portal" ? "Opening…" : "Manage payment method in Stripe"}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <p className="dashboard-subtle">
-                  Subscribe to a plan above to add a payment method. It will then be managed securely through Stripe.
-                </p>
-              )
+            <p className="dashboard-subtle">{formatPaymentMethod(billing.paymentMethod)}</p>
+            {stripeConfigured && billing.stripeCustomerId ? (
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => void onManageBilling()}
+                disabled={stripeBusy !== null}
+              >
+                {stripeBusy === "portal" ? "Opening…" : "Manage payment method in Stripe"}
+              </button>
             ) : (
               <p className="dashboard-subtle">
-                Stripe is not connected for this workspace, so no payment method can be stored for this application. Card
-                details are never entered or stored in OpsWatch.
+                Card details are never entered or stored in OpsWatch. Subscribe through Stripe to add a payment method.
               </p>
             )}
           </PageSection>
@@ -654,16 +693,14 @@ export default function ProjectBillingPage() {
             title="Invoices & billing history"
             description={
               stripeConfigured
-                ? "Invoices issued by Stripe for this application's subscription."
-                : "Estimated invoices derived from this application's plan, price, and billing cycle (Stripe not connected)."
+                ? "Invoices issued by Stripe for this application."
+                : "Estimated history derived from the saved internal billing configuration."
             }
             persistKey={`project:${projectId}:billing:invoices`}
           >
             {stripeConfigured ? (
               stripeInvoices.length === 0 ? (
-                <p className="dashboard-subtle">
-                  No Stripe invoices yet for this application. They appear here after the first payment.
-                </p>
+                <p className="dashboard-subtle">No Stripe invoices have been issued for this application.</p>
               ) : (
                 <div className="table-cards-wrap">
                   <table className="data-table">
@@ -671,7 +708,7 @@ export default function ProjectBillingPage() {
                       <tr>
                         <th>Invoice</th>
                         <th>Date</th>
-                        <th>Billing period</th>
+                        <th>Period</th>
                         <th>Amount</th>
                         <th>Status</th>
                         <th></th>
@@ -682,22 +719,12 @@ export default function ProjectBillingPage() {
                         <tr key={invoice.id}>
                           <td>{invoice.number ?? invoice.id}</td>
                           <td>{formatBillingDate(invoice.created)}</td>
-                          <td>
-                            {formatBillingDate(invoice.periodStart)} – {formatBillingDate(invoice.periodEnd)}
-                          </td>
+                          <td>{formatBillingDate(invoice.periodStart)} – {formatBillingDate(invoice.periodEnd)}</td>
                           <td>{formatMoney(invoice.amountPaid || invoice.amountDue, invoice.currency)}</td>
-                          <td>
-                            <span
-                              className={`result-pill ${invoice.status === "paid" ? "pass" : invoice.status === "open" ? "warn" : "fail"}`}
-                            >
-                              {(invoice.status ?? "unknown").toUpperCase()}
-                            </span>
-                          </td>
+                          <td>{(invoice.status ?? "unknown").toUpperCase()}</td>
                           <td>
                             {invoice.hostedInvoiceUrl ? (
-                              <a href={invoice.hostedInvoiceUrl} target="_blank" rel="noreferrer">
-                                View
-                              </a>
+                              <a href={invoice.hostedInvoiceUrl} target="_blank" rel="noreferrer">View</a>
                             ) : null}
                           </td>
                         </tr>
@@ -706,10 +733,8 @@ export default function ProjectBillingPage() {
                   </table>
                 </div>
               )
-            ) : invoices.length === 0 ? (
-              <p className="dashboard-subtle">
-                This application&apos;s plan has no charges, so no invoices have been generated.
-              </p>
+            ) : estimatedInvoices.length === 0 ? (
+              <p className="dashboard-subtle">This saved plan has no generated internal billing history.</p>
             ) : (
               <div className="table-cards-wrap">
                 <table className="data-table">
@@ -717,23 +742,19 @@ export default function ProjectBillingPage() {
                     <tr>
                       <th>Invoice</th>
                       <th>Date</th>
-                      <th>Billing period</th>
+                      <th>Period</th>
                       <th>Amount</th>
                       <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {invoices.map((invoice) => (
+                    {estimatedInvoices.map((invoice) => (
                       <tr key={`${invoice.number}-${invoice.status}`}>
                         <td>{invoice.number}</td>
                         <td>{formatBillingDate(invoice.issuedAt)}</td>
-                        <td>
-                          {formatBillingDate(invoice.periodStart)} – {formatBillingDate(invoice.periodEnd)}
-                        </td>
+                        <td>{formatBillingDate(invoice.periodStart)} – {formatBillingDate(invoice.periodEnd)}</td>
                         <td>{formatMoney(invoice.amount, invoice.currency)}</td>
-                        <td>
-                          <span className={`result-pill ${invoiceStatusClass(invoice.status)}`}>{invoice.status}</span>
-                        </td>
+                        <td><span className={`result-pill ${invoiceStatusClass(invoice.status)}`}>{invoice.status}</span></td>
                       </tr>
                     ))}
                   </tbody>
@@ -743,37 +764,28 @@ export default function ProjectBillingPage() {
           </PageSection>
 
           <PageSection
-            title="Advanced billing configuration"
-            description="Fine-tune plan, price, allowances, and retention for this application."
+            title="Custom price plan"
+            description="Manually configure this application's internal plan, interval, allowances and retention."
             persistKey={`project:${projectId}:billing:editor`}
-            defaultCollapsed
           >
             {dirty ? (
               <p className="dashboard-subtle" role="status" data-testid="billing-unsaved-hint">
-                Unsaved changes. The summary above still shows the saved{" "}
-                <strong>{formatPlanLabel(billing.plan)}</strong> plan until you select{" "}
-                <strong>Save configuration</strong>.
+                Unsaved changes. Use either Save configuration button; both submit this same form.
               </p>
             ) : null}
-            <form
-              id="project-billing-form"
-              className="billing-form-grid"
-              onSubmit={(event) => void onSave(event)}
-            >
+            <form id="project-billing-form" className="billing-form-grid" onSubmit={(event) => void onSave(event)}>
               <label>
                 Plan
-                <select value={draft?.plan ?? billing.plan} onChange={(event) => onPlanChange(event.target.value as BillingPlanId)}>
+                <select value={draft.plan} onChange={(event) => onPlanChange(event.target.value as BillingPlanId)}>
                   {[...STANDARD_PLANS, "CUSTOM"].map((plan) => (
-                    <option key={plan} value={plan}>
-                      {formatPlanLabel(plan)}
-                    </option>
+                    <option key={plan} value={plan}>{formatPlanLabel(plan)}</option>
                   ))}
                 </select>
               </label>
               <label>
                 Billing interval
                 <select
-                  value={draft?.billingInterval ?? billing.billingInterval}
+                  value={draft.billingInterval}
                   onChange={(event) => updateDraft({ billingInterval: event.target.value as BillingInterval })}
                 >
                   <option value="MONTHLY">Monthly</option>
@@ -781,21 +793,26 @@ export default function ProjectBillingPage() {
                 </select>
               </label>
               <label>
-                Monthly price
+                Base monthly price
                 <input
                   type="number"
                   min={0}
-                  step={1}
-                  value={draft?.monthlyPrice ?? billing.monthlyPrice}
-                  onChange={(event) => onBillingFieldChange({ monthlyPrice: Number(event.target.value) })}
+                  step="0.01"
+                  value={draft.monthlyPrice}
+                  onChange={(event) => updatePricingDraft({ monthlyPrice: Number(event.target.value) })}
+                />
+              </label>
+              <label>
+                Selected interval total
+                <input
+                  type="text"
+                  readOnly
+                  value={formatMoney(intervalPrice(draft.monthlyPrice, draft.billingInterval), draft.currency)}
                 />
               </label>
               <label>
                 Currency
-                <select
-                  value={draft?.currency ?? billing.currency}
-                  onChange={(event) => onBillingFieldChange({ currency: event.target.value })}
-                >
+                <select value={draft.currency} onChange={(event) => updatePricingDraft({ currency: event.target.value })}>
                   <option value="GBP">GBP</option>
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
@@ -803,14 +820,9 @@ export default function ProjectBillingPage() {
               </label>
               <label>
                 Billing status
-                <select
-                  value={draft?.billingStatus ?? billing.billingStatus}
-                  onChange={(event) => updateDraft({ billingStatus: event.target.value })}
-                >
+                <select value={draft.billingStatus} onChange={(event) => updateDraft({ billingStatus: event.target.value })}>
                   {["ACTIVE", "TRIAL", "PAST_DUE", "CANCELLED", "SUSPENDED"].map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
+                    <option key={status} value={status}>{status}</option>
                   ))}
                 </select>
               </label>
@@ -818,7 +830,7 @@ export default function ProjectBillingPage() {
                 Billing start date
                 <input
                   type="date"
-                  value={toDateInput(draft?.billingStartDate ?? billing.billingStartDate)}
+                  value={toDateInput(draft.billingStartDate)}
                   onChange={(event) => updateDraft({ billingStartDate: event.target.value || null })}
                 />
               </label>
@@ -826,42 +838,36 @@ export default function ProjectBillingPage() {
                 Renewal date
                 <input
                   type="date"
-                  value={toDateInput(draft?.renewalDate ?? billing.renewalDate)}
+                  value={toDateInput(draft.renewalDate)}
                   onChange={(event) => updateDraft({ renewalDate: event.target.value || null })}
                 />
               </label>
-              <BillingAllowanceField
-                field="checkLimit"
-                value={draft?.checkLimit ?? billing.checkLimit}
-                onChange={(value) => onAllowanceChange("checkLimit", value)}
-              />
-              <BillingAllowanceField
-                field="userLimit"
-                value={draft?.userLimit ?? billing.userLimit}
-                onChange={(value) => onAllowanceChange("userLimit", value)}
-              />
-              <BillingAllowanceField
-                field="automationRunLimit"
-                value={draft?.automationRunLimit ?? billing.automationRunLimit}
-                onChange={(value) => onAllowanceChange("automationRunLimit", value)}
-              />
+              <BillingAllowanceField field="checkLimit" value={draft.checkLimit} onChange={(value: AllowanceLimit) => updatePricingDraft({ checkLimit: value })} />
+              <BillingAllowanceField field="userLimit" value={draft.userLimit} onChange={(value: AllowanceLimit) => updatePricingDraft({ userLimit: value })} />
+              <BillingAllowanceField field="automationRunLimit" value={draft.automationRunLimit} onChange={(value: AllowanceLimit) => updatePricingDraft({ automationRunLimit: value })} />
               <label>
                 Retention days
                 <input
                   type="number"
                   min={1}
-                  value={draft?.dataRetentionDays ?? billing.dataRetentionDays}
-                  onChange={(event) => onBillingFieldChange({ dataRetentionDays: Number(event.target.value) })}
+                  value={draft.dataRetentionDays}
+                  onChange={(event) => updatePricingDraft({ dataRetentionDays: Number(event.target.value) })}
                 />
               </label>
               <label className="billing-form-grid__full">
                 Internal notes
-                <textarea
-                  rows={4}
-                  value={draft?.internalNotes ?? ""}
-                  onChange={(event) => updateDraft({ internalNotes: event.target.value })}
-                />
+                <textarea rows={4} value={draft.internalNotes ?? ""} onChange={(event) => updateDraft({ internalNotes: event.target.value })} />
               </label>
+              <div className="billing-form-grid__full" style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button
+                  type="submit"
+                  className="primary-button"
+                  disabled={saving || !dirty}
+                  data-testid="billing-save-bottom"
+                >
+                  {saveButtonLabel}
+                </button>
+              </div>
             </form>
           </PageSection>
         </>
