@@ -67,13 +67,15 @@ describe("ProjectBillingPage", () => {
     vi.clearAllMocks();
   });
 
-  it("submits the selected billing interval and plan to the application-scoped endpoint", async () => {
+  it("requires an interval review before submitting a standard plan", async () => {
     setup();
     render(<ProjectBillingPage />);
     await screen.findByText("Free plan");
 
-    fireEvent.click(screen.getByRole("button", { name: "Annual" }));
     fireEvent.click(screen.getByRole("button", { name: "Choose Starter" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Review Starter plan");
+    fireEvent.click(screen.getByRole("button", { name: "Annual" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
@@ -90,7 +92,7 @@ describe("ProjectBillingPage", () => {
     );
   });
 
-  it("keeps the current plan when a plan change fails", async () => {
+  it("keeps the server-truth plan when a confirmed plan change fails", async () => {
     setup(() => {
       throw new Error("Server rejected the change");
     });
@@ -98,20 +100,43 @@ describe("ProjectBillingPage", () => {
     await screen.findByText("Free plan");
 
     fireEvent.click(screen.getByRole("button", { name: "Choose Starter" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
 
     await screen.findByRole("alert");
     expect(screen.getByRole("alert")).toHaveTextContent("Server rejected the change");
-    // Summary must still show the server-truth Free plan (no local faking).
     expect(screen.getByText("Free plan")).toBeInTheDocument();
   });
 
-  it("hides the editable card fields when Stripe is not connected", async () => {
+  it("uses one form handler for the top and bottom custom-plan save buttons", async () => {
+    setup();
+    render(<ProjectBillingPage />);
+    await screen.findByText("Free plan");
+
+    fireEvent.change(screen.getByLabelText("Base monthly price"), { target: { value: "55" } });
+    const top = screen.getByTestId("billing-save-top");
+    const bottom = screen.getByTestId("billing-save-bottom");
+    expect(top).toBeEnabled();
+    expect(bottom).toBeEnabled();
+
+    fireEvent.click(bottom);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/projects/proj-1/billing",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining('"monthlyPrice":55')
+        })
+      );
+    });
+  });
+
+  it("does not expose manual card fields when Stripe is not connected", async () => {
     setup();
     render(<ProjectBillingPage />);
     await screen.findByText("Free plan");
 
     expect(screen.queryByLabelText("Card brand")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save payment method" })).not.toBeInTheDocument();
-    expect(screen.getByText(/Stripe is not connected for this workspace/i)).toBeInTheDocument();
+    expect(screen.getByText(/Stripe is not connected/i)).toBeInTheDocument();
   });
 });
