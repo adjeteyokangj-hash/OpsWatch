@@ -1,15 +1,11 @@
+/// <reference path="../../types/opswatch-worker-jobs.d.ts" />
+
 /**
  * Default runner registry for the serverless worker tick.
  *
- * Reuses the existing worker job business logic without duplication:
- *  - Most jobs are the exact exported functions from `@opswatch/worker/jobs`
- *    (loaded lazily at runtime; see `types/opswatch-worker-jobs.d.ts` for why
- *    the import is dynamic).
- *  - Auto-heal and autonomous automation are invoked via the in-process API
- *    services (`runAutoHealSweep` / `runAutonomousAutomationSweep`) instead of
- *    the worker's HTTP-based wrappers, because the tick already runs inside the
- *    API and a self-HTTP round-trip would be wasteful and fragile. The same
- *    env gates the worker uses are preserved.
+ * Reuses the existing worker job business logic without duplication. Jobs that
+ * are switched off return an explicit DISABLED outcome so the worker status
+ * cannot misreport configuration-disabled work as successful execution.
  */
 
 import type { JobRunners } from "./serverless-tick.service";
@@ -44,13 +40,19 @@ export const loadDefaultJobRunners = async (
     runMonitoringSyncJob: () => jobs.runMonitoringSyncJob(),
     runIncidentAutoHealJob: async () => {
       if (env.WORKER_AUTO_HEAL_ENABLED === "false") {
-        return;
+        return {
+          status: "DISABLED" as const,
+          reason: "WORKER_AUTO_HEAL_ENABLED is false"
+        };
       }
       await runAutoHealSweep();
     },
     runAutomationAutonomousJob: async () => {
       if (env.WORKER_AUTOMATION_AUTONOMOUS_ENABLED !== "true") {
-        return;
+        return {
+          status: "DISABLED" as const,
+          reason: "WORKER_AUTOMATION_AUTONOMOUS_ENABLED is not true"
+        };
       }
       await runAutonomousAutomationSweep();
     }

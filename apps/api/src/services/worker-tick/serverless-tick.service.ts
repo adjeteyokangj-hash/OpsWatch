@@ -1,14 +1,11 @@
 /**
  * Serverless worker tick orchestrator.
  *
- * Executes the due subset of the worker job batch within a bounded time budget,
- * under a cross-process lease, and persists a run record plus per-job state. It
- * reuses the existing worker job business logic (injected via `runners`) rather
- * than reimplementing it.
- *
- * The function is dependency-injected (prisma, runners, lock, heartbeat, clock)
- * so the due/budget/retry/summary behaviour is unit testable without a database
- * or the real jobs.
+ * Executes due worker jobs inside a bounded time budget, under a cross-process
+ * lease, and persists truthful per-job outcomes. The orchestrator deliberately
+ * distinguishes disabled work from successful work, applies bounded retry
+ * backoff, renews its lease during long runs and prevents one slow job from
+ * silently consuming the whole tick.
  */
 
 import { randomUUID } from "crypto";
@@ -28,10 +25,21 @@ import {
 } from "./serverless-tick-lock";
 import { recordServerlessWorkerHeartbeat } from "./serverless-tick-heartbeat";
 
-export type JobRunner = () => Promise<void>;
+export type JobRunOutcome = {
+  status: "DISABLED";
+  reason: string;
+};
+
+export type JobRunner = () => Promise<void | JobRunOutcome>;
 export type JobRunners = Record<string, JobRunner>;
 
-export type TickJobStatus = "SUCCEEDED" | "FAILED" | "DEFERRED" | "MISSING_RUNNER";
+export type TickJobStatus =
+  | "SUCCEEDED"
+  | "FAILED"
+  | "TIMED_OUT"
+  | "DEFERRED"
+  | "DISABLED"
+  | "MISSING_RUNNER";
 
 export type TickJobResult = {
   job: string;
@@ -70,6 +78,7 @@ export interface TickPrisma extends TickLockPrisma {
       Array<{
         jobName: string;
         nextDueAt: Date | null;
+        lastFinishedAt?: Date | null;
         consecutiveFailures: number;
         totalRuns: number;
         totalFailures: number;
@@ -85,7 +94,6 @@ export type RunTickOptions = {
   cadences?: JobCadence[];
   budgetMs?: number;
   now?: Date;
-  /** Monotonic elapsed-time source in ms; defaults to `Date.now`. */
   clock?: () => number;
   triggeredBy?: string;
   env?: NodeJS.ProcessEnv;
@@ -100,17 +108,93 @@ export type RunTickOptions = {
   logger?: Pick<Console, "error" | "info">;
 };
 
+const DEFAULT_JOB_TIMEOUT_MS = 20_000;
+const DEFAULT_FAILURE_BACKOFF_BASE_MS = 60_000;
+const DEFAULT_FAILURE_BACKOFF_MAX_MS = 30 * 60_000;
+
 const truncate = (value: string, max = 500): string =>
   value.length > max ? `${value.slice(0, max - 1)}\u2026` : value;
 
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+const readPositiveInt = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const resolveJobTimeoutMs = (env: NodeJS.ProcessEnv): number =>
+  readPositiveInt(env.OPSWATCH_WORKER_JOB_TIMEOUT_MS, DEFAULT_JOB_TIMEOUT_MS);
+
+const resolveFailureBackoffMs = (
+  previousFailures: number,
+  env: NodeJS.ProcessEnv
+): number => {
+  const base = readPositiveInt(
+    env.OPSWATCH_WORKER_FAILURE_BACKOFF_BASE_MS,
+    DEFAULT_FAILURE_BACKOFF_BASE_MS
+  );
+  const max = readPositiveInt(
+    env.OPSWATCH_WORKER_FAILURE_BACKOFF_MAX_MS,
+    DEFAULT_FAILURE_BACKOFF_MAX_MS
+  );
+  const exponent = Math.max(0, Math.min(previousFailures, 8));
+  return Math.min(max, base * 2 ** exponent);
+};
+
+class JobTimeoutError extends Error {
+  constructor(jobName: string, timeoutMs: number) {
+    super(`${jobName} exceeded its ${timeoutMs}ms timeout`);
+    this.name = "JobTimeoutError";
+  }
+}
+
+const runWithTimeout = async (
+  jobName: string,
+  runner: JobRunner,
+  timeoutMs: number
+): Promise<void | JobRunOutcome> => {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      runner(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new JobTimeoutError(jobName, timeoutMs)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
+const orderDueJobsFairly = (
+  dueJobs: string[],
+  stateByName: Map<
+    string,
+    { nextDueAt: Date | null; lastFinishedAt?: Date | null; consecutiveFailures: number }
+  >,
+  priorityByName: Map<string, number>
+): string[] =>
+  [...dueJobs].sort((left, right) => {
+    const leftState = stateByName.get(left);
+    const rightState = stateByName.get(right);
+    const leftDue = leftState?.nextDueAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+    const rightDue = rightState?.nextDueAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+    if (leftDue !== rightDue) return leftDue - rightDue;
+
+    const leftFinished = leftState?.lastFinishedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+    const rightFinished = rightState?.lastFinishedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+    if (leftFinished !== rightFinished) return leftFinished - rightFinished;
+
+    return (priorityByName.get(left) ?? 0) - (priorityByName.get(right) ?? 0);
+  });
+
 export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<TickSummary> => {
   const prisma = options.prismaClient ?? (defaultPrisma as unknown as TickPrisma);
   const env = options.env ?? process.env;
   const cadences = options.cadences ?? JOB_CADENCES;
   const budgetMs = options.budgetMs ?? resolveTickBudgetMs(env);
+  const jobTimeoutMs = Math.min(resolveJobTimeoutMs(env), Math.max(1, budgetMs));
   const now = options.now ?? new Date();
   const clock = options.clock ?? (() => Date.now());
   const triggeredBy = options.triggeredBy ?? "supabase-cron";
@@ -122,10 +206,10 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
 
   const startedClock = clock();
   const cadenceByName = new Map(cadences.map((cadence) => [cadence.name, cadence]));
+  const priorityByName = new Map(cadences.map((cadence, index) => [cadence.name, index]));
 
   const lock = await acquire(prisma, holder, lockTtlMs, now);
   if (!lock.acquired) {
-    // Another tick is running — record a lightweight skip and return fast.
     const durationMs = clock() - startedClock;
     let runId: string | null = null;
     try {
@@ -176,8 +260,11 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
 
     const stateRows = await prisma.workerJobState.findMany();
     const stateByName = new Map(stateRows.map((row) => [row.jobName, row]));
-
-    const dueJobs = computeDueJobs(cadences, stateByName, now);
+    const dueJobs = orderDueJobsFairly(
+      computeDueJobs(cadences, stateByName, now),
+      stateByName,
+      priorityByName
+    );
 
     const jobResults: TickJobResult[] = [];
     const deferred: string[] = [];
@@ -191,7 +278,6 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
         budgetExhausted = true;
         deferred.push(jobName);
         jobResults.push({ job: jobName, status: "DEFERRED", durationMs: 0 });
-        // Do not advance nextDueAt: the job stays due for the next tick.
         continue;
       }
 
@@ -201,6 +287,7 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
 
       if (!runner) {
         const durationMs = clock() - jobStart;
+        const backoffMs = resolveFailureBackoffMs(previous?.consecutiveFailures ?? 0, env);
         jobResults.push({
           job: jobName,
           status: "MISSING_RUNNER",
@@ -210,40 +297,71 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
         await persistJobState(prisma, jobName, {
           now,
           durationMs,
-          succeeded: false,
+          status: "FAILED",
           error: "No runner registered for job",
-          nextDueAt: now,
+          nextDueAt: new Date(now.getTime() + backoffMs),
           previous
         });
+        await lock.renew?.(lockTtlMs).catch(() => false);
         continue;
       }
 
       try {
-        await runner();
+        const outcome = await runWithTimeout(jobName, runner, jobTimeoutMs);
         const durationMs = clock() - jobStart;
-        jobResults.push({ job: jobName, status: "SUCCEEDED", durationMs });
-        await persistJobState(prisma, jobName, {
-          now,
-          durationMs,
-          succeeded: true,
-          error: null,
-          nextDueAt: new Date(now.getTime() + cadenceMs),
-          previous
-        });
+
+        if (outcome?.status === "DISABLED") {
+          jobResults.push({
+            job: jobName,
+            status: "DISABLED",
+            durationMs,
+            error: truncate(outcome.reason)
+          });
+          await persistJobState(prisma, jobName, {
+            now,
+            durationMs,
+            status: "DISABLED",
+            error: truncate(outcome.reason),
+            nextDueAt: new Date(now.getTime() + cadenceMs),
+            previous
+          });
+        } else {
+          jobResults.push({ job: jobName, status: "SUCCEEDED", durationMs });
+          await persistJobState(prisma, jobName, {
+            now,
+            durationMs,
+            status: "SUCCEEDED",
+            error: null,
+            nextDueAt: new Date(now.getTime() + cadenceMs),
+            previous
+          });
+        }
       } catch (error) {
         const durationMs = clock() - jobStart;
         const message = truncate(errorText(error));
-        logger.error(`[serverless-tick] job ${jobName} failed`, error);
-        jobResults.push({ job: jobName, status: "FAILED", durationMs, error: message });
-        // Failed jobs become immediately due again so the next tick retries them.
+        const timedOut = error instanceof JobTimeoutError;
+        const backoffMs = resolveFailureBackoffMs(previous?.consecutiveFailures ?? 0, env);
+        logger.error(`[serverless-tick] job ${jobName} ${timedOut ? "timed out" : "failed"}`, error);
+        jobResults.push({
+          job: jobName,
+          status: timedOut ? "TIMED_OUT" : "FAILED",
+          durationMs,
+          error: message
+        });
         await persistJobState(prisma, jobName, {
           now,
           durationMs,
-          succeeded: false,
+          status: "FAILED",
           error: message,
-          nextDueAt: now,
+          nextDueAt: new Date(now.getTime() + backoffMs),
           previous
         });
+      }
+
+      const renewed = await lock.renew?.(lockTtlMs).catch(() => false);
+      if (lock.renew && !renewed) {
+        logger.error(`[serverless-tick] lost lease after ${jobName}`);
+        budgetExhausted = true;
       }
     }
 
@@ -253,19 +371,25 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
     });
 
     const jobsSucceeded = jobResults.filter((row) => row.status === "SUCCEEDED").length;
-    const jobsFailed = jobResults.filter(
-      (row) => row.status === "FAILED" || row.status === "MISSING_RUNNER"
+    const jobsFailed = jobResults.filter((row) =>
+      ["FAILED", "TIMED_OUT", "MISSING_RUNNER"].includes(row.status)
     ).length;
-    const jobsDeferred = deferred.length;
+    const jobsDeferred = jobResults.filter((row) => row.status === "DEFERRED").length;
+    const jobsSkipped = jobResults.filter((row) => row.status === "DISABLED").length;
     const jobsAttempted = jobsSucceeded + jobsFailed;
     const durationMs = clock() - startedClock;
 
     const status: TickStatus =
-      jobsFailed === 0 ? "COMPLETED" : jobsSucceeded > 0 || jobsDeferred > 0 ? "PARTIAL" : "FAILED";
+      jobsFailed === 0
+        ? "COMPLETED"
+        : jobsSucceeded > 0 || jobsDeferred > 0 || jobsSkipped > 0
+          ? "PARTIAL"
+          : "FAILED";
 
-    const failedJobs = jobResults.filter((row) => row.error).map((row) => `${row.job}: ${row.error}`);
+    const failedJobs = jobResults
+      .filter((row) => ["FAILED", "TIMED_OUT", "MISSING_RUNNER"].includes(row.status))
+      .map((row) => `${row.job}: ${row.error ?? row.status}`);
     const errorSummary = failedJobs.length > 0 ? truncate(failedJobs.join("; "), 1000) : null;
-
     const heartbeatAt = heartbeatUpdated ? new Date() : null;
 
     await prisma.workerTickRun.update({
@@ -278,7 +402,7 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
         jobsSucceeded,
         jobsFailed,
         jobsDeferred,
-        jobsSkipped: 0,
+        jobsSkipped,
         heartbeatUpdated,
         heartbeatAt,
         errorSummary,
@@ -287,6 +411,7 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
           jobs: jobResults,
           deferred,
           budgetMs,
+          jobTimeoutMs,
           budgetExhausted
         }
       }
@@ -301,7 +426,7 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
       jobsSucceeded,
       jobsFailed,
       jobsDeferred,
-      jobsSkipped: 0,
+      jobsSkipped,
       durationMs,
       skippedDueToLock: false,
       jobs: jobResults,
@@ -321,16 +446,16 @@ const persistJobState = async (
   input: {
     now: Date;
     durationMs: number;
-    succeeded: boolean;
+    status: "SUCCEEDED" | "FAILED" | "DISABLED";
     error: string | null;
     nextDueAt: Date;
     previous?: { consecutiveFailures: number; totalRuns: number; totalFailures: number };
   }
 ): Promise<void> => {
-  const lastStatus = input.succeeded ? "SUCCEEDED" : "FAILED";
-  const consecutiveFailures = input.succeeded ? 0 : (input.previous?.consecutiveFailures ?? 0) + 1;
+  const failed = input.status === "FAILED";
+  const consecutiveFailures = failed ? (input.previous?.consecutiveFailures ?? 0) + 1 : 0;
   const totalRuns = (input.previous?.totalRuns ?? 0) + 1;
-  const totalFailures = (input.previous?.totalFailures ?? 0) + (input.succeeded ? 0 : 1);
+  const totalFailures = (input.previous?.totalFailures ?? 0) + (failed ? 1 : 0);
 
   await prisma.workerJobState.upsert({
     where: { jobName },
@@ -338,7 +463,7 @@ const persistJobState = async (
       jobName,
       lastRunAt: input.now,
       lastFinishedAt: input.now,
-      lastStatus,
+      lastStatus: input.status,
       lastDurationMs: input.durationMs,
       lastError: input.error,
       nextDueAt: input.nextDueAt,
@@ -350,7 +475,7 @@ const persistJobState = async (
     update: {
       lastRunAt: input.now,
       lastFinishedAt: input.now,
-      lastStatus,
+      lastStatus: input.status,
       lastDurationMs: input.durationMs,
       lastError: input.error,
       nextDueAt: input.nextDueAt,

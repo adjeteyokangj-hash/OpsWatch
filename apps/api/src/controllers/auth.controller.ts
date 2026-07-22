@@ -36,11 +36,20 @@ export const loginController = async (req: AuthRequest, res: Response) => {
 
 export const logoutController = async (req: AuthRequest, res: Response) => {
   const sessionToken = readSessionToken(req.headers.cookie);
-  if (sessionToken) {
-    await revokeSessionToken(sessionToken, "LOGOUT");
+  try {
+    if (sessionToken) {
+      await revokeSessionToken(sessionToken, "LOGOUT");
+    }
+  } catch (error) {
+    // Clearing the browser's HttpOnly cookie still closes this browser session.
+    // Keep the revocation failure visible in server logs for security follow-up.
+    logger.warn("Session revocation failed during logout", {
+      reason: error instanceof Error ? error.message : String(error)
+    });
+  } finally {
+    clearSessionCookies(res);
   }
 
-  clearSessionCookies(res);
   res.status(204).send();
 };
 

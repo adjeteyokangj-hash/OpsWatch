@@ -23,6 +23,11 @@ export type LearningCycleResult = {
   retention: Awaited<ReturnType<typeof applyLearningRetentionExpiry>>;
 };
 
+export type LearningCycleFailure = {
+  organizationId: string;
+  error: string;
+};
+
 export const runLearningCycleForOrg = async (
   organizationId: string
 ): Promise<LearningCycleResult> => {
@@ -49,17 +54,41 @@ export const runLearningCycleForOrg = async (
   };
 };
 
+/**
+ * Run every organisation independently. A failure in one tenant is recorded and
+ * does not prevent later tenants from receiving baseline, anomaly, prediction
+ * and remediation-outcome updates.
+ */
 export const runLearningCycleForAllOrgs = async (): Promise<{
   orgCount: number;
+  succeededOrgCount: number;
+  failedOrgCount: number;
   results: LearningCycleResult[];
+  failures: LearningCycleFailure[];
 }> => {
   const orgs = await prisma.organization.findMany({
     select: { id: true },
     take: 500
   });
   const results: LearningCycleResult[] = [];
+  const failures: LearningCycleFailure[] = [];
+
   for (const org of orgs) {
-    results.push(await runLearningCycleForOrg(org.id));
+    try {
+      results.push(await runLearningCycleForOrg(org.id));
+    } catch (error) {
+      failures.push({
+        organizationId: org.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
-  return { orgCount: orgs.length, results };
+
+  return {
+    orgCount: orgs.length,
+    succeededOrgCount: results.length,
+    failedOrgCount: failures.length,
+    results,
+    failures
+  };
 };

@@ -35,17 +35,20 @@ export interface TickLockPrisma {
 export type TickLock = {
   acquired: boolean;
   holder: string;
+  /** Optional for backwards-compatible injected test locks. Production locks provide it. */
+  renew?: (ttlMs?: number) => Promise<boolean>;
   release: () => Promise<void>;
 };
 
 const NOOP_RELEASE = async (): Promise<void> => {};
+const NOOP_RENEW = async (): Promise<boolean> => false;
 
 /**
  * Attempt to acquire the tick lease.
  *
- * @returns `acquired: true` with a `release()` that clears the lease iff this
- * holder still owns it, or `acquired: false` when another tick holds an
- * unexpired lease (caller should skip quickly).
+ * @returns `acquired: true` with renew/release functions that only update the
+ * row while this holder still owns it, or `acquired: false` when another tick
+ * holds an unexpired lease.
  */
 export const acquireTickLock = async (
   prisma: TickLockPrisma,
@@ -53,8 +56,6 @@ export const acquireTickLock = async (
   ttlMs: number,
   now: Date = new Date()
 ): Promise<TickLock> => {
-  // Ensure the single lease row exists. Concurrent creates can race; a unique
-  // violation just means another invocation created it first, which is fine.
   try {
     await prisma.workerTickLock.upsert({
       where: { key: TICK_LOCK_KEY },
@@ -75,12 +76,23 @@ export const acquireTickLock = async (
   });
 
   if (claim.count === 0) {
-    return { acquired: false, holder, release: NOOP_RELEASE };
+    return { acquired: false, holder, renew: NOOP_RENEW, release: NOOP_RELEASE };
   }
 
   return {
     acquired: true,
     holder,
+    renew: async (nextTtlMs = ttlMs) => {
+      const renewedAt = new Date();
+      const renewed = await prisma.workerTickLock.updateMany({
+        where: { key: TICK_LOCK_KEY, holder },
+        data: {
+          expiresAt: new Date(renewedAt.getTime() + nextTtlMs),
+          updatedAt: renewedAt
+        }
+      });
+      return renewed.count === 1;
+    },
     release: async () => {
       const releasedAt = new Date();
       await prisma.workerTickLock.updateMany({

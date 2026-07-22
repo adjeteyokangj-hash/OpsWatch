@@ -8,7 +8,9 @@ export const authRouter = Router();
 
 authRouter.post("/auth/login", loginController);
 authRouter.get("/auth/session", requireAuth, sessionController);
-authRouter.post("/auth/logout", requireAuth, logoutController);
+// Logout must remain available even when the stored session is stale or invalid;
+// the controller revokes a valid token when possible and always clears cookies.
+authRouter.post("/auth/logout", logoutController);
 authRouter.post("/auth/change-password", requireAuth, changePasswordController);
 authRouter.post("/auth/register", registerUser);
 authRouter.post("/auth/invite", requireAuth, requireRole("ADMIN"), inviteUser);

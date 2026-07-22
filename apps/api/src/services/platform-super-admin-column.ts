@@ -2,9 +2,9 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 
 /**
- * True when the DB has User.isPlatformSuperAdmin (after migrate or ensure).
- * Only cache positives — a prior false must be re-probed so grants recover after
- * migrate deploy without waiting for a cold start.
+ * True when the database has User.isPlatformSuperAdmin.
+ * Only cache positives so a previously missing column is re-probed after an
+ * explicitly approved, separately executed database change.
  */
 let columnAvailable: boolean | null = null;
 
@@ -38,27 +38,21 @@ export const hasPlatformSuperAdminColumn = async (): Promise<boolean> => {
   }
 };
 
-/** Idempotent: ADD COLUMN IF NOT EXISTS so grant works without waiting on migrate. */
+/**
+ * Read-only schema readiness guard.
+ *
+ * OpsWatch Rule 6 prohibits application runtime from repairing or migrating the
+ * database. Missing schema must be reported and handled through a separately
+ * approved migration command; this function deliberately performs no ALTER.
+ */
 export const ensurePlatformSuperAdminColumn = async (): Promise<void> => {
   if (await hasPlatformSuperAdminColumn()) {
     return;
   }
-  try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isPlatformSuperAdmin" BOOLEAN NOT NULL DEFAULT false
-    `);
-  } catch (error) {
-    resetPlatformSuperAdminColumnCache();
-    throw new Error(
-      "Database migrations are incomplete. Run prisma migrate deploy with Supabase session pooler DIRECT_URL, then retry."
-    );
-  }
-  resetPlatformSuperAdminColumnCache();
-  if (!(await hasPlatformSuperAdminColumn())) {
-    throw new Error(
-      "Database migrations are incomplete. Run prisma migrate deploy with Supabase session pooler DIRECT_URL, then retry."
-    );
-  }
+
+  throw new Error(
+    "Database schema is missing User.isPlatformSuperAdmin. OpsWatch Rule 6 blocks runtime schema changes; obtain EDD's explicit migration approval before changing the database."
+  );
 };
 
 export const loadPlatformSuperAdminFlags = async (
