@@ -24,6 +24,12 @@ const toneByState: Record<ProductTruthState, "success" | "warning" | "info" | "m
   "Live verified": "success"
 };
 
+const labelByState: Partial<Record<ProductTruthState, string>> = {
+  // Remediation Accuracy is currently the only user of this state. The missing
+  // value means no verified outcomes exist yet, not that an operator forgot a setting.
+  "Not configured": "Awaiting evidence"
+};
+
 export function ProductTruthStatus({
   state,
   detail
@@ -31,5 +37,11 @@ export function ProductTruthStatus({
   state: ProductTruthState;
   detail?: string;
 }) {
-  return <StatusBadge label={state} tone={toneByState[state]} title={detail} />;
+  return (
+    <StatusBadge
+      label={labelByState[state] ?? state}
+      tone={toneByState[state]}
+      title={detail}
+    />
+  );
 }
