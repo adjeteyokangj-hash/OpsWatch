@@ -10,6 +10,8 @@ import {
   type ProjectIntegration
 } from "../../lib/integrations";
 
+export type ProviderCapabilityAvailability = "required" | "optional" | "unavailable";
+
 type ConnectionTileProps = {
   projectId: string;
   type: IntegrationType;
@@ -17,6 +19,8 @@ type ConnectionTileProps = {
   validating?: boolean;
   onValidate?: () => void;
   compact?: boolean;
+  capabilityAvailability?: ProviderCapabilityAvailability;
+  capabilityDescription?: string;
 };
 
 export const ConnectionTile = ({
@@ -25,10 +29,19 @@ export const ConnectionTile = ({
   integration,
   validating = false,
   onValidate,
-  compact = false
+  compact = false,
+  capabilityAvailability = "optional",
+  capabilityDescription
 }: ConnectionTileProps) => {
-  const status = integrationTileStatus(integration, validating);
-  const details = integration?.validationDetails;
+  const configuredStatus = integrationTileStatus(integration, validating);
+  const status = integration
+    ? configuredStatus
+    : capabilityAvailability === "required"
+      ? configuredStatus
+      : capabilityAvailability === "optional"
+        ? { icon: "○", label: "Optional" }
+        : { icon: "—", label: "Not available" };
+  const canConfigure = Boolean(integration) || capabilityAvailability !== "unavailable";
 
   return (
     <article className={`connection-tile ${compact ? "connection-tile--compact" : ""}`}>
@@ -40,42 +53,54 @@ export const ConnectionTile = ({
         </span>
       </div>
 
-      {!compact ? (
+      {capabilityDescription ? <p className="table-subtle">{capabilityDescription}</p> : null}
+
+      {!compact && integration ? (
         <dl className="connection-tile__meta">
-          {details?.account?.mode ? (
+          {integration.validationDetails?.account?.mode ? (
             <div>
               <dt>Mode</dt>
-              <dd>{details.account.mode === "test" ? "Test" : "Live"}</dd>
+              <dd>{integration.validationDetails.account.mode === "test" ? "Test" : "Live"}</dd>
             </div>
           ) : null}
           <div>
             <dt>Last validation</dt>
-            <dd>{formatRelativeTime(integration?.lastValidatedAt)}</dd>
+            <dd>{formatRelativeTime(integration.lastValidatedAt)}</dd>
           </div>
-          {details?.webhook ? (
+          {integration.validationDetails?.webhook ? (
             <div>
               <dt>Webhook</dt>
-              <dd>{details.webhook.verified ? "Verified" : details.webhook.configured ? "Configured" : "Not configured"}</dd>
+              <dd>
+                {integration.validationDetails.webhook.verified
+                  ? "Verified"
+                  : integration.validationDetails.webhook.configured
+                    ? "Configured"
+                    : "Not configured"}
+              </dd>
             </div>
           ) : null}
         </dl>
       ) : null}
 
-      <div className="connection-tile__actions">
-        <Link className="secondary-button" href={integrationProviderPath(projectId, type)}>
-          Configure
-        </Link>
-        {onValidate ? (
-          <button
-            type="button"
-            className="primary-button"
-            onClick={onValidate}
-            disabled={validating || !integration}
-          >
-            {validating ? "Validating..." : "Validate"}
-          </button>
-        ) : null}
-      </div>
+      {canConfigure ? (
+        <div className="connection-tile__actions">
+          <Link className="secondary-button" href={integrationProviderPath(projectId, type)}>
+            {integration ? "Configure" : capabilityAvailability === "required" ? "Set up" : "Add optional"}
+          </Link>
+          {integration && onValidate ? (
+            <button
+              type="button"
+              className="primary-button"
+              onClick={onValidate}
+              disabled={validating}
+            >
+              {validating ? "Validating..." : "Validate"}
+            </button>
+          ) : null}
+        </div>
+      ) : (
+        <p className="table-subtle">No configuration is required until this application exposes a supported endpoint.</p>
+      )}
     </article>
   );
 };
