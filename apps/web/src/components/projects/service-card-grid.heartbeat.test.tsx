@@ -4,29 +4,55 @@ import {
   usesInheritedApplicationHeartbeat
 } from "./service-card-grid";
 
-const moduleRow = (status: string, checks: unknown[] = []) => ({
+const moduleRow = (status: string, checks: unknown[] = [], extra: Record<string, unknown> = {}) => ({
   id: "module-1",
   type: "MODULE",
   status,
-  Check: checks
+  Check: checks,
+  ...extra
 });
 
-describe("module heartbeat card labels", () => {
+describe("module application-signal card labels", () => {
   it("identifies logical modules without dedicated checks", () => {
     expect(usesInheritedApplicationHeartbeat(moduleRow("UNKNOWN"))).toBe(true);
     expect(usesInheritedApplicationHeartbeat(moduleRow("HEALTHY", [{ id: "check-1" }]))).toBe(false);
     expect(usesInheritedApplicationHeartbeat({ type: "API", status: "HEALTHY", Check: [] })).toBe(false);
   });
 
-  it("shows application-heartbeat wording instead of claiming a module heartbeat", () => {
-    expect(serviceCardHealthLabel(moduleRow("UNKNOWN"))).toBe("Awaiting app heartbeat");
-    expect(serviceCardHealthLabel(moduleRow("HEALTHY"))).toBe("App heartbeat active");
-    expect(serviceCardHealthLabel(moduleRow("DEGRADED"))).toBe("App heartbeat delayed");
-    expect(serviceCardHealthLabel(moduleRow("DOWN"))).toBe("App heartbeat down");
+  it("uses generic application-signal wording when no source label is supplied", () => {
+    expect(serviceCardHealthLabel(moduleRow("UNKNOWN"))).toBe("Awaiting live signal");
+    expect(serviceCardHealthLabel(moduleRow("HEALTHY"))).toBe("Application signal active");
+    expect(serviceCardHealthLabel(moduleRow("DEGRADED"))).toBe("Application signal delayed");
+    expect(serviceCardHealthLabel(moduleRow("DOWN"))).toBe("Application signal down");
     expect(serviceCardHealthLabel(moduleRow("PAUSED"))).toBe("Monitoring paused");
   });
 
+  it("shows the authoritative connection or heartbeat label returned by the API", () => {
+    expect(
+      serviceCardHealthLabel(
+        moduleRow("HEALTHY", [], {
+          healthDisplayLabel: "Connection verified",
+          healthSource: "CONNECTION_DISCOVERY"
+        })
+      )
+    ).toBe("Connection verified");
+    expect(
+      serviceCardHealthLabel(
+        moduleRow("HEALTHY", [], {
+          healthDisplayLabel: "App heartbeat active",
+          healthSource: "HEARTBEAT"
+        })
+      )
+    ).toBe("App heartbeat active");
+  });
+
   it("defers to dedicated monitoring when a module has checks", () => {
-    expect(serviceCardHealthLabel(moduleRow("HEALTHY", [{ id: "check-1" }]))).toBeNull();
+    expect(
+      serviceCardHealthLabel(
+        moduleRow("HEALTHY", [{ id: "check-1" }], {
+          healthDisplayLabel: "Connection verified"
+        })
+      )
+    ).toBeNull();
   });
 });
