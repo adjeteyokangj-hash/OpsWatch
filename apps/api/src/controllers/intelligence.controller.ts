@@ -213,6 +213,9 @@ export const getFeatureGatesHandler = async (req: AuthRequest, res: Response): P
   });
 };
 
+const toneRank = (tone: "green" | "amber" | "red"): number =>
+  tone === "red" ? 2 : tone === "amber" ? 1 : 0;
+
 export const getAiOperationsStatusHandler = async (
   req: AuthRequest,
   res: Response
@@ -241,11 +244,39 @@ export const getAiOperationsStatusHandler = async (
   }
 
   try {
-    const { buildAiOperationsStatus } = await import(
-      "../services/intelligence/ai-operations-status.service"
-    );
-    const status = await buildAiOperationsStatus({ organizationId: orgId, projectId });
-    res.json(status);
+    const [{ buildAiOperationsStatus }, { buildWorkerRuntimeStatus }] = await Promise.all([
+      import("../services/intelligence/ai-operations-status.service"),
+      import("../services/worker-tick/worker-runtime-status.service")
+    ]);
+    const [status, worker] = await Promise.all([
+      buildAiOperationsStatus({ organizationId: orgId, projectId }),
+      buildWorkerRuntimeStatus()
+    ]);
+
+    const capabilities = status.capabilities.some((capability) => capability.id === "worker_heartbeat")
+      ? status.capabilities.map((capability) =>
+          capability.id === "worker_heartbeat" ? worker.capability : capability
+        )
+      : [worker.capability, ...status.capabilities];
+    const blocked = [
+      ...status.blocked.filter((row) => row.id !== "worker_heartbeat"),
+      ...worker.blocked
+    ];
+    const overallTone =
+      toneRank(worker.capability.tone) > toneRank(status.overall.tone)
+        ? worker.capability.tone
+        : status.overall.tone;
+
+    res.json({
+      ...status,
+      overall: {
+        ...status.overall,
+        tone: overallTone,
+        summary: `${status.overall.summary} Worker evidence: ${worker.capability.summary}`
+      },
+      capabilities,
+      blocked
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Operations status failed";
     res.status(503).json({
