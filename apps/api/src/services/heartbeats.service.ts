@@ -9,6 +9,7 @@ import {
 import { OBSERVATION_SOURCE, TIMELINE_EVENT } from "./intelligence/intelligence-constants";
 import { progressHeartbeatAlertRecovery } from "./alert-automation-evaluation.service";
 import { canonicalGraph } from "./canonical-graph.service";
+import { ingestSignedRuntimeEvidence } from "./evidence/signed-runtime-evidence.service";
 
 export const projectStatusFromHeartbeat = (status: unknown): ProjectStatus => {
   if (status === "DOWN") return ProjectStatus.DOWN;
@@ -24,11 +25,6 @@ const canonicalHealthFromHeartbeat = (status: unknown): string => {
   return "HEALTHY";
 };
 
-/**
- * TrueNumeris modules are declared logical areas inside one application process.
- * Until a module has its own checks/telemetry, the application heartbeat is the
- * only truthful liveness evidence. Only connection-discovered modules inherit it.
- */
 export const inheritHeartbeatToDiscoveredModules = async (params: {
   projectId: string;
   organizationId: string | null;
@@ -104,10 +100,8 @@ export const ingestHeartbeat = async (projectId: string, body: any): Promise<voi
 
   const project = await prisma.project.update({
     where: { id: projectId },
-    data: {
-      status: projectStatusFromHeartbeat(body.status)
-    },
-    select: { id: true, name: true, organizationId: true }
+    data: { status: projectStatusFromHeartbeat(body.status) },
+    select: { id: true, name: true, organizationId: true, environment: true }
   });
 
   await inheritHeartbeatToDiscoveredModules({
@@ -123,7 +117,7 @@ export const ingestHeartbeat = async (projectId: string, body: any): Promise<voi
     await canonicalGraph.upsertEntity({
       organizationId: project.organizationId,
       projectId,
-      environment: body.environment || "unknown",
+      environment: body.environment || project.environment || "unknown",
       entityType: "APP",
       stableKey: projectId,
       name: project.name,
@@ -136,6 +130,22 @@ export const ingestHeartbeat = async (projectId: string, body: any): Promise<voi
       freshUntil: new Date(observedAt.getTime() + 5 * 60_000),
       confirmationState: "CONFIRMED"
     });
+
+    try {
+      await ingestSignedRuntimeEvidence({
+        projectId,
+        organizationId: project.organizationId,
+        environment: body.environment || project.environment || "unknown",
+        payload: body.payload,
+        observedAt
+      });
+    } catch (error) {
+      console.warn("SIGNED_RUNTIME_EVIDENCE_INGEST_FAILED", {
+        projectId,
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+
     try {
       await recordObservation({
         organizationId: project.organizationId,
@@ -150,16 +160,21 @@ export const ingestHeartbeat = async (projectId: string, body: any): Promise<voi
           environment: body.environment ?? null,
           appVersion: body.appVersion ?? null,
           commitSha: body.commitSha ?? null,
-          status: body.status ?? null
+          status: body.status ?? null,
+          runtimeEvidence:
+            body.payload &&
+            typeof body.payload === "object" &&
+            !Array.isArray(body.payload) &&
+            "opswatchEvidence" in body.payload
+              ? true
+              : false
         }
       });
       await recordOperationsTimelineEvent({
         organizationId: project.organizationId,
         projectId,
         eventType: isDown ? TIMELINE_EVENT.HEARTBEAT_LOST : TIMELINE_EVENT.HEARTBEAT_RECEIVED,
-        summary: isDown
-          ? "Heartbeat lost / DOWN reported"
-          : "Heartbeat received",
+        summary: isDown ? "Heartbeat lost / DOWN reported" : "Heartbeat received",
         sourceType: "HEARTBEAT",
         sourceId: projectId,
         severity: isDown ? "HIGH" : null

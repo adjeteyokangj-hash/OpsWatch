@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ProjectStatus } from "@prisma/client";
-import { inheritedHeartbeatStatus } from "./inherited-module-heartbeat.service";
+import {
+  inheritedHeartbeatStatus,
+  runtimeEvidenceIsStale
+} from "./inherited-module-heartbeat.service";
 
 describe("inheritedHeartbeatStatus", () => {
   it("inherits a fresh healthy application heartbeat", () => {
@@ -28,5 +31,11 @@ describe("inheritedHeartbeatStatus", () => {
     expect(
       inheritedHeartbeatStatus({ heartbeatStatus: "DOWN", ageMinutes: 25 })
     ).toBe(ProjectStatus.DEGRADED);
+  });
+
+  it("uses the same ten-minute boundary for signed runtime evidence", () => {
+    expect(runtimeEvidenceIsStale(9.99)).toBe(false);
+    expect(runtimeEvidenceIsStale(10)).toBe(true);
+    expect(runtimeEvidenceIsStale(25)).toBe(true);
   });
 });

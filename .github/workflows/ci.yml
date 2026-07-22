@@ -77,6 +77,7 @@ jobs:
           'src/controllers/auth.logout.test.ts'
           'src/lib/session-cookie.test.ts'
           'src/services/connections/connection-topology-discovery.service.test.ts'
+          'src/services/evidence/signed-runtime-evidence.service.test.ts'
           'src/services/heartbeats.service.test.ts'
           'src/services/intelligence/ai-operations-runtime-status.service.test.ts'
           'src/services/worker-tick/serverless-tick.service.test.ts'

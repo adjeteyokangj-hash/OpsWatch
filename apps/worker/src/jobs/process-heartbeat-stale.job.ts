@@ -5,10 +5,10 @@ import { logger } from "../lib/logger";
 import { dispatchAlertNotifications } from "../services/notifications/notification.service";
 import {
   inheritedHeartbeatStatus,
-  updateInheritedModuleHeartbeatHealth
+  updateInheritedModuleHeartbeatHealth,
+  updateRuntimeEvidenceHeartbeatHealth
 } from "../services/inherited-module-heartbeat.service";
 
-/** Matches API heartbeat recovery verification thresholds. */
 const HEARTBEAT_RECOVERY_MIN_COUNT = 3;
 const HEARTBEAT_RECOVERY_STABLE_SECONDS = 180;
 
@@ -62,10 +62,6 @@ const upsertHeartbeatStaleAlert = async (
   }
 };
 
-/**
- * When heartbeats are fresh again: mark RECOVERING, then RESOLVED only after
- * consecutive healthy heartbeats over a stable window. Never claim remediation.
- */
 const progressHeartbeatStaleRecovery = async (projectId: string): Promise<void> => {
   const alerts = await prisma.alert.findMany({
     where: {
@@ -141,9 +137,7 @@ export const processHeartbeatStaleJob = async (): Promise<void> => {
       orderBy: { receivedAt: "desc" }
     });
 
-    if (!latest) {
-      continue;
-    }
+    if (!latest) continue;
 
     const ageMs = Date.now() - latest.receivedAt.getTime();
     const ageMin = ageMs / 60000;
@@ -160,6 +154,12 @@ export const processHeartbeatStaleJob = async (): Promise<void> => {
       projectId: project.id,
       organizationId: project.organizationId,
       heartbeatStatus: latest.status,
+      ageMinutes: ageMin,
+      observedAt: latest.receivedAt
+    });
+    await updateRuntimeEvidenceHeartbeatHealth({
+      projectId: project.id,
+      organizationId: project.organizationId,
       ageMinutes: ageMin,
       observedAt: latest.receivedAt
     });
