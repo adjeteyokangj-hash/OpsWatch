@@ -6,6 +6,8 @@ import {
   sessionAbsoluteTtlSeconds
 } from "../config/session";
 
+const LEGACY_TOKEN_COOKIE_NAME = "opswatch_token";
+
 export const parseCookieHeader = (header: string | undefined): Record<string, string> => {
   if (!header) {
     return {};
@@ -56,10 +58,24 @@ export const setSessionCookies = (
   });
 };
 
+const clearCookieEveryScope = (
+  res: Response,
+  name: string,
+  options: CookieOptions
+): void => {
+  res.clearCookie(name, options);
+
+  if (options.domain) {
+    const { domain: _domain, ...hostOnlyOptions } = options;
+    res.clearCookie(name, hostOnlyOptions);
+  }
+};
+
 export const clearSessionCookies = (res: Response): void => {
   const base = baseCookieOptions();
-  res.clearCookie(SESSION_COOKIE_NAME, { ...base, httpOnly: true });
-  res.clearCookie(CSRF_COOKIE_NAME, { ...base, httpOnly: false });
+  clearCookieEveryScope(res, SESSION_COOKIE_NAME, { ...base, httpOnly: true });
+  clearCookieEveryScope(res, CSRF_COOKIE_NAME, { ...base, httpOnly: false });
+  clearCookieEveryScope(res, LEGACY_TOKEN_COOKIE_NAME, { ...base, httpOnly: false });
 };
 
 export const readSessionToken = (cookieHeader: string | undefined): string | null =>
