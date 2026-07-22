@@ -16,11 +16,42 @@ const layerIcon = (type: string): string => {
   return "◎";
 };
 
-const statusHint = (status: string): string => {
-  if (status === "HEALTHY") return "Operating normally";
-  if (status === "DEGRADED") return "Needs attention";
-  if (status === "DOWN" || status === "CRITICAL") return "Action required";
-  return "Waiting for first heartbeat";
+export const usesInheritedApplicationHeartbeat = (row: any): boolean =>
+  row?.type === "MODULE" && (!Array.isArray(row?.Check) || row.Check.length === 0);
+
+export const serviceCardHealthLabel = (row: any): string | null => {
+  if (!usesInheritedApplicationHeartbeat(row)) return null;
+  if (row.status === "HEALTHY") return "App heartbeat active";
+  if (row.status === "DEGRADED") return "App heartbeat delayed";
+  if (row.status === "DOWN" || row.status === "CRITICAL") return "App heartbeat down";
+  if (row.status === "PAUSED") return "Monitoring paused";
+  return "Awaiting app heartbeat";
+};
+
+const statusHint = (row: any): string => {
+  if (usesInheritedApplicationHeartbeat(row)) {
+    if (row.status === "HEALTHY") {
+      return "Live through the TrueNumeris application heartbeat; add module checks for deeper health evidence.";
+    }
+    if (row.status === "DEGRADED") {
+      return "The inherited application heartbeat is delayed or degraded.";
+    }
+    if (row.status === "DOWN" || row.status === "CRITICAL") {
+      return "The TrueNumeris application heartbeat reports this module unavailable.";
+    }
+    if (row.status === "PAUSED") return "Application heartbeat monitoring is paused.";
+    return "Waiting for the next TrueNumeris application heartbeat.";
+  }
+  if (row.status === "HEALTHY") return "Operating normally";
+  if (row.status === "DEGRADED") return "Needs attention";
+  if (row.status === "DOWN" || row.status === "CRITICAL") return "Action required";
+  return "Waiting for first monitoring signal";
+};
+
+const targetLabel = (row: any): string => {
+  if (row.baseUrl) return row.baseUrl;
+  if (row.type === "MODULE") return "Logical application module";
+  return "No target URL";
 };
 
 export type ServiceCardPrimaryCta = {
@@ -85,15 +116,15 @@ export function ServiceCardGrid({
               <span className="service-card-icon" aria-hidden="true">
                 {layerIcon(row.type)}
               </span>
-              <HealthBadge status={row.status} />
+              <HealthBadge status={row.status} displayLabel={serviceCardHealthLabel(row)} />
             </div>
             <h3>{row.name}</h3>
             <p className="service-card-meta">
               <span>{row.type}</span>
               {row.isCritical ? <span className="criticality-tag">Critical</span> : null}
             </p>
-            <p className="service-card-hint">{row.baseUrl || "No target URL"}</p>
-            <p className="service-card-hint">{statusHint(row.status)}</p>
+            <p className="service-card-hint">{targetLabel(row)}</p>
+            <p className="service-card-hint">{statusHint(row)}</p>
             <div className="table-actions service-card-actions">
               <button
                 type="button"
