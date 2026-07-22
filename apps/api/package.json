@@ -10,6 +10,7 @@
 		"./otel-process": "./dist/services/otel/otel-process.service.js",
 		"./learning-cycle": "./dist/services/learning/learning-cycle.service.js",
 		"./monitoring-sync": "./dist/services/monitoring-connectors/monitoring-connector-sync.service.js",
+		"./api-topology-discovery": "./dist/services/connections/connection-topology-discovery.service.js",
 		"./recovery-propagation": "./dist/services/remediation/check-recovery-propagation.service.js"
 	},
 	"scripts": {

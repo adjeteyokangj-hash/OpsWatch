@@ -8,7 +8,9 @@ import { ServiceCardGrid } from "./service-card-grid";
 import { ServiceList } from "./service-list";
 import { WorkspaceSummaryStrip } from "./workspace-summary-strip";
 import { PageSection } from "../ui/page-section";
+import { EmptyState } from "../ui/empty-state";
 import { useProjectWorkspace } from "../../hooks/use-project-workspace";
+import { apiFetch } from "../../lib/api";
 
 const componentTypes = new Set([
   "COMPONENT",
@@ -47,6 +49,13 @@ const layers = {
 
 type LayerKey = keyof typeof layers;
 
+type TopologyDiscoveryResult = {
+  status: "SUCCEEDED" | "SKIPPED";
+  moduleCount: number;
+  hierarchyCount: number;
+  summary: string;
+};
+
 const summarize = (rows: Array<any>) => {
   const healthy = rows.filter((row) => row.status === "HEALTHY").length;
   const degraded = rows.filter((row) => row.status === "DEGRADED").length;
@@ -61,6 +70,34 @@ export function ProjectLayerPage({ layerKey }: { layerKey: LayerKey }) {
   const { project, loading, error, reload } = useProjectWorkspace(projectId);
   const services = (project?.services ?? []).filter((service: any) => config.match(service.type));
   const [componentTab, setComponentTab] = useState<"components" | "services">("components");
+  const [discovering, setDiscovering] = useState(false);
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+  const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
+
+  const apiConnection = (project?.Connection ?? []).find(
+    (connection: any) => connection.mode === "API" && connection.installationStatus !== "ERROR"
+  );
+
+  const discoverStructure = async () => {
+    if (!apiConnection?.id || discovering) return;
+    setDiscovering(true);
+    setDiscoveryError(null);
+    setDiscoveryMessage(null);
+    try {
+      const result = await apiFetch<TopologyDiscoveryResult>(
+        `/connections/${encodeURIComponent(apiConnection.id)}/discover-topology`,
+        { method: "POST", body: JSON.stringify({}) }
+      );
+      setDiscoveryMessage(result.summary);
+      await reload();
+    } catch (discoverError) {
+      setDiscoveryError(
+        discoverError instanceof Error ? discoverError.message : "Application structure discovery failed"
+      );
+    } finally {
+      setDiscovering(false);
+    }
+  };
 
   const filteredServices = useMemo(() => {
     if (layerKey !== "components") return services;
@@ -70,8 +107,8 @@ export function ProjectLayerPage({ layerKey }: { layerKey: LayerKey }) {
   }, [componentTab, layerKey, services]);
 
   const summary = summarize(filteredServices);
-
   const pageTitle = layerKey === "components" ? "Components" : config.title;
+  const canDiscoverModules = layerKey === "modules" && Boolean(apiConnection?.id);
 
   return (
     <ProjectWorkspaceShell
@@ -81,7 +118,21 @@ export function ProjectLayerPage({ layerKey }: { layerKey: LayerKey }) {
       project={project}
       loading={loading}
       error={error}
-      actions={<AddServiceForm projectId={projectId} layerKey={layerKey} onCreated={() => void reload()} />}
+      actions={
+        <div className="page-header-actions">
+          <AddServiceForm projectId={projectId} layerKey={layerKey} onCreated={() => void reload()} />
+          {canDiscoverModules ? (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => void discoverStructure()}
+              disabled={discovering}
+            >
+              {discovering ? "Discovering…" : "Discover structure"}
+            </button>
+          ) : null}
+        </div>
+      }
     >
       {loading ? (
         <section className="panel workspace-loading">
@@ -105,6 +156,9 @@ export function ProjectLayerPage({ layerKey }: { layerKey: LayerKey }) {
             className="workspace-section-card"
             persistKey={`project:${projectId}:layer:${layerKey}`}
           >
+            {discoveryError ? <section className="error-panel" role="alert">{discoveryError}</section> : null}
+            {discoveryMessage ? <section className="success-panel" role="status">{discoveryMessage}</section> : null}
+
             {layerKey === "components" ? (
               <div className="workspace-tab-bar" role="tablist" aria-label="Component views">
                 <button
@@ -127,20 +181,37 @@ export function ProjectLayerPage({ layerKey }: { layerKey: LayerKey }) {
             ) : null}
 
             {config.layout === "cards" ? (
-              <ServiceCardGrid
-                rows={filteredServices}
-                projectId={projectId}
-                onUpdated={() => void reload()}
-                primaryCta={
-                  layerKey === "modules"
-                    ? {
-                        label: "View module →",
-                        hrefFor: (serviceId) => `/projects/${projectId}/modules/${serviceId}`,
-                        ariaLabelFor: (name) => `View module ${name}`
-                      }
-                    : undefined
-                }
-              />
+              layerKey === "modules" && filteredServices.length === 0 && apiConnection ? (
+                <EmptyState
+                  title="No modules discovered yet"
+                  description="The application connection is available, but its declared structure has not been imported. Discover structure to load the real module map supplied by the connected application."
+                  action={
+                    <button
+                      type="button"
+                      className="primary-button"
+                      onClick={() => void discoverStructure()}
+                      disabled={discovering}
+                    >
+                      {discovering ? "Discovering application structure…" : "Discover application structure"}
+                    </button>
+                  }
+                />
+              ) : (
+                <ServiceCardGrid
+                  rows={filteredServices}
+                  projectId={projectId}
+                  onUpdated={() => void reload()}
+                  primaryCta={
+                    layerKey === "modules"
+                      ? {
+                          label: "View module →",
+                          hrefFor: (serviceId) => `/projects/${projectId}/modules/${serviceId}`,
+                          ariaLabelFor: (name) => `View module ${name}`
+                        }
+                      : undefined
+                  }
+                />
+              )
             ) : (
               <ServiceList rows={filteredServices} projectId={projectId} onUpdated={() => void reload()} />
             )}

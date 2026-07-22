@@ -16,6 +16,7 @@ import {
   testConnection,
   testUnsavedConnectionHandler
 } from "../controllers/connections.controller";
+import { discoverConnectionTopologyHandler } from "../controllers/connection-topology.controller";
 import { createChangeLedger, listChangeLedger } from "../controllers/change-ledger.controller";
 import {
   createOperationalEntity,
@@ -40,6 +41,11 @@ connectionsRouter.post("/connections/test", testUnsavedConnectionHandler);
 connectionsRouter.post("/connections/:connectionId/test", testConnection);
 connectionsRouter.post("/connections/:connectionId/sync", syncConnection);
 connectionsRouter.post("/connections/:connectionId/discover", discoverConnection);
+connectionsRouter.post(
+  "/connections/:connectionId/discover-topology",
+  requireAdmin,
+  discoverConnectionTopologyHandler
+);
 connectionsRouter.post("/connections/:connectionId/disable", requireAdmin, disableConnection);
 connectionsRouter.post("/connections/:connectionId/reactivate", requireAdmin, reactivateConnection);
 connectionsRouter.post("/connections/:connectionId/rotate-credential", requireAdmin, rotateConnectionCredential);
