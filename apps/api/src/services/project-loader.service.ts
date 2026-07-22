@@ -7,6 +7,25 @@ import { createDefaultProjectBilling, getProjectBilling, normalizeAllowanceLimit
 import { listActiveMaintenanceWindows } from "./maintenance-window-policy.service";
 import { hasActiveVerificationRun } from "./project-recovery-lifecycle.service";
 
+type ProjectConnectionSignal = {
+  id: string;
+  name: string;
+  mode: string;
+  health: string;
+  healthReason: string | null;
+  installationStatus: string;
+  lastSuccessAt: Date | null;
+  lastSyncAt: Date | null;
+  lastSyncStatus: string | null;
+  syncIntervalMinutes: number | null;
+};
+
+type ProjectHeartbeatSignal = {
+  receivedAt: Date;
+  status: string;
+  message: string | null;
+};
+
 type ProjectRow = {
   id: string;
   organizationId: string | null;
@@ -31,10 +50,12 @@ type ProjectRow = {
         message?: string | null;
       }>;
     }>;
+    OutgoingDependencies?: Array<{ id: string }>;
   }>;
   Alert: Array<{ serviceId: string | null; severity: string; status: string }>;
   Incident: Array<{ status: string; serviceId?: string | null }>;
-  Heartbeat: Array<{ receivedAt: Date }>;
+  Heartbeat: ProjectHeartbeatSignal[];
+  Connection?: ProjectConnectionSignal[];
   ProjectBilling?: {
     plan: BillingPlanType;
     monthlyPrice: number;
@@ -45,6 +66,131 @@ type ProjectRow = {
     userLimit: number | null;
     automationRunLimit: number | null;
   } | null;
+};
+
+export type InheritedModuleSignal = {
+  status: "HEALTHY" | "DEGRADED" | "DOWN" | "PAUSED";
+  displayLabel: string;
+  reason: string;
+  source: "HEARTBEAT" | "CONNECTION_DISCOVERY";
+  observedAt: Date;
+};
+
+const heartbeatStatus = (status: string): InheritedModuleSignal["status"] => {
+  if (status === "DOWN") return "DOWN";
+  if (status === "DEGRADED") return "DEGRADED";
+  if (status === "PAUSED") return "PAUSED";
+  return "HEALTHY";
+};
+
+const heartbeatLabel = (status: InheritedModuleSignal["status"]): string => {
+  if (status === "DOWN") return "App heartbeat down";
+  if (status === "DEGRADED") return "App heartbeat delayed";
+  if (status === "PAUSED") return "Monitoring paused";
+  return "App heartbeat active";
+};
+
+const latestDate = (...values: Array<Date | null | undefined>): Date | null => {
+  let latest: Date | null = null;
+  for (const value of values) {
+    if (!(value instanceof Date)) continue;
+    if (!latest || value.getTime() > latest.getTime()) latest = value;
+  }
+  return latest;
+};
+
+/**
+ * Logical modules discovered from an authenticated API connection do not each
+ * need a separate push heartbeat. A fresh application heartbeat takes priority;
+ * otherwise the latest authenticated API discovery result is the live signal.
+ */
+export const resolveInheritedModuleSignal = (
+  row: Pick<ProjectRow, "Heartbeat" | "Connection">,
+  now: Date = new Date()
+): InheritedModuleSignal | null => {
+  const latestHeartbeat = row.Heartbeat?.[0] ?? null;
+  let staleHeartbeat: InheritedModuleSignal | null = null;
+
+  if (latestHeartbeat?.receivedAt) {
+    const ageMinutes = Math.max(0, now.getTime() - latestHeartbeat.receivedAt.getTime()) / 60_000;
+    const status = heartbeatStatus(latestHeartbeat.status);
+
+    if (ageMinutes < 10) {
+      return {
+        status,
+        displayLabel: heartbeatLabel(status),
+        reason:
+          latestHeartbeat.message ||
+          `Application heartbeat reported ${latestHeartbeat.status.toLowerCase()}.`,
+        source: "HEARTBEAT",
+        observedAt: latestHeartbeat.receivedAt
+      };
+    }
+
+    staleHeartbeat = {
+      status: "DEGRADED",
+      displayLabel: "App heartbeat delayed",
+      reason: `The last application heartbeat is ${Math.floor(ageMinutes)} minutes old.`,
+      source: "HEARTBEAT",
+      observedAt: latestHeartbeat.receivedAt
+    };
+  }
+
+  const candidates: InheritedModuleSignal[] = [];
+  for (const connection of row.Connection ?? []) {
+    if (connection.mode !== "API") continue;
+    if (connection.installationStatus !== "CONNECTED") continue;
+
+    const observedAt = latestDate(connection.lastSuccessAt, connection.lastSyncAt);
+    if (!observedAt) continue;
+
+    const ageMinutes = Math.max(0, now.getTime() - observedAt.getTime()) / 60_000;
+    const freshnessWindowMinutes = Math.max(20, (connection.syncIntervalMinutes ?? 15) * 3);
+    const failed =
+      connection.lastSyncStatus === "FAILED" ||
+      ["UNHEALTHY", "FAILED", "DEGRADED", "DOWN"].includes(connection.health);
+    const succeeded =
+      !failed && (connection.health === "HEALTHY" || connection.lastSyncStatus === "SUCCEEDED");
+
+    if (failed) {
+      candidates.push({
+        status: "DEGRADED",
+        displayLabel: "Connection needs attention",
+        reason:
+          connection.healthReason ||
+          `The latest ${connection.name} connection check failed.`,
+        source: "CONNECTION_DISCOVERY",
+        observedAt
+      });
+      continue;
+    }
+
+    if (succeeded && ageMinutes <= freshnessWindowMinutes) {
+      candidates.push({
+        status: "HEALTHY",
+        displayLabel: "Connection verified",
+        reason:
+          connection.healthReason ||
+          `Authenticated ${connection.name} connection responded successfully.`,
+        source: "CONNECTION_DISCOVERY",
+        observedAt
+      });
+      continue;
+    }
+
+    if (succeeded) {
+      candidates.push({
+        status: "DEGRADED",
+        displayLabel: "Connection check overdue",
+        reason: `The last successful ${connection.name} connection check is ${Math.floor(ageMinutes)} minutes old.`,
+        source: "CONNECTION_DISCOVERY",
+        observedAt
+      });
+    }
+  }
+
+  candidates.sort((a, b) => b.observedAt.getTime() - a.observedAt.getTime());
+  return candidates[0] ?? staleHeartbeat;
 };
 
 const attachLatestCheckResults = async <
@@ -86,6 +232,25 @@ const attachLatestCheckResults = async <
 
 export const enrichProjectRow = async (row: ProjectRow) => {
   const withResults = await attachLatestCheckResults(row);
+  const inheritedSignal = resolveInheritedModuleSignal(withResults);
+  const servicesWithSignals = withResults.Service.map((service) => {
+    const hasDedicatedCheck = service.Check.some((check) => check.isActive);
+    const isConnectionDiscoveredModule =
+      service.type === "MODULE" && (service.OutgoingDependencies?.length ?? 0) > 0;
+
+    if (!inheritedSignal || hasDedicatedCheck || !isConnectionDiscoveredModule) {
+      return service;
+    }
+
+    return {
+      ...service,
+      status: inheritedSignal.status,
+      healthDisplayLabel: inheritedSignal.displayLabel,
+      healthReason: inheritedSignal.reason,
+      healthSource: inheritedSignal.source,
+      lastSignalAt: inheritedSignal.observedAt.toISOString()
+    };
+  });
   const openAlerts = withResults.Alert.filter((alert) => alert.status === "OPEN" || alert.status === "ACKNOWLEDGED");
   const unresolvedIncidents = withResults.Incident.filter((incident) => incident.status !== "RESOLVED");
 
@@ -107,7 +272,7 @@ export const enrichProjectRow = async (row: ProjectRow) => {
     isActive: withResults.isActive,
     inMaintenance,
     verificationActive,
-    services: withResults.Service,
+    services: servicesWithSignals,
     openAlerts,
     unresolvedIncidents,
     lastHeartbeatAt: withResults.Heartbeat[0]?.receivedAt ?? null
@@ -115,6 +280,7 @@ export const enrichProjectRow = async (row: ProjectRow) => {
 
   return {
     ...withResults,
+    Service: servicesWithSignals,
     status: health.status,
     healthReason: health.healthReason,
     healthSource: health.healthSource,
@@ -125,7 +291,7 @@ export const enrichProjectRow = async (row: ProjectRow) => {
     affectedModules: health.affectedModules,
     affectedWorkflows: health.affectedWorkflows,
     affectedComponents: health.affectedComponents,
-    services: withResults.Service,
+    services: servicesWithSignals,
     alerts: openAlerts,
     incidents: withResults.Incident,
     heartbeats: withResults.Heartbeat,
@@ -181,7 +347,16 @@ export const writeBillingAudit = async (
 export const projectInclude = {
   Service: {
     include: {
-      Check: true
+      Check: true,
+      OutgoingDependencies: {
+        where: {
+          dependencyType: "HIERARCHY" as const,
+          source: "CONNECTION_DISCOVERY",
+          isActive: true
+        },
+        select: { id: true },
+        take: 1
+      }
     }
   },
   Alert: { where: { status: { in: ["OPEN", "ACKNOWLEDGED"] as ("OPEN" | "ACKNOWLEDGED")[] } } },
@@ -201,7 +376,10 @@ export const projectInclude = {
       linkedCheckId: true,
       configurationJson: true,
       createdAt: true,
-      lastSuccessAt: true
+      lastSuccessAt: true,
+      lastSyncAt: true,
+      lastSyncStatus: true,
+      syncIntervalMinutes: true
     }
   },
   NotificationChannel: {
