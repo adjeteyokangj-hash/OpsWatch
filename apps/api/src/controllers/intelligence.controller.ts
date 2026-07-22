@@ -2,6 +2,7 @@ import { Response } from "express";
 import type { AuthRequest } from "../middleware/auth";
 import { hasPermission } from "../auth/permissions";
 import { buildIntelligenceSnapshot } from "../services/intelligence/brain-snapshot.service";
+import { mergeAiOperationsRuntimeStatus } from "../services/intelligence/ai-operations-runtime-status.service";
 import { prisma } from "../lib/prisma";
 import { isPredictionsEnabled } from "../services/intelligence/intelligence-constants";
 import { listFeatureGates } from "../services/intelligence/feature-gates.service";
@@ -213,9 +214,6 @@ export const getFeatureGatesHandler = async (req: AuthRequest, res: Response): P
   });
 };
 
-const toneRank = (tone: "green" | "amber" | "red"): number =>
-  tone === "red" ? 2 : tone === "amber" ? 1 : 0;
-
 export const getAiOperationsStatusHandler = async (
   req: AuthRequest,
   res: Response
@@ -253,30 +251,7 @@ export const getAiOperationsStatusHandler = async (
       buildWorkerRuntimeStatus()
     ]);
 
-    const capabilities = status.capabilities.some((capability) => capability.id === "worker_heartbeat")
-      ? status.capabilities.map((capability) =>
-          capability.id === "worker_heartbeat" ? worker.capability : capability
-        )
-      : [worker.capability, ...status.capabilities];
-    const blocked = [
-      ...status.blocked.filter((row) => row.id !== "worker_heartbeat"),
-      ...worker.blocked
-    ];
-    const overallTone =
-      toneRank(worker.capability.tone) > toneRank(status.overall.tone)
-        ? worker.capability.tone
-        : status.overall.tone;
-
-    res.json({
-      ...status,
-      overall: {
-        ...status.overall,
-        tone: overallTone,
-        summary: `${status.overall.summary} Worker evidence: ${worker.capability.summary}`
-      },
-      capabilities,
-      blocked
-    });
+    res.json(mergeAiOperationsRuntimeStatus(status, worker));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Operations status failed";
     res.status(503).json({
