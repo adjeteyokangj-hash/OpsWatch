@@ -78,6 +78,7 @@ jobs:
           'src/lib/session-cookie.test.ts'
           'src/services/connections/connection-topology-discovery.service.test.ts'
           'src/services/heartbeats.service.test.ts'
+          'src/services/project-loader.module-signal.test.ts'
           'src/services/intelligence/ai-operations-runtime-status.service.test.ts'
           'src/services/worker-tick/serverless-tick.service.test.ts'
           'src/services/worker-tick/worker-runtime-status.service.test.ts'
