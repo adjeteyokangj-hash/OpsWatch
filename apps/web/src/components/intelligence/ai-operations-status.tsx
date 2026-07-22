@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { StatusBadge } from "../ui/status-badge";
@@ -21,6 +21,24 @@ const toneLabel = (tone: OpsStatusTone): string => {
   if (tone === "green") return "Active";
   if (tone === "amber") return "Waiting";
   return "Blocked";
+};
+
+const workerLabel = (tone: OpsStatusTone | undefined): string => {
+  if (tone === "green") return "Running";
+  if (tone === "amber") return "Needs attention";
+  if (tone === "red") return "Unavailable";
+  return "Unknown";
+};
+
+const predictionLabel = (
+  tone: OpsStatusTone | undefined,
+  evidence: Record<string, unknown> | undefined
+): string => {
+  if (evidence?.enabled === false) return "Off";
+  if (tone === "green") return "Active";
+  if (tone === "amber") return "Building evidence";
+  if (tone === "red") return "Blocked";
+  return "Unknown";
 };
 
 const formatWhen = (value: string | null | undefined): string => {
@@ -50,34 +68,35 @@ export function AiOperationsStatus({ status, loading, compact, projectId }: Prop
   }
 
   if (compact) {
-    const pred = status.capabilities.find((c) => c.id === "prediction_engine");
-    const hb = status.capabilities.find((c) => c.id === "worker_heartbeat");
+    const prediction = status.capabilities.find((capability) => capability.id === "prediction_engine");
+    const worker = status.capabilities.find((capability) => capability.id === "worker_heartbeat");
+    const reviewHref = projectId
+      ? `/projects/${projectId}/settings?tab=automation`
+      : "/intelligence";
+    const reviewLabel = projectId ? "Review automation settings" : "Review full AI status";
+
     return (
-      <section className="ai-ops-status ai-ops-status--compact" data-testid="ai-ops-status-compact" data-tone={status.overall.tone}>
-        <p className="ai-ops-status__compact-line">
-          <strong>AI ops:</strong> {status.overall.modeLabel}
-          {" · "}
-          Predictions {pred ? toneLabel(pred.tone).toLowerCase() : "—"}
-          {" · "}
-          Heartbeat {hb ? toneLabel(hb.tone).toLowerCase() : "—"}
-          {status.lastAiDecision.at ? (
-            <>
-              {" · "}
-              Last decision {formatWhen(status.lastAiDecision.at)}
-            </>
-          ) : null}
-          {projectId ? (
-            <>
-              {" · "}
-              <Link href={`/projects/${projectId}/settings?tab=automation`}>Automation mode</Link>
-            </>
-          ) : (
-            <>
-              {" · "}
-              <Link href="/intelligence">Full AI status</Link>
-            </>
-          )}
-        </p>
+      <section
+        className="ai-ops-status ai-ops-status--compact"
+        data-testid="ai-ops-status-compact"
+        data-tone={status.overall.tone}
+      >
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <strong>AI operations</strong>
+            <StatusBadge label={toneLabel(status.overall.tone)} tone={toneBadge(status.overall.tone)} />
+          </div>
+          <p style={{ margin: 0 }}>{status.overall.summary}</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <span className="meta-chip">Worker: {workerLabel(worker?.tone)}</span>
+            <span className="meta-chip">
+              Predictions: {predictionLabel(prediction?.tone, prediction?.evidence)}
+            </span>
+          </div>
+          <Link className="text-link" href={reviewHref}>
+            {reviewLabel} →
+          </Link>
+        </div>
       </section>
     );
   }
@@ -97,20 +116,20 @@ export function AiOperationsStatus({ status, loading, compact, projectId }: Prop
       </div>
 
       <ul className="ai-ops-status__list">
-        {status.capabilities.map((cap) => (
+        {status.capabilities.map((capability) => (
           <li
-            key={cap.id}
-            className={`ai-ops-status__item ai-ops-status__item--${cap.tone}`}
-            data-capability={cap.id}
-            data-tone={cap.tone}
+            key={capability.id}
+            className={`ai-ops-status__item ai-ops-status__item--${capability.tone}`}
+            data-capability={capability.id}
+            data-tone={capability.tone}
           >
             <div className="ai-ops-status__item-head">
-              <strong>{cap.label}</strong>
-              <StatusBadge label={toneLabel(cap.tone)} tone={toneBadge(cap.tone)} />
+              <strong>{capability.label}</strong>
+              <StatusBadge label={toneLabel(capability.tone)} tone={toneBadge(capability.tone)} />
             </div>
-            <p className="muted">{cap.summary}</p>
-            {cap.lastEvidenceAt ? (
-              <p className="ai-ops-status__evidence muted">Evidence: {formatWhen(cap.lastEvidenceAt)}</p>
+            <p className="muted">{capability.summary}</p>
+            {capability.lastEvidenceAt ? (
+              <p className="ai-ops-status__evidence muted">Evidence: {formatWhen(capability.lastEvidenceAt)}</p>
             ) : null}
           </li>
         ))}
