@@ -62,7 +62,7 @@ export function LogoutButton({ className = "secondary-button header-logout" }: {
   };
 
   return (
-    <div className="logout-control">
+    <div style={{ display: "grid", justifyItems: "end", gap: 4 }}>
       <button
         type="button"
         className={className}
@@ -76,7 +76,7 @@ export function LogoutButton({ className = "secondary-button header-logout" }: {
         {busy ? "Logging out…" : "Logout"}
       </button>
       {error ? (
-        <p className="logout-control__error" role="alert">
+        <p role="alert" style={{ margin: 0, maxWidth: 360, color: "var(--down)", fontSize: "0.8rem", textAlign: "right" }}>
           {error}
         </p>
       ) : null}
