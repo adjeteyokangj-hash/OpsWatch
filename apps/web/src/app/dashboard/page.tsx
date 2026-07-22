@@ -27,6 +27,7 @@ type ProjectRow = {
   lastCompletedCheckAt?: string | null;
   alerts?: Array<{ id: string }>;
 };
+
 type AlertRow = {
   id: string;
   title: string;
@@ -36,6 +37,7 @@ type AlertRow = {
   project: { id: string; name: string };
   service: { id: string; name: string } | null;
 };
+
 type IncidentRow = {
   id: string;
   title: string;
@@ -45,6 +47,7 @@ type IncidentRow = {
   resolvedAt: string | null;
   project: { id: string; name: string };
 };
+
 type CheckRow = {
   id: string;
   name: string;
@@ -92,16 +95,6 @@ type CheckMetrics = {
   summary: { total: number; pass: number; fail: number; warn: number; pending: number };
 };
 
-type MetricsResults = [
-  PromiseSettledResult<ProjectRow[]>,
-  PromiseSettledResult<AlertRow[]>,
-  PromiseSettledResult<IncidentRow[]>,
-  PromiseSettledResult<CheckMetrics>,
-  PromiseSettledResult<{ projects: InsightsProject[] }>,
-  PromiseSettledResult<LayerHealthRow[]>,
-  PromiseSettledResult<IntelligenceTeaser>
-];
-
 const formatLoadFailure = (label: string, reason: unknown): string => {
   const message = reason instanceof Error ? reason.message : String(reason);
   return `${label} (${message || "failed"})`;
@@ -112,8 +105,16 @@ export default function DashboardPage() {
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [incidents, setIncidents] = useState<IncidentRow[]>([]);
   const [checks, setChecks] = useState<CheckRow[]>([]);
-  const [checkSummary, setCheckSummary] = useState<{ total: number; pass: number; fail: number; warn: number; pending: number } | null>(null);
-  const [recommendations, setRecommendations] = useState<Array<InsightsRecommendation & { projectName: string }>>([]);
+  const [checkSummary, setCheckSummary] = useState<{
+    total: number;
+    pass: number;
+    fail: number;
+    warn: number;
+    pending: number;
+  } | null>(null);
+  const [recommendations, setRecommendations] = useState<
+    Array<InsightsRecommendation & { projectName: string }>
+  >([]);
   const [layerHealth, setLayerHealth] = useState<LayerHealthRow[]>([]);
   const [intelligence, setIntelligence] = useState<IntelligenceTeaser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,157 +123,135 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let cancelled = false;
-    /** Keep the mobile skeleton from outliving hung/slow API batches (fallback retries included). */
-    const LOAD_BUDGET_MS = 18_000;
-    const unlockTimer = window.setTimeout(() => {
-      if (!cancelled) {
-        setLoading(false);
-      }
-    }, LOAD_BUDGET_MS);
+    const CORE_LOAD_BUDGET_MS = 12_000;
+    const failures = new Map<string, string>();
 
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      setSessionOrgMissing(false);
+    const publishFailures = (): void => {
+      if (cancelled) return;
+      const details = Array.from(failures.values());
+      setError(
+        details.length > 0
+          ? `Some dashboard data failed to load: ${details.join("; ")}. Showing available live data only.`
+          : null
+      );
+    };
+
+    const runMetric = async <T,>(
+      label: string,
+      request: Promise<T>,
+      apply: (value: T) => void
+    ): Promise<void> => {
       try {
-        // Do not block live metrics on /auth/session — a hung session probe previously
-        // left mobile (and desktop) stuck on “Loading live metrics…” forever.
-        const sessionPromise = fetchSessionUser().catch(() => null);
+        const value = await request;
+        if (!cancelled) apply(value);
+      } catch (reason) {
+        failures.set(label, formatLoadFailure(label, reason));
+        publishFailures();
+      }
+    };
 
-        const metricsPromise: Promise<MetricsResults> = Promise.allSettled([
-          apiFetch<ProjectRow[]>("/projects", { suppressAuthRedirect: true }),
-          apiFetch<AlertRow[]>("/alerts", { suppressAuthRedirect: true }),
-          apiFetch<IncidentRow[]>("/incidents", { suppressAuthRedirect: true }),
-          apiFetch<CheckMetrics>("/checks", { suppressAuthRedirect: true }),
-          apiFetch<{ projects: InsightsProject[] }>("/insights/product", { suppressAuthRedirect: true }),
-          apiFetch<LayerHealthRow[]>("/analytics/layer-health", { suppressAuthRedirect: true }),
-          apiFetch<IntelligenceTeaser>("/intelligence?harvest=false", { suppressAuthRedirect: true })
-        ] as const);
+    setLoading(true);
+    setError(null);
+    setSessionOrgMissing(false);
 
-        const budget = new Promise<"budget">((resolve) => {
-          window.setTimeout(() => resolve("budget"), LOAD_BUDGET_MS);
-        });
+    const coreBudgetTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      setLoading(false);
+      setError((current) =>
+        current ??
+        "Core dashboard metrics are taking longer than expected. Displaying each live result as it becomes available."
+      );
+    }, CORE_LOAD_BUDGET_MS);
 
-        const raced = await Promise.race([
-          metricsPromise.then((results) => ({ kind: "results" as const, results })),
-          budget.then(() => ({ kind: "budget" as const }))
-        ]);
-
-        if (cancelled) return;
-
-        if (raced.kind === "budget") {
-          setError(
-            "Dashboard metrics are taking longer than expected. Showing partial live data as it arrives — refresh if values stay empty."
-          );
-          // Keep waiting for slow calls so later data can still populate when it arrives.
-          void metricsPromise.then(async (results) => {
-            if (cancelled) return;
-            applyMetricsResults(results);
-            const sessionUser = await sessionPromise;
-            if (cancelled) return;
-            if (sessionUser && !sessionUser.organizationId) {
-              setSessionOrgMissing(true);
-            }
-          });
-          return;
+    const coreTasks = [
+      runMetric(
+        "projects",
+        apiFetch<ProjectRow[]>("/projects", { suppressAuthRedirect: true }),
+        setProjects
+      ),
+      runMetric(
+        "alerts",
+        apiFetch<AlertRow[]>("/alerts", { suppressAuthRedirect: true }),
+        setAlerts
+      ),
+      runMetric(
+        "incidents",
+        apiFetch<IncidentRow[]>("/incidents", { suppressAuthRedirect: true }),
+        setIncidents
+      ),
+      runMetric(
+        "checks",
+        apiFetch<CheckMetrics>("/checks", { suppressAuthRedirect: true }),
+        (value) => {
+          setChecks(value.items);
+          setCheckSummary(value.summary);
         }
+      )
+    ];
 
-        applyMetricsResults(raced.results);
+    const secondaryTasks = [
+      runMetric(
+        "insights",
+        apiFetch<{ projects: InsightsProject[] }>("/insights/product", {
+          suppressAuthRedirect: true
+        }),
+        (value) => {
+          const openRecommendations = (value.projects || [])
+            .flatMap((project) =>
+              (project.recommendations || []).map((recommendation) => ({
+                ...recommendation,
+                projectName: project.name
+              }))
+            )
+            .filter((recommendation) => recommendation.status === "OPEN")
+            .filter(
+              (recommendation) =>
+                !/localhost|127\.0\.0\.1|http:\/\//i.test(
+                  `${recommendation.title} ${recommendation.description}`
+                )
+            );
+          setRecommendations(openRecommendations.slice(0, 4));
+        }
+      ),
+      runMetric(
+        "layer health",
+        apiFetch<LayerHealthRow[]>("/analytics/layer-health", {
+          suppressAuthRedirect: true
+        }),
+        setLayerHealth
+      ),
+      runMetric(
+        "intelligence",
+        apiFetch<IntelligenceTeaser>("/intelligence?harvest=false", {
+          suppressAuthRedirect: true
+        }),
+        setIntelligence
+      )
+    ];
 
-        const sessionUser = await sessionPromise;
-        if (cancelled) return;
-        // Only flag missing org when session resolved to a user without org — not on timeout/null.
-        if (sessionUser && !sessionUser.organizationId) {
+    void Promise.all(coreTasks).then(() => {
+      window.clearTimeout(coreBudgetTimer);
+      if (cancelled) return;
+      setLoading(false);
+      publishFailures();
+    });
+
+    // Secondary insights must never hold Projects, Alerts, Incidents or Checks hostage.
+    void Promise.all(secondaryTasks).then(publishFailures);
+
+    void fetchSessionUser()
+      .then((sessionUser) => {
+        if (!cancelled && sessionUser && !sessionUser.organizationId) {
           setSessionOrgMissing(true);
         }
-      } catch (err: any) {
-        if (!cancelled) {
-          setError(err?.message || "Failed to load dashboard data");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
+      })
+      .catch(() => {
+        // API/session availability is reported by the metric requests themselves.
+      });
 
-    const applyMetricsResults = (results: MetricsResults) => {
-      const [
-        projectsResult,
-        alertsResult,
-        incidentsResult,
-        checksResult,
-        insightsResult,
-        layerHealthResult,
-        intelligenceResult
-      ] = results;
-
-      const failures: string[] = [];
-
-      if (projectsResult.status === "fulfilled") {
-        setProjects(projectsResult.value);
-      } else {
-        failures.push(formatLoadFailure("projects", projectsResult.reason));
-      }
-
-      if (alertsResult.status === "fulfilled") {
-        setAlerts(alertsResult.value);
-      } else {
-        failures.push(formatLoadFailure("alerts", alertsResult.reason));
-      }
-
-      if (incidentsResult.status === "fulfilled") {
-        setIncidents(incidentsResult.value);
-      } else {
-        failures.push(formatLoadFailure("incidents", incidentsResult.reason));
-      }
-
-      if (checksResult.status === "fulfilled") {
-        setChecks(checksResult.value.items);
-        setCheckSummary(checksResult.value.summary);
-      } else {
-        failures.push(formatLoadFailure("checks", checksResult.reason));
-      }
-
-      if (insightsResult.status === "fulfilled") {
-        const openRecommendations = (insightsResult.value.projects || [])
-          .flatMap((project) =>
-            (project.recommendations || []).map((recommendation) => ({
-              ...recommendation,
-              projectName: project.name
-            }))
-          )
-          .filter((recommendation) => recommendation.status === "OPEN")
-          .filter(
-            (recommendation) =>
-              !/localhost|127\.0\.0\.1|http:\/\//i.test(`${recommendation.title} ${recommendation.description}`)
-          );
-        setRecommendations(openRecommendations.slice(0, 4));
-      } else {
-        failures.push(formatLoadFailure("insights", insightsResult.reason));
-      }
-
-      if (layerHealthResult.status === "fulfilled") {
-        setLayerHealth(layerHealthResult.value);
-      } else {
-        failures.push(formatLoadFailure("layer health", layerHealthResult.reason));
-      }
-
-      if (intelligenceResult.status === "fulfilled") {
-        setIntelligence(intelligenceResult.value);
-      }
-
-      if (failures.length > 0) {
-        setError(
-          `Some dashboard data failed to load: ${failures.join("; ")}. Showing available live data only.`
-        );
-      }
-    };
-
-    void load();
     return () => {
       cancelled = true;
-      window.clearTimeout(unlockTimer);
+      window.clearTimeout(coreBudgetTimer);
     };
   }, []);
 
@@ -280,9 +259,9 @@ export default function DashboardPage() {
   const degraded = projects.filter((p) => p.status === "DEGRADED").length;
   const down = projects.filter((p) => p.status === "DOWN").length;
   const primaryProject = projects[0] ?? null;
-  const openAlerts = alerts.filter((a) => a.status === 'OPEN' || a.status === 'ACKNOWLEDGED');
-  const unresolvedIncidents = incidents.filter((incident) => incident.status !== 'RESOLVED');
-  const resolvedIncidents = incidents.filter((incident) => incident.status === 'RESOLVED');
+  const openAlerts = alerts.filter((a) => a.status === "OPEN" || a.status === "ACKNOWLEDGED");
+  const unresolvedIncidents = incidents.filter((incident) => incident.status !== "RESOLVED");
+  const resolvedIncidents = incidents.filter((incident) => incident.status === "RESOLVED");
 
   const latestAlerts = [...openAlerts]
     .sort((a, b) => new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime())
@@ -293,12 +272,12 @@ export default function DashboardPage() {
     .slice(0, 8);
 
   const noisyHistoryCount = alerts.length - openAlerts.length;
-  const checkFailures = checks.filter((check) => check.latestResult?.status === 'FAIL').length;
-  const checkWarns = checks.filter((check) => check.latestResult?.status === 'WARN').length;
+  const checkFailures = checks.filter((check) => check.latestResult?.status === "FAIL").length;
+  const checkWarns = checks.filter((check) => check.latestResult?.status === "WARN").length;
   const weakServiceMap = checks.reduce<Record<string, number>>((acc, check) => {
     const status = check.latestResult?.status;
-    if (status !== 'FAIL' && status !== 'WARN') return acc;
-    const key = `${check.service?.project?.name || 'Unknown project'} / ${check.service?.name || 'Unknown service'}`;
+    if (status !== "FAIL" && status !== "WARN") return acc;
+    const key = `${check.service?.project?.name || "Unknown project"} / ${check.service?.name || "Unknown service"}`;
     acc[key] = (acc[key] || 0) + 1;
     return acc;
   }, {});
@@ -342,38 +321,38 @@ export default function DashboardPage() {
       ) : null}
 
       <section className="grid-6 dashboard-metrics">
-        <StatCard label="Projects" value={loading ? '-' : projects.length} href="/projects" />
-        <StatCard label="Healthy projects" value={loading ? '-' : healthy} href="/projects?health=HEALTHY" />
-        <StatCard label="Degraded projects" value={loading ? '-' : degraded} href="/projects?health=DEGRADED" />
-        <StatCard label="Down projects" value={loading ? '-' : down} href="/projects?health=DOWN" />
+        <StatCard label="Projects" value={loading ? "-" : projects.length} href="/projects" />
+        <StatCard label="Healthy projects" value={loading ? "-" : healthy} href="/projects?health=HEALTHY" />
+        <StatCard label="Degraded projects" value={loading ? "-" : degraded} href="/projects?health=DEGRADED" />
+        <StatCard label="Down projects" value={loading ? "-" : down} href="/projects?health=DOWN" />
         <StatCard
           label="Open alerts"
-          value={loading ? '-' : openAlerts.length}
+          value={loading ? "-" : openAlerts.length}
           href="/alerts?status=OPEN"
         />
         <StatCard
           label="Unresolved incidents"
-          value={loading ? '-' : unresolvedIncidents.length}
+          value={loading ? "-" : unresolvedIncidents.length}
           href="/incidents?onlyUnresolved=true"
         />
         <StatCard
           label="Failing checks"
-          value={loading ? '-' : (checkSummary?.fail ?? '-')}
+          value={loading ? "-" : (checkSummary?.fail ?? "-")}
           href="/checks?latestStatus=FAIL"
         />
         <StatCard
           label="Checks pending"
-          value={loading ? '-' : (checkSummary?.pending ?? '-')}
+          value={loading ? "-" : (checkSummary?.pending ?? "-")}
           href="/checks?latestStatus=PENDING"
         />
         <StatCard
           label="Checks with warnings"
-          value={loading ? '-' : (checkSummary?.warn ?? '-')}
+          value={loading ? "-" : (checkSummary?.warn ?? "-")}
           href="/checks?latestStatus=WARN"
         />
         <StatCard
           label="Checks tracked"
-          value={loading ? '-' : (checkSummary?.total ?? '-')}
+          value={loading ? "-" : (checkSummary?.total ?? "-")}
           href="/checks"
         />
       </section>
@@ -419,7 +398,7 @@ export default function DashboardPage() {
             title: alert.title,
             severity: alert.severity,
             status: alert.status,
-            projectName: alert.project?.name || 'Unknown project',
+            projectName: alert.project?.name || "Unknown project",
             serviceName: alert.service?.name || null,
             timestamp: alert.lastSeenAt
           }))}
@@ -431,7 +410,7 @@ export default function DashboardPage() {
             title: incident.title,
             status: incident.status,
             severity: incident.severity,
-            projectName: incident.project?.name || 'Unknown project',
+            projectName: incident.project?.name || "Unknown project",
             openedAt: incident.openedAt
           }))}
           resolvedCount={resolvedIncidents.length}
