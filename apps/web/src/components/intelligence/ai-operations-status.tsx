@@ -23,6 +23,11 @@ const toneLabel = (tone: OpsStatusTone): string => {
   return "Blocked";
 };
 
+const overallBadgeLabel = (status: AiOperationsStatusPayload): string => {
+  if (/predictions off|learning off/i.test(status.overall.modeLabel)) return "Limited";
+  return toneLabel(status.overall.tone);
+};
+
 const workerLabel = (tone: OpsStatusTone | undefined): string => {
   if (tone === "green") return "Running";
   if (tone === "amber") return "Needs attention";
@@ -70,10 +75,17 @@ export function AiOperationsStatus({ status, loading, compact, projectId }: Prop
   if (compact) {
     const prediction = status.capabilities.find((capability) => capability.id === "prediction_engine");
     const worker = status.capabilities.find((capability) => capability.id === "worker_heartbeat");
-    const reviewHref = projectId
-      ? `/projects/${projectId}/settings?tab=automation`
-      : "/intelligence";
-    const reviewLabel = projectId ? "Review automation settings" : "Review full AI status";
+    const predictionsOff = prediction?.evidence?.enabled === false;
+    const reviewHref = predictionsOff
+      ? "/settings/ai-automation-policies"
+      : projectId
+        ? `/projects/${projectId}/settings?tab=automation`
+        : "/intelligence";
+    const reviewLabel = predictionsOff
+      ? "Review AI configuration"
+      : projectId
+        ? "Review automation settings"
+        : "Review full AI status";
 
     return (
       <section
@@ -84,7 +96,7 @@ export function AiOperationsStatus({ status, loading, compact, projectId }: Prop
         <div style={{ display: "grid", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
             <strong>AI operations</strong>
-            <StatusBadge label={toneLabel(status.overall.tone)} tone={toneBadge(status.overall.tone)} />
+            <StatusBadge label={overallBadgeLabel(status)} tone={toneBadge(status.overall.tone)} />
           </div>
           <p style={{ margin: 0 }}>{status.overall.summary}</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -171,7 +183,7 @@ export function AiOperationsStatus({ status, loading, compact, projectId }: Prop
       ) : null}
 
       <p className="ai-ops-status__footer muted">
-        Green = enabled with recent evidence. Amber = enabled but waiting. Red = disabled, Monitor Only, or stale worker.
+        Green = enabled with recent evidence. Amber = enabled but waiting or operating with a limited capability. Red = unavailable worker, Monitor Only, or emergency stop.
         {" "}
         <Link href="/projects">Open a project</Link>
         {" → Settings → Automation mode."}

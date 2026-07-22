@@ -31,9 +31,12 @@ const baseStatus = (predictionTone: "green" | "amber" | "red" = "amber"): AiOper
   },
   capabilities: [
     capability("overall_mode", "red", "legacy", { profile: "ai_led_safe" }),
-    capability("prediction_engine", predictionTone, predictionTone === "red" ? "Predictions are disabled." : "Building evidence", {
-      enabled: predictionTone !== "red"
-    }),
+    capability(
+      "prediction_engine",
+      predictionTone,
+      predictionTone === "red" ? "Predictions are disabled." : "Building evidence",
+      { enabled: predictionTone !== "red" }
+    ),
     capability("learning_engine", "green", "Learning active"),
     capability("last_ai_decision", "green", "Recent decision"),
     capability("worker_heartbeat", "red", "Legacy application heartbeat stale")
@@ -67,12 +70,13 @@ describe("mergeAiOperationsRuntimeStatus", () => {
     expect(merged.blocked.some((row) => row.id === "worker_heartbeat")).toBe(false);
   });
 
-  it("states that predictions are off when the worker is healthy but predictions are disabled", () => {
+  it("keeps AI available in a limited state when the worker is healthy but predictions are off", () => {
     const merged = mergeAiOperationsRuntimeStatus(baseStatus("red"), worker("green"));
 
-    expect(merged.overall.tone).toBe("red");
-    expect(merged.overall.modeLabel).toBe("AI configured — predictions off");
-    expect(merged.overall.summary).toBe("Predictions are disabled.");
+    expect(merged.overall.tone).toBe("amber");
+    expect(merged.overall.modeLabel).toBe("AI running — predictions off");
+    expect(merged.overall.summary).toMatch(/production configuration/i);
+    expect(merged.overall.summary).toMatch(/can continue/i);
   });
 
   it("prioritises an unavailable worker over other AI capability states", () => {

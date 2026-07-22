@@ -52,13 +52,14 @@ export const mergeAiOperationsRuntimeStatus = (
       tone = "red";
       summary = worker.capability.summary;
     } else if (prediction?.tone === "red") {
-      modeLabel = "AI configured — predictions off";
-      tone = "red";
-      summary = prediction.summary;
+      modeLabel = "AI running — predictions off";
+      tone = "amber";
+      summary =
+        "Predictions are off in production configuration. Worker, learning and non-predictive AI operations can continue.";
     } else if (learning?.tone === "red") {
       modeLabel = "AI configured — learning off";
-      tone = "red";
-      summary = learning.summary;
+      tone = "amber";
+      summary = "Learning is off in production configuration. Worker operations can continue, but the AI cannot build new evidence.";
     } else if (worker.capability.tone === "amber" || lastDecision?.tone !== "green") {
       modeLabel = "AI configured — waiting for evidence";
       tone = "amber";

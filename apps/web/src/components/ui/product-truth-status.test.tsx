@@ -22,6 +22,12 @@ describe("Phase 5 shared product truth", () => {
     expect(screen.getByText("Feature disabled")).toHaveAttribute("title", "No product emission");
   });
 
+  it("explains missing remediation accuracy as awaiting evidence rather than missing setup", () => {
+    render(<ProductTruthStatus state="Not configured" />);
+    expect(screen.getByText("Awaiting evidence")).toBeInTheDocument();
+    expect(screen.queryByText("Not configured")).not.toBeInTheDocument();
+  });
+
   it("uses explicit environment and provenance for test-data diagnostics", () => {
     expect(projectTestDataState({ environment: "test", services: [] })).toBe("test-application");
     expect(

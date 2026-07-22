@@ -42,16 +42,16 @@ const greenProof: AiOperationsStatusPayload = {
   ]
 };
 
-const redProof: AiOperationsStatusPayload = {
+const limitedProof: AiOperationsStatusPayload = {
   asOf: "2026-07-20T19:00:00.000Z",
   overall: {
-    modeLabel: "AI configured — predictions off",
-    tone: "red",
-    summary: "Predictions are disabled — no live forecast emission."
+    modeLabel: "AI running — predictions off",
+    tone: "amber",
+    summary: "Predictions are off in production configuration. Worker, learning and non-predictive AI operations can continue."
   },
   lastAiDecision: { at: null, summary: null, kind: null },
   capabilities: [
-    { id: "overall_mode", label: "Overall mode", tone: "red", summary: "AI configured", lastEvidenceAt: null, evidence: {} },
+    { id: "overall_mode", label: "Overall mode", tone: "amber", summary: "AI limited", lastEvidenceAt: null, evidence: {} },
     { id: "prediction_engine", label: "Prediction engine", tone: "red", summary: "Predictions are disabled — no live forecast emission.", lastEvidenceAt: null, evidence: { enabled: false } },
     { id: "worker_heartbeat", label: "Worker runtime", tone: "green", summary: "Worker tick completed 1m ago.", lastEvidenceAt: null, evidence: {} }
   ],
@@ -74,31 +74,31 @@ describe("AiOperationsStatus", () => {
     expect(html).toContain("Recent AI decisions");
   });
 
-  it("lists blocked capabilities when red", () => {
-    const html = renderToStaticMarkup(<AiOperationsStatus status={redProof} />);
-    expect(html).toContain("AI configured — predictions off");
+  it("lists unavailable prediction capability without claiming the whole AI runtime is blocked", () => {
+    const html = renderToStaticMarkup(<AiOperationsStatus status={limitedProof} />);
+    expect(html).toContain("AI running — predictions off");
     expect(html).toContain("Prediction engine");
     expect(html).toContain("Predictions are disabled.");
   });
 
-  it("compact card uses clear status labels instead of a contradictory sentence", () => {
+  it("compact card shows limited AI, running worker and the correct configuration link", () => {
     const html = renderToStaticMarkup(
-      <AiOperationsStatus status={redProof} compact projectId="proj_1" />
+      <AiOperationsStatus status={limitedProof} compact projectId="proj_1" />
     );
 
     expect(html).toContain("ai-ops-status--compact");
     expect(html).toContain("AI operations");
-    expect(html).toContain("Blocked");
+    expect(html).toContain("Limited");
     expect(html).toContain("Worker: Running");
     expect(html).toContain("Predictions: Off");
-    expect(html).toContain("Review automation settings");
-    expect(html).toContain("/projects/proj_1/settings?tab=automation");
+    expect(html).toContain("Review AI configuration");
+    expect(html).toContain('/settings/ai-automation-policies');
+    expect(html).not.toContain("Blocked</span>");
     expect(html).not.toContain("AI-led configured — blocked");
-    expect(html).not.toContain("Heartbeat active");
   });
 
-  it("organization compact card links to the full Intelligence page", () => {
-    const html = renderToStaticMarkup(<AiOperationsStatus status={redProof} compact />);
+  it("organization compact card links to the full Intelligence page when predictions are available", () => {
+    const html = renderToStaticMarkup(<AiOperationsStatus status={greenProof} compact />);
     expect(html).toContain("Review full AI status");
     expect(html).toContain('href="/intelligence"');
   });
