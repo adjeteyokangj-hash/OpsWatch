@@ -12,10 +12,16 @@ export const discoverConnectionTopologyHandler = async (
     return;
   }
 
+  const connectionId = req.params.connectionId;
+  if (!connectionId) {
+    res.status(400).json({ error: "Connection ID required" });
+    return;
+  }
+
   try {
     const result = await discoverConnectionTopologyById(
       organizationId,
-      req.params.connectionId
+      connectionId
     );
     res.json(result);
   } catch (error) {
