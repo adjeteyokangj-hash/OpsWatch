@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAuthCookies, getCsrfToken } from "../../lib/auth";
+import { redirectAfterLogout } from "./logout-navigation";
 import { LogoutButton } from "./logout-button";
 
 vi.mock("../../lib/auth", () => ({
@@ -9,17 +10,12 @@ vi.mock("../../lib/auth", () => ({
 }));
 
 vi.mock("../../lib/constants", () => ({ API_BASE_URL: "/api" }));
+vi.mock("./logout-navigation", () => ({ redirectAfterLogout: vi.fn() }));
 
 describe("LogoutButton", () => {
-  const replace = vi.fn();
-
   beforeEach(() => {
     vi.mocked(getCsrfToken).mockReturnValue("csrf-token");
     vi.stubGlobal("fetch", vi.fn());
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      value: { replace }
-    });
   });
 
   afterEach(() => {
@@ -51,7 +47,7 @@ describe("LogoutButton", () => {
       "/api/auth/session",
       expect.objectContaining({ credentials: "include" })
     );
-    expect(replace).toHaveBeenCalledWith("/login?reason=logged_out");
+    expect(redirectAfterLogout).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the user on the page and shows an error when server logout fails", async () => {
@@ -67,7 +63,7 @@ describe("LogoutButton", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Invalid CSRF token");
     expect(clearAuthCookies).not.toHaveBeenCalled();
-    expect(replace).not.toHaveBeenCalled();
+    expect(redirectAfterLogout).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Logout" })).toBeEnabled();
   });
 
