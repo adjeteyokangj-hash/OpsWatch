@@ -21,26 +21,52 @@ export const usesInheritedApplicationHeartbeat = (row: any): boolean =>
 
 export const serviceCardHealthLabel = (row: any): string | null => {
   if (!usesInheritedApplicationHeartbeat(row)) return null;
-  if (row.status === "HEALTHY") return "App heartbeat active";
-  if (row.status === "DEGRADED") return "App heartbeat delayed";
-  if (row.status === "DOWN" || row.status === "CRITICAL") return "App heartbeat down";
+  if (typeof row.healthDisplayLabel === "string" && row.healthDisplayLabel.trim()) {
+    return row.healthDisplayLabel.trim();
+  }
+  if (row.status === "HEALTHY") return "Application signal active";
+  if (row.status === "DEGRADED") return "Application signal delayed";
+  if (row.status === "DOWN" || row.status === "CRITICAL") return "Application signal down";
   if (row.status === "PAUSED") return "Monitoring paused";
-  return "Awaiting app heartbeat";
+  return "Awaiting live signal";
 };
 
 const statusHint = (row: any): string => {
   if (usesInheritedApplicationHeartbeat(row)) {
+    if (row.healthSource === "CONNECTION_DISCOVERY") {
+      if (typeof row.healthReason === "string" && row.healthReason.trim()) {
+        return row.healthReason.trim();
+      }
+      if (row.status === "HEALTHY") {
+        return "Authenticated application discovery is responding; add module checks for deeper health evidence.";
+      }
+      if (row.status === "DEGRADED") {
+        return "The authenticated application connection is overdue or needs attention.";
+      }
+      return "Waiting for a successful authenticated application connection check.";
+    }
+
+    if (row.healthSource === "HEARTBEAT") {
+      if (row.status === "HEALTHY") {
+        return "Live through the application heartbeat; add module checks for deeper health evidence.";
+      }
+      if (row.status === "DEGRADED") {
+        return "The inherited application heartbeat is delayed or degraded.";
+      }
+      if (row.status === "DOWN" || row.status === "CRITICAL") {
+        return "The application heartbeat reports this module unavailable.";
+      }
+      if (row.status === "PAUSED") return "Application heartbeat monitoring is paused.";
+      return "Waiting for the next application heartbeat.";
+    }
+
     if (row.status === "HEALTHY") {
-      return "Live through the TrueNumeris application heartbeat; add module checks for deeper health evidence.";
+      return "The application is responding; add module checks for deeper health evidence.";
     }
-    if (row.status === "DEGRADED") {
-      return "The inherited application heartbeat is delayed or degraded.";
-    }
-    if (row.status === "DOWN" || row.status === "CRITICAL") {
-      return "The TrueNumeris application heartbeat reports this module unavailable.";
-    }
-    if (row.status === "PAUSED") return "Application heartbeat monitoring is paused.";
-    return "Waiting for the next TrueNumeris application heartbeat.";
+    if (row.status === "DEGRADED") return "The inherited application signal needs attention.";
+    if (row.status === "DOWN" || row.status === "CRITICAL") return "The application signal reports this module unavailable.";
+    if (row.status === "PAUSED") return "Application monitoring is paused.";
+    return "Waiting for a live application signal.";
   }
   if (row.status === "HEALTHY") return "Operating normally";
   if (row.status === "DEGRADED") return "Needs attention";
