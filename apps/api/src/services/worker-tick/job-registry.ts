@@ -1,3 +1,5 @@
+/// <reference path="../../types/opswatch-worker-jobs.d.ts" />
+
 /**
  * Default runner registry for the serverless worker tick.
  *
