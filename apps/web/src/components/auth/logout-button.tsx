@@ -3,10 +3,9 @@
 import { useState } from "react";
 import { clearAuthCookies, getCsrfToken } from "../../lib/auth";
 import { API_BASE_URL } from "../../lib/constants";
+import { redirectAfterLogout } from "./logout-navigation";
 
-type LogoutErrorPayload = {
-  error?: string;
-};
+type LogoutErrorPayload = { error?: string };
 
 const readLogoutError = async (response: Response): Promise<string> => {
   try {
@@ -23,7 +22,6 @@ export function LogoutButton({ className = "secondary-button header-logout" }: {
 
   const handleLogout = async () => {
     if (busy) return;
-
     setBusy(true);
     setError(null);
 
@@ -35,26 +33,21 @@ export function LogoutButton({ className = "secondary-button header-logout" }: {
         headers: csrfToken ? { "x-opswatch-csrf": csrfToken } : undefined,
         cache: "no-store"
       });
-
-      if (!response.ok) {
-        throw new Error(await readLogoutError(response));
-      }
+      if (!response.ok) throw new Error(await readLogoutError(response));
 
       const sessionCheck = await fetch(`${API_BASE_URL}/auth/session`, {
         credentials: "include",
         cache: "no-store"
       });
-
       if (sessionCheck.ok) {
         throw new Error("Logout did not close the server session. Please try again.");
       }
-
       if (sessionCheck.status !== 401) {
         throw new Error(`Could not verify logout (${sessionCheck.status}). Please try again.`);
       }
 
       clearAuthCookies();
-      window.location.replace("/login?reason=logged_out");
+      redirectAfterLogout();
     } catch (logoutError) {
       setError(logoutError instanceof Error ? logoutError.message : "Logout failed. Please try again.");
       setBusy(false);
