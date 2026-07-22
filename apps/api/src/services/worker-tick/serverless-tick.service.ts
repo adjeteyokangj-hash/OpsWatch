@@ -167,13 +167,13 @@ const runWithLeaseAwareSoftTimeout = async (input: {
     );
   }, input.timeoutMs);
 
+  const renewLease = input.lock.renew;
   const renewEveryMs = Math.max(1_000, Math.min(10_000, Math.floor(input.lockTtlMs / 3)));
-  const renewalTimer = input.lock.renew
+  const renewalTimer = renewLease
     ? setInterval(() => {
         if (renewing || leaseLost) return;
         renewing = true;
-        void input.lock
-          .renew(input.lockTtlMs)
+        void renewLease(input.lockTtlMs)
           .then((renewed) => {
             if (!renewed) {
               leaseLost = true;
