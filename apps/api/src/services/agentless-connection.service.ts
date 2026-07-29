@@ -22,6 +22,12 @@ import {
 } from "./credentials/connection-credential.service";
 import { isMonitoringConnectorMode } from "./monitoring-connectors/monitoring-connector-types";
 import { testMonitoringConnection } from "./monitoring-connectors/monitoring-connector-test.service";
+import {
+  advertisedEndpointEntries,
+  ExternalDiscoveryParseError,
+  parseExternalDiscoveryDocument,
+  type ParsedExternalDiscovery
+} from "./external-discovery";
 
 type ConnectionRow = {
   id: string;
@@ -32,6 +38,7 @@ type ConnectionRow = {
   environment?: string | null;
   authMethod?: string;
   configurationJson: unknown;
+  capabilitiesJson?: unknown;
   credentialFamilyId?: string | null;
   secretRef: string | null;
   managedSecretCiphertext?: string | null;
@@ -256,8 +263,23 @@ const provisionMonitoring = async (connection: ConnectionRow, expectedStatusCode
   if (!connection.projectId) throw new Error("A project is required to start monitoring");
   const validated = validateConnectionConfiguration(connection.mode as any, connection.configurationJson);
   if (!validated.valid) throw new Error(validated.error);
-  const target = String(validated.value.endpoint);
-  const timeoutMs = Number(validated.value.timeoutMs ?? 10_000);
+  const configuration = validated.value;
+  const primaryTarget = String(configuration.endpoint);
+  const timeoutMs = Number(configuration.timeoutMs ?? 10_000);
+  const origin = new URL(primaryTarget).origin;
+  const discovered = configuration.discoveredEndpoints;
+  const advertised = discovered && typeof discovered === "object" && !Array.isArray(discovered)
+    ? Object.entries(discovered as Record<string, unknown>)
+      .filter((entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string")
+      .map(([capability, path]) => ({
+        capability,
+        url: joinConnectionUrl(origin, path)
+      }))
+    : [{ capability: "health", url: primaryTarget }];
+
+  const primary = advertised.find((entry) => entry.capability === "health") ?? advertised[0];
+  if (!primary) throw new Error("No advertised endpoints available for monitoring");
+
   await prisma.$transaction(async (tx) => {
     let serviceId = connection.linkedServiceId;
     if (serviceId) {
@@ -266,31 +288,109 @@ const provisionMonitoring = async (connection: ConnectionRow, expectedStatusCode
     }
     if (!serviceId) {
       const service = await tx.service.create({
-        data: { id: randomUUID(), projectId: connection.projectId!, name: connection.name, type: "API", baseUrl: target, updatedAt: new Date() }
+        data: {
+          id: randomUUID(),
+          projectId: connection.projectId!,
+          name: connection.name,
+          type: "API",
+          baseUrl: primary.url,
+          updatedAt: new Date()
+        }
       });
       serviceId = service.id;
     } else {
-      await tx.service.update({ where: { id: serviceId }, data: { baseUrl: target, updatedAt: new Date() } });
+      await tx.service.update({ where: { id: serviceId }, data: { baseUrl: primary.url, updatedAt: new Date() } });
     }
-    let checkId = connection.linkedCheckId;
-    if (checkId) {
-      const check = await tx.check.findFirst({ where: { id: checkId, serviceId }, select: { id: true } });
-      if (!check) checkId = null;
+
+    const existingChecks = await tx.check.findMany({
+      where: { serviceId },
+      select: { id: true, configJson: true, name: true }
+    });
+
+    const activeCapabilityKeys = new Set(advertised.map((entry) => entry.capability));
+    let primaryCheckId: string | null = connection.linkedCheckId ?? null;
+
+    for (const entry of advertised) {
+      const match = existingChecks.find((check) => {
+        const config = check.configJson && typeof check.configJson === "object"
+          ? check.configJson as Record<string, unknown>
+          : {};
+        return config.source === "CONNECTION"
+          && config.connectionId === connection.id
+          && config.capability === entry.capability;
+      }) ?? (entry.capability === "health" && primaryCheckId
+        ? existingChecks.find((check) => check.id === primaryCheckId)
+        : undefined);
+
+      const configJson = {
+        source: "CONNECTION",
+        connectionId: connection.id,
+        capability: entry.capability,
+        targetUrl: entry.url
+      };
+
+      if (match) {
+        await tx.check.update({
+          where: { id: match.id },
+          data: {
+            name: `${connection.name} ${entry.capability}`,
+            timeoutMs,
+            expectedStatusCode: entry.capability === "health" ? expectedStatusCode : 200,
+            isActive: true,
+            configJson,
+            updatedAt: new Date()
+          }
+        });
+        if (entry.capability === "health" || entry.url === primary.url) primaryCheckId = match.id;
+      } else {
+        const created = await tx.check.create({
+          data: {
+            id: randomUUID(),
+            serviceId,
+            name: `${connection.name} ${entry.capability}`,
+            type: "HTTP",
+            intervalSeconds: 60,
+            timeoutMs,
+            expectedStatusCode: entry.capability === "health" ? expectedStatusCode : 200,
+            isActive: true,
+            configJson,
+            updatedAt: new Date()
+          }
+        });
+        if (entry.capability === "health" || entry.url === primary.url) primaryCheckId = created.id;
+      }
     }
-    if (!checkId) {
-      const check = await tx.check.create({
-        data: {
-          id: randomUUID(), serviceId, name: `${connection.name} health`, type: "HTTP",
-          intervalSeconds: 60, timeoutMs, expectedStatusCode, isActive: true,
-          configJson: { source: "CONNECTION", connectionId: connection.id }, updatedAt: new Date()
-        }
-      });
-      checkId = check.id;
-    } else {
-      await tx.check.update({ where: { id: checkId }, data: { timeoutMs, expectedStatusCode, isActive: true, updatedAt: new Date() } });
+
+    for (const check of existingChecks) {
+      const config = check.configJson && typeof check.configJson === "object"
+        ? check.configJson as Record<string, unknown>
+        : {};
+      if (config.source !== "CONNECTION" || config.connectionId !== connection.id) continue;
+      const capability = typeof config.capability === "string" ? config.capability : null;
+      if (capability && !activeCapabilityKeys.has(capability)) {
+        await tx.check.update({
+          where: { id: check.id },
+          data: { isActive: false, updatedAt: new Date() }
+        });
+      }
     }
-    await tx.connection.update({ where: { id: connection.id }, data: { linkedServiceId: serviceId, linkedCheckId: checkId } });
+
+    if (!primaryCheckId) throw new Error("Failed to provision a primary health check");
+    await tx.connection.update({
+      where: { id: connection.id },
+      data: { linkedServiceId: serviceId, linkedCheckId: primaryCheckId }
+    });
+    connection.linkedServiceId = serviceId;
+    connection.linkedCheckId = primaryCheckId;
   });
+};
+
+const shouldAutoRunExternalDiscovery = (connection: ConnectionRow): boolean => {
+  if (connection.mode !== "API" || connection.id === "unsaved") return false;
+  const validated = validateConnectionConfiguration("API", connection.configurationJson);
+  if (!validated.valid) return false;
+  const discoveryPath = validated.value.discoveryPath;
+  return typeof discoveryPath === "string" && discoveryPath.includes("/api/external/v1/discovery");
 };
 
 export const testUnsavedConnection = async (
@@ -304,6 +404,21 @@ export const testAgentlessConnection = async (
   connection: ConnectionRow,
   options: { startMonitoring?: boolean } = {}
 ): Promise<ProbeResult> => {
+  if (shouldAutoRunExternalDiscovery(connection)) {
+    try {
+      await discoverApiConnection(connection);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Discovery failed";
+      const failed: ProbeResult = {
+        succeeded: false,
+        error: message,
+        errorCategory: "DISCOVERY_FAILED"
+      };
+      if (connection.id !== "unsaved") await recordProbeResult(connection, failed);
+      return failed;
+    }
+  }
+
   const result = await probe(connection);
   if (connection.id !== "unsaved") {
     await recordProbeResult(connection, result);
@@ -327,16 +442,76 @@ export const discoverApiConnection = async (connection: ConnectionRow) => {
   const headers = buildConnectionHeaders(connection.authMethod ?? "NONE", secret, validated.value);
   const response = await fetch(discoveryUrl, { method: "GET", headers, redirect: "manual" });
   if (!response.ok) throw new Error(`Discovery endpoint returned HTTP ${response.status}`);
-  const payload: unknown = await response.json();
-  const objectKeys = payload && typeof payload === "object" && !Array.isArray(payload)
-    ? Object.keys(payload as Record<string, unknown>).slice(0, 100)
-    : [];
+
+  let discovery: ParsedExternalDiscovery;
+  try {
+    const payload: unknown = await response.json();
+    discovery = parseExternalDiscoveryDocument(payload);
+  } catch (error) {
+    if (error instanceof ExternalDiscoveryParseError) throw error;
+    throw new ExternalDiscoveryParseError(
+      error instanceof Error ? error.message : "Discovery response was not valid JSON"
+    );
+  }
+
+  const healthPath = discovery.endpoints.health;
+  const nextConfiguration: Record<string, unknown> = {
+    ...(typeof connection.configurationJson === "object" && connection.configurationJson && !Array.isArray(connection.configurationJson)
+      ? connection.configurationJson as Record<string, unknown>
+      : {}),
+    ...validated.value,
+    baseUrl: endpoint.origin,
+    discoveredEndpoints: discovery.endpoints,
+    monitoringMode: discovery.monitoringMode,
+    discoverySchemaVersion: discovery.schemaVersion,
+    ...(healthPath ? { healthPath } : {}),
+    ...(healthPath ? { endpoint: joinConnectionUrl(endpoint.origin, healthPath) } : {})
+  };
+
+  const capabilitiesJson = {
+    source: "external-discovery",
+    schemaVersion: discovery.schemaVersion,
+    monitoringMode: discovery.monitoringMode,
+    capabilities: discovery.capabilities,
+    endpoints: discovery.endpoints,
+    ...(discovery.application ? { application: discovery.application } : {}),
+    ...(discovery.registry.length ? { registry: discovery.registry } : {})
+  };
+
+  connection.configurationJson = nextConfiguration;
+  connection.capabilitiesJson = capabilitiesJson;
+
+  if (connection.id !== "unsaved") {
+    await prisma.connection.update({
+      where: { id: connection.id },
+      data: {
+        configurationJson: nextConfiguration as any,
+        capabilitiesJson: capabilitiesJson as any,
+        updatedAt: new Date()
+      }
+    });
+  }
+
   await recordAudit(connection, "CONNECTION_DISCOVERY", {
     endpoint: discoveryUrl.toString(),
     statusCode: response.status,
-    objectKeys
+    schemaVersion: discovery.schemaVersion,
+    monitoringMode: discovery.monitoringMode,
+    capabilities: discovery.capabilities,
+    endpoints: discovery.endpoints,
+    advertised: advertisedEndpointEntries(discovery)
   });
-  return { endpoint: discoveryUrl.toString(), statusCode: response.status, objectKeys };
+
+  return {
+    endpoint: discoveryUrl.toString(),
+    statusCode: response.status,
+    schemaVersion: discovery.schemaVersion,
+    monitoringMode: discovery.monitoringMode,
+    capabilities: discovery.capabilities,
+    endpoints: discovery.endpoints,
+    registry: discovery.registry,
+    application: discovery.application ?? null
+  };
 };
 
 export const resolveConnectionSecretReference = (reference: string | null): string | null => {

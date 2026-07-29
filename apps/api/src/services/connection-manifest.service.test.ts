@@ -88,4 +88,15 @@ describe("connection manifest", () => {
     });
     expect(parsed.authMethod).toBe("BEARER");
   });
+
+  it("defaults generic API discoveryPath to the external discovery document", () => {
+    const parsed = parseGuidedConnectionInput({
+      name: "StarLiz",
+      connectorType: "API",
+      mode: "API",
+      baseUrl: "https://starliz.example.test",
+      healthPath: "/api/external/v1/health"
+    });
+    expect(parsed.configuration.discoveryPath).toBe("/api/external/v1/discovery");
+  });
 });

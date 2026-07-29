@@ -207,13 +207,13 @@ export const runHttpChecksJob = async (
     let finalUrl: string | null = null;
     let redirects: string[] = [];
     let timeout: NodeJS.Timeout | null = null;
+    const checkConfig = check.configJson && typeof check.configJson === "object"
+      ? check.configJson as Record<string, unknown>
+      : {};
 
     try {
       const controller = new AbortController();
       timeout = setTimeout(() => controller.abort(), check.timeoutMs);
-      const checkConfig = check.configJson && typeof check.configJson === "object"
-        ? check.configJson as Record<string, unknown>
-        : {};
       let headers: Record<string, string> = {};
       if (
         (checkConfig.source === "CONNECTION" || checkConfig.source === "URL_ONBOARDING") &&
@@ -222,7 +222,6 @@ export const runHttpChecksJob = async (
         const connection = await prisma.connection.findFirst({
           where: {
             id: checkConfig.connectionId,
-            linkedCheckId: check.id,
             isActive: true,
             Project: { id: check.Service.projectId, organizationId: check.Service.Project.organizationId }
           },
@@ -242,8 +241,11 @@ export const runHttpChecksJob = async (
         managedConnectionId = connection.id;
         headers = await connectionRequestHeaders(connection);
       }
+      const targetUrl = typeof checkConfig.targetUrl === "string" && checkConfig.targetUrl
+        ? checkConfig.targetUrl
+        : (check.Service.baseUrl || "");
       const fetched = await fetchWithSafeRedirects({
-        target: check.Service.baseUrl || "",
+        target: targetUrl,
         headers,
         signal: controller.signal
       });
@@ -303,7 +305,10 @@ export const runHttpChecksJob = async (
       }
     } catch (error) {
       status = "FAIL";
-      message = formatFailureMessage(classifyHttpCheckFailure({ error, message: describeHttpTargetFailure(check.Service.baseUrl || "", error) }));
+      const failureTarget = typeof checkConfig.targetUrl === "string" && checkConfig.targetUrl
+        ? checkConfig.targetUrl
+        : (check.Service.baseUrl || "");
+      message = formatFailureMessage(classifyHttpCheckFailure({ error, message: describeHttpTargetFailure(failureTarget, error) }));
     } finally {
       if (timeout) clearTimeout(timeout);
     }

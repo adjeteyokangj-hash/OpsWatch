@@ -106,7 +106,7 @@ const manifests: Record<ConnectionMode, ConnectionManifest> = {
   AGENTLESS: { version: "1.1", displayName: "Generic HTTP/HTTPS monitor", productStatus: "Available", requiredCapabilities: ["health_check"], supportedAuthMethods: ["NONE", "API_KEY", "BEARER", "BASIC", "CUSTOM_HEADER"], availableCapabilities: ["health_check", "latency"], configurationSchema: endpointFields, foundationHooks },
   HEARTBEAT: { version: "1.0", displayName: "Heartbeat ingest", productStatus: "Requires configuration", requiredCapabilities: ["heartbeat"], supportedAuthMethods: ["HMAC", "API_KEY"], availableCapabilities: ["heartbeat", "deployment_metadata"], configurationSchema: [], foundationHooks },
   WEBHOOK: { version: "1.0", displayName: "Signed webhook event ingest", productStatus: "Requires configuration", requiredCapabilities: ["event_ingest"], supportedAuthMethods: ["HMAC"], availableCapabilities: ["event_ingest", "deployment_events"], configurationSchema: [], foundationHooks },
-  API: { version: "1.1", displayName: "Generic REST/API check", productStatus: "Available", requiredCapabilities: ["api_probe"], supportedAuthMethods: ["NONE", "API_KEY", "BEARER", "BASIC", "CUSTOM_HEADER"], availableCapabilities: ["api_probe", "discovery"], configurationSchema: [...endpointFields, { key: "discoveryPath", label: "Discovery path", type: "string", description: "Optional GET path used for real response-key discovery." }], foundationHooks },
+  API: { version: "1.1", displayName: "Generic REST/API check", productStatus: "Available", requiredCapabilities: ["api_probe"], supportedAuthMethods: ["NONE", "API_KEY", "BEARER", "BASIC", "CUSTOM_HEADER"], availableCapabilities: ["api_probe", "discovery"], configurationSchema: [...endpointFields, { key: "discoveryPath", label: "Discovery path", type: "string", description: "External discovery document path (capabilities + endpoints)." }], foundationHooks },
   METRICS_ALERTS_CONNECTOR: { version: "1.0", displayName: "Metrics & alerts connector", productStatus: "Available", requiredCapabilities: ["monitoring_sync"], supportedAuthMethods: ["API_KEY", "BEARER", "CUSTOM_HEADER"], availableCapabilities: ["monitoring_sync", "metric_ingest", "alert_ingest", "event_ingest"], configurationSchema: monitoringConnectorFields, foundationHooks },
   APPLICATION_PERFORMANCE_CONNECTOR: { version: "1.0", displayName: "Application performance connector", productStatus: "Available", requiredCapabilities: ["monitoring_sync"], supportedAuthMethods: ["API_KEY", "BEARER", "CUSTOM_HEADER"], availableCapabilities: ["monitoring_sync", "trace_ingest", "apm_ingest", "dependency_ingest"], configurationSchema: monitoringConnectorFields, foundationHooks },
   INFRASTRUCTURE_MONITORING_CONNECTOR: { version: "1.0", displayName: "Infrastructure monitoring connector", productStatus: "Available", requiredCapabilities: ["monitoring_sync"], supportedAuthMethods: ["API_KEY", "BEARER", "CUSTOM_HEADER"], availableCapabilities: ["monitoring_sync", "service_health_ingest", "entity_ingest", "problem_ingest"], configurationSchema: monitoringConnectorFields, foundationHooks },
@@ -213,8 +213,14 @@ export const parseGuidedConnectionInput = (
     ...(effectiveBaseUrl ? { baseUrl: effectiveBaseUrl } : {}),
     ...(effectiveHealthPath ? { healthPath: effectiveHealthPath } : {}),
     ...(endpoint ? { endpoint } : {}),
-    ...(readString(value.discoveryPath) ?? readString(legacy.discoveryPath) ?? (trueNumeris ? TRUE_NUMERIS_PROFILE.discoveryPath : undefined)
-      ? { discoveryPath: readString(value.discoveryPath) ?? readString(legacy.discoveryPath) ?? TRUE_NUMERIS_PROFILE.discoveryPath }
+    ...(readString(value.discoveryPath)
+      ?? readString(legacy.discoveryPath)
+      ?? (trueNumeris ? TRUE_NUMERIS_PROFILE.discoveryPath : (modeValue === "API" ? "/api/external/v1/discovery" : undefined))
+      ? {
+        discoveryPath: readString(value.discoveryPath)
+          ?? readString(legacy.discoveryPath)
+          ?? (trueNumeris ? TRUE_NUMERIS_PROFILE.discoveryPath : "/api/external/v1/discovery")
+      }
       : {}),
     method: requestMethod,
     ...(timeoutMs ? { timeoutMs } : {}),
