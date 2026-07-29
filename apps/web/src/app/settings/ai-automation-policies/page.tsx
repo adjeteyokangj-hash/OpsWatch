@@ -13,23 +13,29 @@ import {
   type ProjectAutonomousMode
 } from "../../../lib/autonomous-mode";
 
-type PolicyAreaTone = "green" | "amber" | "red";
+type PolicyAreaStatus = "full" | "not_configured" | "not_applicable" | "disabled";
 
 type EffectivePolicyArea = {
   id: string;
   label: string;
   requested: boolean;
   effective: boolean;
-  tone: PolicyAreaTone;
+  status?: PolicyAreaStatus;
+  tone?: "green" | "amber" | "red";
   source: string;
   blocker: string | null;
+  href?: string | null;
 };
 
 type ReadinessItem = {
   id: string;
   label: string;
+  description?: string;
+  category?: "platform" | "application" | "ai";
+  status?: PolicyAreaStatus;
+  applicable?: boolean;
   ok: boolean;
-  href: string;
+  href: string | null;
 };
 
 type AllowlistSummary = {
@@ -49,6 +55,12 @@ type AllowlistEntry = {
   approvalRequired: boolean;
 };
 
+type ProjectOption = {
+  id: string;
+  name: string;
+  slug?: string;
+};
+
 type EffectivePolicySnapshot = {
   asOf: string;
   operatingProfile: string;
@@ -57,10 +69,24 @@ type EffectivePolicySnapshot = {
     effectiveMode: string;
     enabled: boolean;
   };
+  project?: {
+    projectId: string;
+    requestedMode: string;
+    effectiveMode: string;
+    emergencyStop: boolean;
+    blockedReason: string | null;
+  };
   areas: EffectivePolicyArea[];
-  readiness: { ready: boolean; items: ReadinessItem[] };
+  policyCoveragePercent?: number;
+  readiness: {
+    ready: boolean;
+    projectId?: string | null;
+    monitoringMode?: string | null;
+    capabilities?: Record<string, boolean>;
+    items: ReadinessItem[];
+  };
   allowlist: AllowlistSummary;
-  policyHealth: Array<{ id: string; label: string; ok: boolean }>;
+  policyHealth: Array<{ id: string; label: string; ok: boolean; status?: PolicyAreaStatus }>;
   blocked: string[];
 };
 
@@ -109,38 +135,49 @@ const ORG_CEILING_MODES = [
   "FULL_AUTONOMOUS"
 ] as const;
 
-const toneToBadge = (tone: PolicyAreaTone): "success" | "warning" | "danger" =>
-  tone === "green" ? "success" : tone === "amber" ? "warning" : "danger";
+const statusToBadge = (status: PolicyAreaStatus): "success" | "warning" | "danger" | "neutral" => {
+  if (status === "full") return "success";
+  if (status === "not_configured") return "warning";
+  if (status === "disabled") return "neutral";
+  return "neutral";
+};
 
-const toneLabel = (tone: PolicyAreaTone): string =>
-  tone === "green" ? "Active" : tone === "amber" ? "Partial" : "Blocked";
+const statusLabel = (status: PolicyAreaStatus): string => {
+  switch (status) {
+    case "full":
+      return "Full";
+    case "not_configured":
+      return "Not configured";
+    case "not_applicable":
+      return "Not applicable";
+    case "disabled":
+      return "Disabled";
+    default:
+      return status;
+  }
+};
+
+const resolveAreaStatus = (area: EffectivePolicyArea): PolicyAreaStatus => {
+  if (area.status) return area.status;
+  if (area.tone === "green") return "full";
+  if (area.tone === "amber") return "not_configured";
+  if (!area.requested) return "disabled";
+  return "not_configured";
+};
 
 const modeLabel = (mode: string): string =>
   AUTONOMOUS_MODE_LABELS[mode as ProjectAutonomousMode] ?? mode.replace(/_/g, " ");
 
-const AREA_FIX_LINKS: Record<string, string> = {
-  operatingProfile: "/settings/ai-automation-policies",
-  autonomousExecution: "/auto-run-policy",
-  actionPolicies: "/auto-run-policy",
-  playbookGovernance: "/workflows",
-  simulationReadiness: "/settings/ai-automation-policies",
-  modelLifecycleAccuracy: "/accuracy",
-  notificationsEscalation: "/settings",
-  connectorRemediatorPermissions: "/integrations",
-  learningBaselines: "/intelligence",
-  anomalyDetection: "/intelligence",
-  incidentMatching: "/incidents",
-  predictions: "/intelligence",
-  recoveryVerification: "/checks"
-};
-
 const areaFixLink = (area: EffectivePolicyArea): string | null => {
-  if (!area.blocker && area.effective) return null;
-  return AREA_FIX_LINKS[area.id] ?? "/settings/ai-automation-policies";
+  const status = resolveAreaStatus(area);
+  if (status !== "not_configured") return null;
+  return area.href ?? null;
 };
 
 export default function AiAutomationPoliciesPage() {
   const [payload, setPayload] = useState<PoliciesPayload | null>(null);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [allowlistEntries, setAllowlistEntries] = useState<AllowlistEntry[]>([]);
   const [simulation, setSimulation] = useState<SimulationResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -150,17 +187,31 @@ export default function AiAutomationPoliciesPage() {
   const [error, setError] = useState<string | null>(null);
   const [ceilingMode, setCeilingMode] = useState<string>("MONITOR_ONLY");
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (projectId?: string) => {
     setLoading(true);
     setError(null);
     try {
+      const projectRows = await apiFetch<ProjectOption[]>("/projects").catch(() => []);
+      setProjects(projectRows);
+      const fromUrl =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("projectId") ?? ""
+          : "";
+      const queryProjectId = projectId || fromUrl || projectRows[0]?.id || "";
+      if (queryProjectId) {
+        setSelectedProjectId(queryProjectId);
+      }
+      const qs = queryProjectId ? `?projectId=${encodeURIComponent(queryProjectId)}` : "";
       const [policiesData, policyData] = await Promise.all([
-        apiFetch<PoliciesPayload>("/settings/ai-automation-policies"),
+        apiFetch<PoliciesPayload>(`/settings/ai-automation-policies${qs}`),
         apiFetch<{ allowlist?: AllowlistEntry[] }>("/remediation/policy").catch(() => ({ allowlist: [] }))
       ]);
       setPayload(policiesData);
       setAllowlistEntries(policyData.allowlist ?? []);
       setCeilingMode(policiesData.snapshot.org.requestedMode);
+      if (policiesData.snapshot.readiness.projectId && !queryProjectId) {
+        setSelectedProjectId(policiesData.snapshot.readiness.projectId);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load AI & automation policies");
     } finally {
@@ -172,12 +223,26 @@ export default function AiAutomationPoliciesPage() {
     void load();
   }, [load]);
 
+  const onSelectProject = (projectId: string) => {
+    setSelectedProjectId(projectId);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("projectId", projectId);
+      window.history.replaceState({}, "", url.toString());
+    }
+    void load(projectId);
+  };
+
   const enableAiLed = async () => {
+    if (!selectedProjectId || !payload?.snapshot.readiness.ready) return;
     setEnabling(true);
     setError(null);
     try {
-      await apiFetch("/settings/ai-automation-policies/enable-ai-led", { method: "POST" });
-      await load();
+      await apiFetch("/settings/ai-automation-policies/enable-ai-led", {
+        method: "POST",
+        body: JSON.stringify({ projectId: selectedProjectId, projectIds: [selectedProjectId] })
+      });
+      await load(selectedProjectId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to enable AI-led operations");
     } finally {
@@ -193,7 +258,7 @@ export default function AiAutomationPoliciesPage() {
         method: "PATCH",
         body: JSON.stringify({ executionMode: ceilingMode })
       });
-      await load();
+      await load(selectedProjectId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to update organization ceiling");
     } finally {
@@ -206,7 +271,8 @@ export default function AiAutomationPoliciesPage() {
     setError(null);
     try {
       const result = await apiFetch<SimulationResult>("/settings/ai-automation-policies/simulate", {
-        method: "POST"
+        method: "POST",
+        body: JSON.stringify({ projectId: selectedProjectId || undefined })
       });
       setSimulation(result);
     } catch (err: unknown) {
@@ -237,48 +303,125 @@ export default function AiAutomationPoliciesPage() {
   const { snapshot, audits } = payload;
   const readiness = snapshot.readiness;
   const orgClamped = snapshot.org.requestedMode !== snapshot.org.effectiveMode;
+  const coveragePercent =
+    snapshot.policyCoveragePercent ??
+    Math.round(
+      (snapshot.areas.filter((a) => {
+        const s = resolveAreaStatus(a);
+        return s === "full" || s === "disabled" || s === "not_applicable";
+      }).length /
+        Math.max(1, snapshot.areas.length)) *
+        100
+    );
+  const notConfiguredItems = readiness.items.filter(
+    (i) => (i.status ?? (i.ok ? "full" : "not_configured")) === "not_configured"
+  );
+  const platformItems = readiness.items.filter((i) => i.category === "platform");
+  const applicationItems = readiness.items.filter((i) => i.category === "application");
+  const aiItems = readiness.items.filter((i) => i.category === "ai");
+  const selectedProjectName =
+    projects.find((p) => p.id === selectedProjectId)?.name ?? "Selected application";
+
+  const renderReadinessItems = (items: ReadinessItem[]) =>
+    items.length === 0 ? (
+      <p className="metric-label">No items in this section.</p>
+    ) : (
+      <ul className="accuracy-highlight-list">
+        {items.map((item) => {
+          const status = item.status ?? (item.ok ? "full" : "not_configured");
+          const showFix = status === "not_configured" && Boolean(item.href);
+          return (
+            <li key={item.id} className="accuracy-highlight-item">
+              <StatusBadge label={statusLabel(status)} tone={statusToBadge(status)} />
+              <span>
+                {item.label}
+                {item.description ? (
+                  <span className="table-subtle" style={{ display: "block", fontSize: "0.75rem" }}>
+                    {item.description}
+                  </span>
+                ) : null}
+              </span>
+              {showFix && item.href ? (
+                <Link href={item.href} className="table-subtle">
+                  Fix →
+                </Link>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    );
 
   return (
     <Shell>
       <Header title="AI & Automation Policies" />
       <p className="dashboard-subtle">
-        Organisation-wide AI operating profile, automation ceiling, and policy health. Per-project mode
-        overrides live in each application&apos;s automation settings.
+        Capability-driven readiness for a selected application, plus org automation ceiling controls.
       </p>
+
+      <div className="stack-form" style={{ maxWidth: "320px", marginBottom: "8px" }}>
+        <label>
+          Application
+          <select
+            value={selectedProjectId}
+            onChange={(event) => onSelectProject(event.target.value)}
+            data-testid="policy-application-picker"
+          >
+            {projects.length === 0 ? <option value="">No applications</option> : null}
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {error ? <section className="panel error-panel">{error}</section> : null}
 
-      {!readiness.ready ? (
-        <section className="suppression-callout suppression-warn" data-testid="partial-enable-banner">
+      {notConfiguredItems.length > 0 ? (
+        <section className="suppression-callout suppression-warn" data-testid="not-configured-banner">
           <span className="suppression-icon">⚠</span>
           <div className="suppression-body">
-            <p className="suppression-title">Partial enable — readiness not satisfied</p>
+            <p className="suppression-title">Not configured — complete applicable readiness for {selectedProjectName}</p>
             <p className="suppression-detail">
-              AI-led operations can be configured, but some areas remain blocked until readiness checks pass.
-              Complete the checklist below before expecting full autonomous execution.
+              AI-led enablement stays gated until applicable checklist items pass. Not applicable and disabled
+              items do not block readiness.
             </p>
+            <ul className="accuracy-highlight-list" style={{ marginTop: "8px" }}>
+              {notConfiguredItems.map((item) => (
+                <li key={item.id} className="accuracy-highlight-item">
+                  <span>{item.label}</span>
+                  {item.href ? (
+                    <Link href={item.href} className="table-subtle">
+                      Fix →
+                    </Link>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
       ) : null}
 
       <PageSection
         title="AI-led operations"
-        description="Enable the AI-led safe operating profile across your organisation."
+        description="Enable AI-led safe operations for the selected application once applicable readiness passes."
         persistKey="org:ai-automation-policies:master"
         actions={
           <button
             type="button"
             className="primary-button"
-            disabled={enabling}
+            disabled={enabling || !readiness.ready || !selectedProjectId}
             data-action="api"
             data-endpoint="/settings/ai-automation-policies/enable-ai-led"
             onClick={() => void enableAiLed()}
           >
-            {enabling ? "Enabling…" : "Enable AI-led operations"}
+            {enabling ? "Enabling…" : "Enable AI-led safe operations"}
           </button>
         }
       >
-        <div className="grid-6" style={{ gridTemplateColumns: "repeat(3, 1fr)", marginTop: "8px" }}>
+        <div className="grid-6" style={{ gridTemplateColumns: "repeat(4, 1fr)", marginTop: "8px" }}>
           <div className="stat-card">
             <p className="label">Operating profile</p>
             <p className="value">{snapshot.operatingProfile.replace(/_/g, " ")}</p>
@@ -298,7 +441,16 @@ export default function AiAutomationPoliciesPage() {
               {snapshot.allowlist.autoRunEnabledCount}/{snapshot.allowlist.actionCount}
             </p>
           </div>
+          <div className="stat-card">
+            <p className="label">Policy coverage</p>
+            <p className="value">{coveragePercent}%</p>
+          </div>
         </div>
+        {readiness.monitoringMode ? (
+          <p className="dashboard-subtle" style={{ marginTop: "8px" }}>
+            Selected app monitoring mode: {readiness.monitoringMode}
+          </p>
+        ) : null}
       </PageSection>
 
       <PageSection
@@ -350,13 +502,9 @@ export default function AiAutomationPoliciesPage() {
       </PageSection>
 
       <PageSection
-        title="Readiness checklist"
-        description={
-          readiness.ready
-            ? "All readiness checks passed."
-            : "Complete these items before enabling full AI-led execution."
-        }
-        persistKey="org:ai-automation-policies:readiness"
+        title="Platform Readiness"
+        description="Org-scoped prerequisites for AI-led operations."
+        persistKey="org:ai-automation-policies:platform-readiness"
         actions={
           <StatusBadge
             label={readiness.ready ? "Ready" : "Not ready"}
@@ -364,24 +512,36 @@ export default function AiAutomationPoliciesPage() {
           />
         }
       >
-        <ul className="accuracy-highlight-list">
-          {readiness.items.map((item) => (
-            <li key={item.id} className="accuracy-highlight-item">
-              <StatusBadge label={item.ok ? "Pass" : "Missing"} tone={item.ok ? "success" : "danger"} />
-              <span>{item.label}</span>
-              {!item.ok ? (
-                <Link href={item.href} className="table-subtle">
-                  Fix →
-                </Link>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        {renderReadinessItems(platformItems)}
+      </PageSection>
+
+      <PageSection
+        title="Application Readiness"
+        description={
+          readiness.monitoringMode
+            ? `Discovery-driven checks for ${selectedProjectName} (${readiness.monitoringMode}).`
+            : `Discovery-driven checks for ${selectedProjectName}.`
+        }
+        persistKey="org:ai-automation-policies:application-readiness"
+      >
+        {renderReadinessItems(applicationItems)}
+      </PageSection>
+
+      <PageSection
+        title="AI Readiness"
+        description={
+          readiness.ready
+            ? "All applicable prerequisites met for the selected application."
+            : "Complete applicable items before enabling AI-led safe operations."
+        }
+        persistKey="org:ai-automation-policies:ai-readiness"
+      >
+        {renderReadinessItems(aiItems)}
       </PageSection>
 
       <PageSection
         title="Policy areas"
-        description="Requested vs effective state for each AI & automation policy area."
+        description="Full / Not configured / Not applicable / Disabled for each AI & automation policy area."
         persistKey="org:ai-automation-policies:areas"
       >
         <div
@@ -394,12 +554,13 @@ export default function AiAutomationPoliciesPage() {
           }}
         >
           {snapshot.areas.map((area) => {
+            const status = resolveAreaStatus(area);
             const fixHref = areaFixLink(area);
             return (
               <article key={area.id} className="panel" style={{ margin: 0, padding: "12px 14px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginBottom: "8px" }}>
                   <strong style={{ fontSize: "0.9rem" }}>{area.label}</strong>
-                  <StatusBadge label={toneLabel(area.tone)} tone={toneToBadge(area.tone)} />
+                  <StatusBadge label={statusLabel(status)} tone={statusToBadge(status)} />
                 </div>
                 <p className="table-subtle" style={{ margin: "4px 0" }}>
                   Requested: {area.requested ? "On" : "Off"} · Effective: {area.effective ? "On" : "Off"}

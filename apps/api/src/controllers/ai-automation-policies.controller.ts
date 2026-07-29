@@ -109,7 +109,9 @@ export const enableAiLedHandler = async (req: AuthRequest, res: Response): Promi
 
   const projectIds = Array.isArray(req.body?.projectIds)
     ? req.body.projectIds.filter((id: unknown) => typeof id === "string")
-    : undefined;
+    : typeof req.body?.projectId === "string" && req.body.projectId.trim()
+      ? [req.body.projectId.trim()]
+      : undefined;
 
   try {
     const result = await enableAiLedSafeOperations({
@@ -117,7 +119,10 @@ export const enableAiLedHandler = async (req: AuthRequest, res: Response): Promi
       actorUserId: req.user?.id ?? "unknown",
       projectIds
     });
-    const snapshot = await buildEffectivePolicySnapshot({ organizationId: orgId });
+    const snapshot = await buildEffectivePolicySnapshot({
+      organizationId: orgId,
+      projectId: projectIds?.[0]
+    });
     res.json({ ...result, snapshot });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Enable AI-led failed";
@@ -226,7 +231,19 @@ export const getAiLedReadinessHandler = async (req: AuthRequest, res: Response):
     res.status(403).json({ error: "Forbidden" });
     return;
   }
-  res.json(await assessAiLedReadiness(orgId));
+  const projectId =
+    typeof req.query.projectId === "string" && req.query.projectId.trim()
+      ? req.query.projectId.trim()
+      : undefined;
+  if (!projectId) {
+    res.status(400).json({ error: "projectId is required" });
+    return;
+  }
+  try {
+    res.json(await assessAiLedReadiness(orgId, projectId));
+  } catch (error) {
+    res.status(404).json({ error: error instanceof Error ? error.message : "Project not found" });
+  }
 };
 
 export const patchAiAutomationDocumentHandler = async (req: AuthRequest, res: Response): Promise<void> => {

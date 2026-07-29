@@ -3,7 +3,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import {
   AUTO_RUN_ALLOWLIST,
-  checkAutoRunPolicy
+  checkAutoRunPolicy,
+  getAutoRunPolicy
 } from "../remediation/auto-run-policy.service";
 import type { RemediationAction } from "../remediation/actions";
 import { buildIncidentDiagnosis } from "../remediation/remediation-suggest.service";
@@ -12,6 +13,13 @@ import {
   type AiAutomationPolicyDocument,
   type AiOperatingProfileId
 } from "./policy-document";
+import {
+  READINESS_ITEM_DEFINITIONS,
+  readinessStatusOk,
+  resolveRemediationRoute,
+  type ReadinessCategory,
+  type ReadinessStatus
+} from "./readiness-registry";
 
 const TEST_PROJECT_PATTERN = /TEST ONLY|pw-|test-/i;
 const LOW_AUTOMATION_MODES = new Set(["MONITOR_ONLY", "OBSERVE", "DISABLED"]);
@@ -19,12 +27,19 @@ const LOW_AUTOMATION_MODES = new Set(["MONITOR_ONLY", "OBSERVE", "DISABLED"]);
 export type ReadinessItem = {
   id: string;
   label: string;
+  description: string;
+  category: ReadinessCategory;
+  status: ReadinessStatus;
+  applicable: boolean;
   ok: boolean;
-  href: string;
+  href: string | null;
 };
 
 export type AiLedReadinessResult = {
   ready: boolean;
+  projectId: string;
+  monitoringMode: string | null;
+  capabilities: Record<string, boolean>;
   items: ReadinessItem[];
 };
 
@@ -38,33 +53,132 @@ const configJsonContainsRemediator = (configJson: unknown): boolean => {
   );
 };
 
+type DiscoveryCapabilities = {
+  source?: string;
+  schemaVersion?: string;
+  monitoringMode?: string;
+  capabilities?: Record<string, boolean>;
+  endpoints?: Record<string, string>;
+};
+
+const parseDiscoveryCapabilities = (value: unknown): DiscoveryCapabilities | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (row.source !== "external-discovery" && row.monitoringMode !== "api-discovered") {
+    return null;
+  }
+  const capabilities =
+    row.capabilities && typeof row.capabilities === "object" && !Array.isArray(row.capabilities)
+      ? Object.fromEntries(
+        Object.entries(row.capabilities as Record<string, unknown>).filter(
+          (entry): entry is [string, boolean] => typeof entry[1] === "boolean"
+        )
+      )
+      : {};
+  const endpoints =
+    row.endpoints && typeof row.endpoints === "object" && !Array.isArray(row.endpoints)
+      ? Object.fromEntries(
+        Object.entries(row.endpoints as Record<string, unknown>).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string"
+        )
+      )
+      : {};
+  return {
+    source: typeof row.source === "string" ? row.source : undefined,
+    schemaVersion: typeof row.schemaVersion === "string" ? row.schemaVersion : undefined,
+    monitoringMode: typeof row.monitoringMode === "string" ? row.monitoringMode : undefined,
+    capabilities,
+    endpoints
+  };
+};
+
+const itemFromStatus = (
+  id: string,
+  status: ReadinessStatus,
+  projectId: string
+): ReadinessItem => {
+  const def = READINESS_ITEM_DEFINITIONS.find((entry) => entry.id === id);
+  const applicable = status !== "not_applicable" && status !== "disabled";
+  const href =
+    status === "not_configured" ? resolveRemediationRoute(id, projectId) : null;
+  return {
+    id,
+    label: def?.title ?? id,
+    description: def?.description ?? "",
+    category: def?.category ?? "application",
+    status,
+    applicable,
+    ok: readinessStatusOk(status),
+    href
+  };
+};
+
 export const assessAiLedReadiness = async (
-  organizationId: string
+  organizationId: string,
+  projectId: string
 ): Promise<AiLedReadinessResult> => {
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, organizationId, isActive: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      remediationEmergencyDisabled: true
+    }
+  });
+  if (!project) {
+    throw new Error("Project not found");
+  }
+
   const twentyMinutesAgo = new Date(Date.now() - 20 * 60 * 1000);
 
   const [
+    connections,
+    activeChecks,
     recentHeartbeat,
-    checkCount,
     notificationChannel,
     remediatorCandidates,
     approvedPlaybookVersion,
-    checksWithDefaultRecovery,
-    productionProjectCount
+    autoRunPolicy,
+    bundle
   ] = await Promise.all([
+    prisma.connection.findMany({
+      where: {
+        organizationId,
+        projectId,
+        isActive: true,
+        mode: { in: ["API", "AGENTLESS", "HEARTBEAT"] }
+      },
+      select: {
+        id: true,
+        mode: true,
+        installationStatus: true,
+        health: true,
+        capabilitiesJson: true,
+        configurationJson: true,
+        linkedCheckId: true
+      },
+      take: 50
+    }),
+    prisma.check.findMany({
+      where: {
+        isActive: true,
+        Service: { projectId }
+      },
+      select: {
+        id: true,
+        configJson: true,
+        recoveryThreshold: true
+      },
+      take: 200
+    }),
     prisma.heartbeat.findFirst({
       where: {
-        receivedAt: { gte: twentyMinutesAgo },
-        Project: { organizationId }
+        projectId,
+        receivedAt: { gte: twentyMinutesAgo }
       },
       orderBy: { receivedAt: "desc" },
       select: { id: true }
-    }),
-    prisma.check.count({
-      where: {
-        isActive: true,
-        Service: { Project: { organizationId } }
-      }
     }),
     prisma.notificationChannel.findFirst({
       where: {
@@ -76,10 +190,10 @@ export const assessAiLedReadiness = async (
     prisma.projectIntegration.findMany({
       where: {
         enabled: true,
-        Project: { organizationId }
+        projectId
       },
       select: { id: true, configJson: true, type: true },
-      take: 100
+      take: 50
     }),
     prisma.automationPlaybookVersion.findFirst({
       where: {
@@ -88,73 +202,185 @@ export const assessAiLedReadiness = async (
       },
       select: { id: true }
     }),
-    prisma.check.findFirst({
-      where: {
-        isActive: true,
-        recoveryThreshold: { gte: 2 },
-        Service: { Project: { organizationId } }
-      },
-      select: { id: true }
-    }),
-    prisma.project.count({
-      where: { organizationId, isActive: true }
+    getAutoRunPolicy(organizationId),
+    prisma.aiAutomationPolicyBundle.findUnique({
+      where: { organizationId },
+      select: { operatingProfile: true, documentJson: true }
     })
   ]);
 
-  const remediatorIntegration = remediatorCandidates.find(
+  const discoveryConnection = connections.find((row) => parseDiscoveryCapabilities(row.capabilitiesJson));
+  const discovery = discoveryConnection
+    ? parseDiscoveryCapabilities(discoveryConnection.capabilitiesJson)
+    : null;
+  const apiDiscovered = discovery?.monitoringMode === "api-discovered";
+  const capabilities = discovery?.capabilities ?? {};
+  const endpoints = discovery?.endpoints ?? {};
+  const advertisedEndpointCount = Object.keys(endpoints).length;
+
+  const connected =
+    discoveryConnection?.installationStatus === "CONNECTED" ||
+    discoveryConnection?.health === "HEALTHY" ||
+    connections.some(
+      (row) => row.installationStatus === "CONNECTED" || row.health === "HEALTHY"
+    );
+
+  const healthCheckActive = activeChecks.some((check) => {
+    const config = check.configJson && typeof check.configJson === "object"
+      ? check.configJson as Record<string, unknown>
+      : {};
+    return config.capability === "health" || check.id === discoveryConnection?.linkedCheckId;
+  });
+
+  const advertisedCheckCount = activeChecks.filter((check) => {
+    const config = check.configJson && typeof check.configJson === "object"
+      ? check.configJson as Record<string, unknown>
+      : {};
+    return typeof config.capability === "string" && Boolean(capabilities[config.capability]);
+  }).length;
+
+  const hasRemediator = remediatorCandidates.some(
     (row) =>
       ["WORKER_PROVIDER", "SERVICE_PROVIDER", "DEPLOYMENT_PROVIDER"].includes(row.type) ||
       configJsonContainsRemediator(row.configJson)
   );
 
-  const hasRemediator = remediatorIntegration != null;
-  const items: ReadinessItem[] = [
-    {
-      id: "recent-heartbeat",
-      label: "Recent heartbeat (<20 min)",
-      ok: recentHeartbeat != null,
-      href: "/projects"
-    },
-    {
-      id: "checks-configured",
-      label: "Health checks configured",
-      ok: checkCount > 0,
-      href: "/checks"
-    },
-    {
-      id: "notification-channel",
-      label: "Notification channel configured",
-      ok: notificationChannel != null,
-      href: "/settings/notifications"
-    },
-    {
-      id: "remediator-integration",
-      label: "Remediator integration configured",
-      ok: hasRemediator,
-      href: "/settings/integrations"
-    },
-    {
-      id: "approved-playbook",
-      label: "Approved playbook version",
-      ok: approvedPlaybookVersion != null,
-      href: "/settings/playbooks"
-    },
-    {
-      id: "recovery-thresholds",
-      label: "Recovery threshold defaults (>=2)",
-      ok: checksWithDefaultRecovery != null,
-      href: "/checks"
-    },
-    {
-      id: "emergency-stop",
-      label: "Emergency stop field available",
-      ok: productionProjectCount > 0,
-      href: "/settings/ai-automation-policies"
-    }
-  ];
+  const profile =
+    (bundle?.documentJson as AiAutomationPolicyDocument | undefined)?.areas.operatingProfile.profile ??
+    (bundle?.operatingProfile as AiOperatingProfileId | undefined) ??
+    "MONITOR_ONLY";
+  const aiLedProfile = profile === "AI_LED_SAFE" || profile === "FULL_AUTONOMOUS";
+  const allowlistEntries = autoRunPolicy.allowlist ?? [];
+  const autoRunConfigured =
+    autoRunPolicy.enabled && allowlistEntries.some((entry) => entry.autoRunEnabled);
 
+  const items: ReadinessItem[] = [];
+
+  if (apiDiscovered) {
+    items.push(
+      itemFromStatus(
+        "discovery-successful",
+        discovery?.schemaVersion === "1.0" ? "full" : "not_configured",
+        projectId
+      )
+    );
+    items.push(
+      itemFromStatus(
+        "authentication-verified",
+        connected ? "full" : "not_configured",
+        projectId
+      )
+    );
+    items.push(
+      itemFromStatus(
+        "health-configured",
+        capabilities.health
+          ? (healthCheckActive || activeChecks.length > 0 ? "full" : "not_configured")
+          : "not_applicable",
+        projectId
+      )
+    );
+    items.push(
+      itemFromStatus(
+        "monitoring-checks-active",
+        advertisedEndpointCount === 0
+          ? "not_applicable"
+          : (advertisedCheckCount > 0 || activeChecks.length > 0 ? "full" : "not_configured"),
+        projectId
+      )
+    );
+    items.push(
+      itemFromStatus(
+        "deployment-metadata",
+        capabilities.deployments || capabilities.version
+          ? (activeChecks.some((check) => {
+            const config = check.configJson && typeof check.configJson === "object"
+              ? check.configJson as Record<string, unknown>
+              : {};
+            return config.capability === "deployments" || config.capability === "version";
+          }) || connected
+            ? "full"
+            : "not_configured")
+          : "not_applicable",
+        projectId
+      )
+    );
+    items.push(itemFromStatus("recent-heartbeat", "not_applicable", projectId));
+  } else {
+    items.push(itemFromStatus("discovery-successful", "not_applicable", projectId));
+    items.push(
+      itemFromStatus(
+        "authentication-verified",
+        connected || activeChecks.length > 0 ? "full" : "not_configured",
+        projectId
+      )
+    );
+    items.push(
+      itemFromStatus(
+        "health-configured",
+        activeChecks.length > 0 ? "full" : "not_configured",
+        projectId
+      )
+    );
+    items.push(
+      itemFromStatus(
+        "monitoring-checks-active",
+        activeChecks.length > 0 ? "full" : "not_configured",
+        projectId
+      )
+    );
+    items.push(itemFromStatus("deployment-metadata", "not_applicable", projectId));
+    items.push(
+      itemFromStatus(
+        "recent-heartbeat",
+        recentHeartbeat != null ? "full" : "not_configured",
+        projectId
+      )
+    );
+  }
+
+  items.push(
+    itemFromStatus(
+      "notification-channel",
+      notificationChannel != null ? "full" : "not_configured",
+      projectId
+    )
+  );
+  items.push(
+    itemFromStatus(
+      "remediator-integration",
+      aiLedProfile
+        ? (hasRemediator ? "full" : "not_configured")
+        : (hasRemediator ? "full" : "not_applicable"),
+      projectId
+    )
+  );
+  items.push(
+    itemFromStatus(
+      "approved-playbook",
+      aiLedProfile
+        ? (approvedPlaybookVersion != null ? "full" : "not_configured")
+        : (approvedPlaybookVersion != null ? "full" : "not_applicable"),
+      projectId
+    )
+  );
+  items.push(
+    itemFromStatus(
+      "auto-run-approvals",
+      aiLedProfile
+        ? (autoRunConfigured ? "full" : "not_configured")
+        : (autoRunConfigured ? "full" : "not_applicable"),
+      projectId
+    )
+  );
+  items.push(itemFromStatus("emergency-stop", "full", projectId));
+
+  const applicable = items.filter((item) => item.applicable);
   return {
-    ready: items.every((item) => item.ok),
+    ready: applicable.every((item) => item.ok),
+    projectId,
+    monitoringMode: discovery?.monitoringMode ?? (connections.some((row) => row.mode === "HEARTBEAT") ? "heartbeat" : null),
+    capabilities,
     items
   };
 };
@@ -177,6 +403,30 @@ export const enableAiLedSafeOperations = async (input: {
   projectIds?: string[];
 }) => {
   const { organizationId, actorUserId, projectIds } = input;
+  const selectedProjectId =
+    projectIds?.find((id) => typeof id === "string" && id.trim()) ??
+    (
+      await prisma.project.findFirst({
+        where: { organizationId, isActive: true },
+        select: { id: true },
+        orderBy: { createdAt: "asc" }
+      })
+    )?.id;
+
+  if (!selectedProjectId) {
+    throw new Error("Select an application before enabling AI-led operations");
+  }
+
+  const readinessGate = await assessAiLedReadiness(organizationId, selectedProjectId);
+  if (!readinessGate.ready) {
+    throw new Error(
+      `AI-led enablement blocked: ${readinessGate.items
+        .filter((item) => item.applicable && !item.ok)
+        .map((item) => item.label)
+        .join(", ") || "readiness incomplete"}`
+    );
+  }
+
   const document = defaultAiAutomationPolicyDocument("AI_LED_SAFE");
   const allowlistActions = Array.from(AUTO_RUN_ALLOWLIST);
 
@@ -372,8 +622,8 @@ export const enableAiLedSafeOperations = async (input: {
     };
   });
 
-  const readiness = await assessAiLedReadiness(organizationId);
-  const partiallyEnabled = !readiness.ready || result.snapshotHints.skippedTestProjects > 0;
+  const readiness = await assessAiLedReadiness(organizationId, selectedProjectId);
+  const partiallyEnabled = result.snapshotHints.skippedTestProjects > 0;
 
   return {
     bundle: result.bundle,
