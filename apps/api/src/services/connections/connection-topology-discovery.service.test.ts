@@ -13,6 +13,7 @@ const payload = {
         {
           key: "sales",
           name: "Sales",
+          category: "operations",
           description: "Sales operations",
           criticality: "HIGH",
           routePrefixes: ["/dashboard/sales", "/dashboard/invoices"]
@@ -44,6 +45,19 @@ describe("parseConnectionTopologyManifest", () => {
 
   it("returns null when the provider has no topology contract", () => {
     expect(parseConnectionTopologyManifest({ ok: true, data: { status: "ok" } })).toBeNull();
+  });
+
+  it("reads a top-level opswatchTopology payload from a combined discovery document", () => {
+    const manifest = parseConnectionTopologyManifest({
+      schemaVersion: "1.0",
+      monitoringMode: "api-discovered",
+      capabilities: { health: true },
+      endpoints: { health: "/api/external/v1/health" },
+      opswatchTopology: payload.data.opswatchTopology
+    });
+
+    expect(manifest?.modules[0]?.category).toBe("operations");
+    expect(manifest?.modules[0]?.name).toBe("Sales");
   });
 
   it("rejects duplicate module identities", () => {

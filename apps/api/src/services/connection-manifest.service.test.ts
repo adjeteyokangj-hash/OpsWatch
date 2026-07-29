@@ -99,4 +99,24 @@ describe("connection manifest", () => {
     });
     expect(parsed.configuration.discoveryPath).toBe("/api/external/v1/discovery");
   });
+
+  it("builds the expected StarLiz API connection configuration", () => {
+    const parsed = parseGuidedConnectionInput({
+      name: "StarLiz Academy",
+      connectorType: "API",
+      mode: "API",
+      applicationId: "project-starliz",
+      baseUrl: "https://www.starlizacademy.com",
+      healthPath: "/api/external/v1/health",
+      discoveryPath: "/api/external/v1/discovery",
+      authType: "Bearer"
+    });
+    expect(parsed.projectId).toBe("project-starliz");
+    expect(parsed.authMethod).toBe("BEARER");
+    expect(parsed.configuration).toMatchObject({
+      baseUrl: "https://www.starlizacademy.com",
+      endpoint: "https://www.starlizacademy.com/api/external/v1/health",
+      discoveryPath: "/api/external/v1/discovery"
+    });
+  });
 });

@@ -233,7 +233,14 @@ const attachLatestCheckResults = async <
 export const enrichProjectRow = async (row: ProjectRow) => {
   const withResults = await attachLatestCheckResults(row);
   const inheritedSignal = resolveInheritedModuleSignal(withResults);
-  const servicesWithSignals = withResults.Service.map((service) => {
+  const servicesWithSignals = withResults.Service
+    .filter((service) => {
+      if (service.type !== "MODULE") return true;
+      const connectionDiscoveredId = service.id.startsWith("svc-mod-");
+      if (!connectionDiscoveredId) return true;
+      return (service.OutgoingDependencies?.length ?? 0) > 0;
+    })
+    .map((service) => {
     const hasDedicatedCheck = service.Check.some((check) => check.isActive);
     const isConnectionDiscoveredModule =
       service.type === "MODULE" && (service.OutgoingDependencies?.length ?? 0) > 0;

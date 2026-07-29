@@ -194,6 +194,13 @@ const classifyFetchError = (error: unknown): ConnectionErrorCategory => {
   return "INVALID_RESPONSE";
 };
 
+const looksLikeExternalDiscoveryPayload = (value: unknown): boolean => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return ["schemaVersion", "monitoringMode", "capabilities", "endpoints", "registry"].some(
+    (key) => key in (value as Record<string, unknown>)
+  );
+};
+
 const probe = async (connection: ConnectionRow, overrideSecret?: string): Promise<ProbeResult> => {
   if (isMonitoringConnectorMode(connection.mode)) {
     const monitoringResult = await testMonitoringConnection({
@@ -443,74 +450,111 @@ export const discoverApiConnection = async (connection: ConnectionRow) => {
   const response = await fetch(discoveryUrl, { method: "GET", headers, redirect: "manual" });
   if (!response.ok) throw new Error(`Discovery endpoint returned HTTP ${response.status}`);
 
-  let discovery: ParsedExternalDiscovery;
+  let payload: unknown;
   try {
-    const payload: unknown = await response.json();
-    discovery = parseExternalDiscoveryDocument(payload);
+    payload = await response.json();
   } catch (error) {
-    if (error instanceof ExternalDiscoveryParseError) throw error;
     throw new ExternalDiscoveryParseError(
       error instanceof Error ? error.message : "Discovery response was not valid JSON"
     );
   }
-
-  const healthPath = discovery.endpoints.health;
-  const nextConfiguration: Record<string, unknown> = {
-    ...(typeof connection.configurationJson === "object" && connection.configurationJson && !Array.isArray(connection.configurationJson)
-      ? connection.configurationJson as Record<string, unknown>
-      : {}),
-    ...validated.value,
-    baseUrl: endpoint.origin,
-    discoveredEndpoints: discovery.endpoints,
-    monitoringMode: discovery.monitoringMode,
-    discoverySchemaVersion: discovery.schemaVersion,
-    ...(healthPath ? { healthPath } : {}),
-    ...(healthPath ? { endpoint: joinConnectionUrl(endpoint.origin, healthPath) } : {})
-  };
-
-  const capabilitiesJson = {
-    source: "external-discovery",
-    schemaVersion: discovery.schemaVersion,
-    monitoringMode: discovery.monitoringMode,
-    capabilities: discovery.capabilities,
-    endpoints: discovery.endpoints,
-    ...(discovery.application ? { application: discovery.application } : {}),
-    ...(discovery.registry.length ? { registry: discovery.registry } : {})
-  };
-
-  connection.configurationJson = nextConfiguration;
-  connection.capabilitiesJson = capabilitiesJson;
-
-  if (connection.id !== "unsaved") {
-    await prisma.connection.update({
-      where: { id: connection.id },
-      data: {
-        configurationJson: nextConfiguration as any,
-        capabilitiesJson: capabilitiesJson as any,
-        updatedAt: new Date()
-      }
-    });
+  let discovery: ParsedExternalDiscovery | null = null;
+  try {
+    discovery = parseExternalDiscoveryDocument(payload);
+  } catch (error) {
+    if (error instanceof ExternalDiscoveryParseError && looksLikeExternalDiscoveryPayload(payload)) {
+      throw error;
+    }
+    if (!(error instanceof ExternalDiscoveryParseError)) {
+      throw new ExternalDiscoveryParseError(
+        error instanceof Error ? error.message : "Discovery response was not valid JSON"
+      );
+    }
   }
 
-  await recordAudit(connection, "CONNECTION_DISCOVERY", {
-    endpoint: discoveryUrl.toString(),
-    statusCode: response.status,
-    schemaVersion: discovery.schemaVersion,
-    monitoringMode: discovery.monitoringMode,
-    capabilities: discovery.capabilities,
-    endpoints: discovery.endpoints,
-    advertised: advertisedEndpointEntries(discovery)
-  });
+  let topologyResult: { moduleCount: number; summary: string } | null = null;
+  try {
+    const {
+      parseConnectionTopologyManifest,
+      reconcileConnectionTopologyPayload
+    } = await import("./connections/connection-topology-discovery.service");
+    const topologyManifest = parseConnectionTopologyManifest(payload);
+    topologyResult = connection.id === "unsaved" || !topologyManifest
+      ? null
+      : await reconcileConnectionTopologyPayload(connection as any, payload);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Topology discovery failed";
+    if (discovery === null) throw new Error(message);
+    throw error;
+  }
+
+  if (!discovery && !topologyResult) {
+    throw new ExternalDiscoveryParseError(
+      "Discovery response contained neither a valid capabilities document nor an OpsWatch topology manifest"
+    );
+  }
+
+  if (discovery) {
+    const healthPath = discovery.endpoints.health;
+    const nextConfiguration: Record<string, unknown> = {
+      ...(typeof connection.configurationJson === "object" && connection.configurationJson && !Array.isArray(connection.configurationJson)
+        ? connection.configurationJson as Record<string, unknown>
+        : {}),
+      ...validated.value,
+      baseUrl: endpoint.origin,
+      discoveredEndpoints: discovery.endpoints,
+      monitoringMode: discovery.monitoringMode,
+      discoverySchemaVersion: discovery.schemaVersion,
+      ...(healthPath ? { healthPath } : {}),
+      ...(healthPath ? { endpoint: joinConnectionUrl(endpoint.origin, healthPath) } : {})
+    };
+
+    const capabilitiesJson = {
+      source: "external-discovery",
+      schemaVersion: discovery.schemaVersion,
+      monitoringMode: discovery.monitoringMode,
+      capabilities: discovery.capabilities,
+      endpoints: discovery.endpoints,
+      ...(discovery.application ? { application: discovery.application } : {}),
+      ...(discovery.registry.length ? { registry: discovery.registry } : {})
+    };
+
+    connection.configurationJson = nextConfiguration;
+    connection.capabilitiesJson = capabilitiesJson;
+
+    if (connection.id !== "unsaved") {
+      await prisma.connection.update({
+        where: { id: connection.id },
+        data: {
+          configurationJson: nextConfiguration as any,
+          capabilitiesJson: capabilitiesJson as any,
+          updatedAt: new Date()
+        }
+      });
+    }
+
+    await recordAudit(connection, "CONNECTION_DISCOVERY", {
+      endpoint: discoveryUrl.toString(),
+      statusCode: response.status,
+      schemaVersion: discovery.schemaVersion,
+      monitoringMode: discovery.monitoringMode,
+      capabilities: discovery.capabilities,
+      endpoints: discovery.endpoints,
+      advertised: advertisedEndpointEntries(discovery),
+      topologyModuleCount: topologyResult?.moduleCount ?? 0
+    });
+  }
 
   return {
     endpoint: discoveryUrl.toString(),
     statusCode: response.status,
-    schemaVersion: discovery.schemaVersion,
-    monitoringMode: discovery.monitoringMode,
-    capabilities: discovery.capabilities,
-    endpoints: discovery.endpoints,
-    registry: discovery.registry,
-    application: discovery.application ?? null
+    schemaVersion: discovery?.schemaVersion ?? null,
+    monitoringMode: discovery?.monitoringMode ?? null,
+    capabilities: discovery?.capabilities ?? {},
+    endpoints: discovery?.endpoints ?? {},
+    registry: discovery?.registry ?? [],
+    application: discovery?.application ?? null,
+    topology: topologyResult
   };
 };
 

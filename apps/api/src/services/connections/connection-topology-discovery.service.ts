@@ -14,6 +14,7 @@ import { backfillCanonicalTopology } from "../topology-unification.service";
 export type DeclaredModuleManifest = {
   key: string;
   name: string;
+  category?: string;
   description: string;
   criticality: "HIGH" | "MEDIUM";
   routePrefixes: string[];
@@ -79,6 +80,13 @@ const readKey = (value: unknown, label: string): string => {
   return key;
 };
 
+const readOptionalCategory = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized.length > 80) return undefined;
+  return normalized;
+};
+
 const readRoutePrefixes = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return [...new Set(
@@ -129,6 +137,7 @@ export const parseConnectionTopologyManifest = (
     return {
       key,
       name: readRequiredString(raw.name, `modules[${index}].name`, 120),
+      ...(readOptionalCategory(raw.category) ? { category: readOptionalCategory(raw.category) } : {}),
       description:
         typeof raw.description === "string" ? raw.description.trim().slice(0, 500) : "",
       criticality,
@@ -213,6 +222,7 @@ export const reconcileConnectionTopologyManifest = async (
   const sourcePrefix = `connection:${connection.id}`;
   let applicationId = "";
   let hierarchyCount = 0;
+  let deactivatedCount = 0;
 
   await prisma.$transaction(async (tx) => {
     const existingApp = await tx.service.findFirst({
@@ -248,15 +258,45 @@ export const reconcileConnectionTopologyManifest = async (
         });
     applicationId = app.id;
 
+    const existingHierarchy = await tx.serviceDependency.findMany({
+      where: {
+        projectId: project.id,
+        dependencyType: "HIERARCHY",
+        source: "CONNECTION_DISCOVERY",
+        toServiceId: app.id
+      },
+      select: {
+        id: true,
+        fromServiceId: true,
+        isActive: true
+      }
+    });
+    const discoveredModuleIds = [...new Set(existingHierarchy.map((dependency) => dependency.fromServiceId))];
+    const existingDiscoveredModules = discoveredModuleIds.length
+      ? await tx.service.findMany({
+          where: {
+            id: { in: discoveredModuleIds },
+            projectId: project.id,
+            type: "MODULE"
+          }
+        })
+      : [];
+    const discoveredById = new Map(existingDiscoveredModules.map((service) => [service.id, service]));
+    const discoveredByName = new Map(existingDiscoveredModules.map((service) => [service.name, service]));
+    const retainedModuleIds = new Set<string>();
+
     for (const module of manifest.modules) {
       const deterministicModuleId = stableId("svc-mod", connection.id, module.key);
-      const existingModule = await tx.service.findFirst({
-        where: {
-          projectId: project.id,
-          type: "MODULE",
-          OR: [{ id: deterministicModuleId }, { name: module.name }]
-        }
-      });
+      const existingModule =
+        discoveredById.get(deterministicModuleId)
+        ?? discoveredByName.get(module.name)
+        ?? await tx.service.findFirst({
+          where: {
+            projectId: project.id,
+            type: "MODULE",
+            name: module.name
+          }
+        });
       const moduleRow = existingModule
         ? await tx.service.update({
             where: { id: existingModule.id },
@@ -281,6 +321,7 @@ export const reconcileConnectionTopologyManifest = async (
               updatedAt: now
             }
           });
+      retainedModuleIds.add(moduleRow.id);
 
       await tx.serviceDependency.upsert({
         where: {
@@ -312,7 +353,19 @@ export const reconcileConnectionTopologyManifest = async (
       hierarchyCount += 1;
     }
 
-    const summary = `Imported ${manifest.modules.length} declared modules from ${manifest.source}.`;
+    for (const dependency of existingHierarchy) {
+      if (retainedModuleIds.has(dependency.fromServiceId)) continue;
+      await tx.serviceDependency.update({
+        where: { id: dependency.id },
+        data: {
+          isActive: false,
+          updatedAt: now
+        }
+      });
+      deactivatedCount += 1;
+    }
+
+    const summary = `Imported ${manifest.modules.length} declared modules from ${manifest.source}${deactivatedCount ? ` and deactivated ${deactivatedCount} removed module links` : ""}.`;
     await tx.connection.update({
       where: { id: connection.id },
       data: {
@@ -338,10 +391,13 @@ export const reconcileConnectionTopologyManifest = async (
           source: manifest.source,
           schemaVersion: manifest.schemaVersion,
           moduleKeys: manifest.modules.map((module) => module.key),
+          categories: Object.fromEntries(
+            manifest.modules.map((module) => [module.key, module.category ?? null])
+          ),
           routePrefixCounts: Object.fromEntries(
             manifest.modules.map((module) => [module.key, module.routePrefixes.length])
           ),
-          deletionPolicy: "ADDITIVE_ONLY"
+          deactivatedModuleLinks: deactivatedCount
         }
       }
     });
@@ -360,16 +416,23 @@ export const reconcileConnectionTopologyManifest = async (
   };
 };
 
+export const reconcileConnectionTopologyPayload = async (
+  connection: ApiTopologyConnection,
+  payload: unknown
+): Promise<ConnectionTopologySyncResult> => {
+  const manifest = parseConnectionTopologyManifest(payload);
+  if (!manifest) {
+    throw new Error("Discovery response does not contain an OpsWatch topology manifest");
+  }
+  return reconcileConnectionTopologyManifest(connection, manifest);
+};
+
 export const discoverAndReconcileConnectionTopology = async (
   connection: ApiTopologyConnection
 ): Promise<ConnectionTopologySyncResult> => {
   try {
     const payload = await fetchManifestPayload(connection);
-    const manifest = parseConnectionTopologyManifest(payload);
-    if (!manifest) {
-      throw new Error("Discovery response does not contain an OpsWatch topology manifest");
-    }
-    return await reconcileConnectionTopologyManifest(connection, manifest);
+    return await reconcileConnectionTopologyPayload(connection, payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Topology discovery failed";
     await prisma.connection.update({

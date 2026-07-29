@@ -31,7 +31,15 @@ const validDocument = {
       category: "core",
       description: "Health"
     }
-  ]
+  ],
+  opswatchTopology: {
+    schemaVersion: "1.0",
+    source: "starliz-academy",
+    application: { key: "starliz-academy", name: "StarLiz Academy" },
+    modules: [
+      { key: "student-portal", name: "Student Portal", category: "portal", criticality: "HIGH", routePrefixes: ["/student"] }
+    ]
+  }
 };
 
 describe("parseExternalDiscoveryDocument", () => {
@@ -48,6 +56,12 @@ describe("parseExternalDiscoveryDocument", () => {
     });
     expect(parsed.endpoints).not.toHaveProperty("storage");
     expect(parsed.registry).toHaveLength(1);
+  });
+
+  it("ignores combined topology data while still parsing capabilities", () => {
+    const parsed = parseExternalDiscoveryDocument(validDocument);
+    expect(parsed.capabilities.health).toBe(true);
+    expect(parsed.endpoints.services).toBe("/api/external/v1/services");
   });
 
   it("rejects unsupported schema versions", () => {

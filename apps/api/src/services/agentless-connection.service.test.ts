@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   update,
@@ -8,7 +8,9 @@ const {
   serviceCreate,
   checkCreate,
   checkFindMany,
-  checkUpdate
+  checkUpdate,
+  parseTopologyManifest,
+  reconcileTopologyPayload
 } = vi.hoisted(() => ({
   update: vi.fn(),
   auditCreate: vi.fn(),
@@ -17,7 +19,9 @@ const {
   serviceCreate: vi.fn(),
   checkCreate: vi.fn(),
   checkFindMany: vi.fn(),
-  checkUpdate: vi.fn()
+  checkUpdate: vi.fn(),
+  parseTopologyManifest: vi.fn(),
+  reconcileTopologyPayload: vi.fn()
 }));
 
 vi.mock("../lib/prisma", () => ({
@@ -28,6 +32,11 @@ vi.mock("../lib/prisma", () => ({
     deploymentRecord: { create: vi.fn() },
     $transaction: transaction
   }
+}));
+
+vi.mock("./connections/connection-topology-discovery.service", () => ({
+  parseConnectionTopologyManifest: parseTopologyManifest,
+  reconcileConnectionTopologyPayload: reconcileTopologyPayload
 }));
 
 import {
@@ -56,10 +65,25 @@ const discoveryDocument = {
     { key: "health", enabled: true, endpoint: "/api/external/v1/health", requiredScope: "api:read", category: "core", description: "Health" },
     { key: "services", enabled: true, endpoint: "/api/external/v1/services", requiredScope: "api:read", category: "operations", description: "Services" },
     { key: "database", enabled: true, endpoint: "/api/external/v1/database", requiredScope: "api:read", category: "infrastructure", description: "Database" }
-  ]
+  ],
+  opswatchTopology: {
+    schemaVersion: "1.0",
+    source: "starliz-academy",
+    application: { key: "starliz-academy", name: "StarLiz Academy" },
+    modules: [
+      { key: "student-portal", name: "Student Portal", category: "portal", criticality: "HIGH", routePrefixes: ["/student"] }
+    ]
+  }
 };
 
 describe("agentless connection runner", () => {
+  beforeEach(() => {
+    parseTopologyManifest.mockImplementation((payload: any) =>
+      payload?.opswatchTopology ? payload.opswatchTopology : null
+    );
+    reconcileTopologyPayload.mockResolvedValue({ moduleCount: 1, summary: "Imported 1 module." });
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
@@ -233,6 +257,7 @@ describe("agentless connection runner", () => {
         })
       })
     }));
+    expect(reconcileTopologyPayload).toHaveBeenCalledWith(connection, discoveryDocument);
   });
 
   it("auto-discovers then probes health and provisions advertised endpoint checks", async () => {
@@ -291,5 +316,41 @@ describe("agentless connection runner", () => {
       "health",
       "services"
     ]);
+    expect(reconcileTopologyPayload).toHaveBeenCalledWith(connection, discoveryDocument);
+  });
+
+  it("still reconciles topology when capabilities are absent from the shared discovery payload", async () => {
+    update.mockResolvedValue({});
+    const topologyOnlyDocument = {
+      opswatchTopology: discoveryDocument.opswatchTopology
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(topologyOnlyDocument), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    })));
+
+    const connection = {
+      id: "connection-topology-only",
+      organizationId: "org-1",
+      projectId: "project-1",
+      name: "StarLiz Topology",
+      mode: "API",
+      authMethod: "NONE",
+      configurationJson: {
+        endpoint: "https://starliz.example.test/",
+        discoveryPath: "/api/external/v1/discovery",
+        timeoutMs: 1000
+      },
+      secretRef: null,
+      linkedServiceId: null,
+      linkedCheckId: null
+    };
+
+    const result = await discoverApiConnection(connection);
+    expect(result.capabilities).toEqual({});
+    expect(result.endpoints).toEqual({});
+    expect(result.topology).toMatchObject({ moduleCount: 1 });
+    expect(reconcileTopologyPayload).toHaveBeenCalledWith(connection, topologyOnlyDocument);
+    expect(update).not.toHaveBeenCalled();
   });
 });
