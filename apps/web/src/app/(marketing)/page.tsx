@@ -28,8 +28,15 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default async function HomePage() {
-  const page = await resolveMarketingPage("home");
+export default async function HomePage({
+  searchParams
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = searchParams ? await searchParams : undefined;
+  const previewRaw = params?.cmsPreview;
+  const previewToken = typeof previewRaw === "string" ? previewRaw : null;
+  const page = await resolveMarketingPage("home", { previewToken });
   if (!page) return null;
 
   const capabilities = requireSection(page.sections, "capabilities");
