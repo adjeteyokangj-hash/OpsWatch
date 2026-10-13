@@ -3418,3 +3418,47 @@ model WorkerTickLock {
   expiresAt DateTime?
   updatedAt DateTime
 }
+
+/// OkangGroup CMS marketing content documents (website copy only).
+/// Does not store customer, monitoring, or billing subscription data.
+model MarketingContentDocument {
+  id              String   @id
+  cmsKey          String   @unique
+  draftJson       Json?
+  publishedJson   Json?
+  draftRevision   Int      @default(0)
+  publishedRevision Int    @default(0)
+  updatedAt       DateTime
+  publishedAt     DateTime?
+  MarketingContentRevision MarketingContentRevision[]
+
+  @@index([updatedAt])
+}
+
+model MarketingContentRevision {
+  id         String   @id
+  documentId String
+  revisionNo Int
+  kind       String
+  contentJson Json
+  createdAt  DateTime @default(now())
+  actorLabel String?
+  MarketingContentDocument MarketingContentDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, revisionNo, kind])
+  @@index([documentId, createdAt])
+}
+
+/// Hashed API keys for OkangGroup CMS gateway → OpsWatch content API only.
+model MarketingCmsApiKey {
+  id         String    @id
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([isActive])
+}

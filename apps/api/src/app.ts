@@ -46,6 +46,7 @@ import { connectionIngestRouter } from "./routes/connection-ingest.routes";
 import { logsApmRouter } from "./routes/logs-apm.routes";
 import { securityRouter } from "./routes/security.routes";
 import { publicRouter } from "./routes/public.routes";
+import { cmsContentRouter } from "./routes/cms-content.routes";
 
 const webhookJsonParser = express.json({
   limit: "1mb",
@@ -101,6 +102,8 @@ app.use(API_PREFIX, healthRouter);
 app.use(healthRouter);
 app.use(API_PREFIX, authRouter);
 app.use(API_PREFIX, publicRouter);
+/** OkangGroup CMS marketing adapter — API-key scoped; not behind requireAuth. */
+app.use(`${API_PREFIX}/cms`, cmsContentRouter);
 app.use(API_PREFIX, statusRouter);
 app.use(API_PREFIX, trueNumerisRouter);
 app.use(API_PREFIX, eventsRouter);
