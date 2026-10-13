@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
-import { getMarketingPage } from "../../../content/marketing";
+import { resolveMarketingPage } from "../../../content/marketing";
 import { MarketingContentPage } from "../../../components/marketing/content-page";
 
-const page = getMarketingPage("integrations")!;
+export async function generateMetadata(): Promise<Metadata> {
+  const page = await resolveMarketingPage("integrations");
+  return {
+    title: page?.metaTitle ?? "Integrations",
+    description: page?.metaDescription
+  };
+}
 
-export const metadata: Metadata = {
-  title: page.metaTitle,
-  description: page.metaDescription
-};
-
-export default function IntegrationsMarketingPage() {
+export default async function IntegrationsMarketingPage() {
+  const page = await resolveMarketingPage("integrations");
+  if (!page) return null;
   return <MarketingContentPage page={page} />;
 }

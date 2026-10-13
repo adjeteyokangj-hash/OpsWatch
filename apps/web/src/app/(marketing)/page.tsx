@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getMarketingPage, type MarketingSection } from "../../content/marketing";
+import { resolveMarketingPage, type MarketingSection } from "../../content/marketing";
 import { CommandCenterPreview } from "../../components/marketing/command-center-preview";
 import { FeatureCard, type CapabilityState } from "../../components/marketing/feature-card";
 import { HomePricing } from "../../components/marketing/home-pricing";
@@ -12,30 +12,34 @@ import {
 import { IntegrationsShowcase } from "../../components/marketing/integrations-showcase";
 import { PrimaryCta, SecondaryCta } from "../../components/marketing/page-hero";
 
-const page = getMarketingPage("home")!;
-
-function section(id: string): MarketingSection {
-  const found = page.sections.find((entry) => entry.id === id);
+function requireSection(pageSections: MarketingSection[], id: string): MarketingSection {
+  const found = pageSections.find((entry) => entry.id === id);
   if (!found) {
     throw new Error(`Missing home marketing section: ${id}`);
   }
   return found;
 }
 
-const capabilities = section("capabilities");
-const monitoring = section("monitoring");
-const intelligence = section("intelligence");
-const recovery = section("recovery");
-const integrations = section("integrations");
-const pricing = section("pricing");
-const cta = section("cta");
+export async function generateMetadata(): Promise<Metadata> {
+  const page = await resolveMarketingPage("home");
+  return {
+    title: page?.metaTitle ?? "OpsWatch",
+    description: page?.metaDescription
+  };
+}
 
-export const metadata: Metadata = {
-  title: page.metaTitle,
-  description: page.metaDescription
-};
+export default async function HomePage() {
+  const page = await resolveMarketingPage("home");
+  if (!page) return null;
 
-export default function HomePage() {
+  const capabilities = requireSection(page.sections, "capabilities");
+  const monitoring = requireSection(page.sections, "monitoring");
+  const intelligence = requireSection(page.sections, "intelligence");
+  const recovery = requireSection(page.sections, "recovery");
+  const integrations = requireSection(page.sections, "integrations");
+  const pricing = requireSection(page.sections, "pricing");
+  const cta = requireSection(page.sections, "cta");
+
   return (
     <>
       <section className="ow-home-hero">

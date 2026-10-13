@@ -1,17 +1,20 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { getMarketingPage } from "../../../content/marketing";
+import { resolveMarketingPage } from "../../../content/marketing";
 import { MarketingContentPage } from "../../../components/marketing/content-page";
 import { ContactForm } from "../../../components/marketing/contact-form";
 
-const page = getMarketingPage("contact")!;
+export async function generateMetadata(): Promise<Metadata> {
+  const page = await resolveMarketingPage("contact");
+  return {
+    title: page?.metaTitle ?? "Contact",
+    description: page?.metaDescription
+  };
+}
 
-export const metadata: Metadata = {
-  title: page.metaTitle,
-  description: page.metaDescription
-};
-
-export default function ContactPage() {
+export default async function ContactPage() {
+  const page = await resolveMarketingPage("contact");
+  if (!page) return null;
   const guidance = page.sections.find((section) => section.id === "guidance");
 
   return (
