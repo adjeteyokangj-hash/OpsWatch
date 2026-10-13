@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { getMarketingPage, marketingPages, marketingSiteChrome } from "./index";
+import {
+  CMS_MODULE_CATALOGUE,
+  CMS_MODULE_CODES,
+  CMS_SITE_CHROME_MODULE,
+  getMarketingPage,
+  marketingPages,
+  marketingSiteChrome,
+  seedContentForModule,
+  validateCmsModulePayload
+} from "./index";
 
 const OBSERVABILITY_TITLE = "Advanced Observability Integrations";
 
@@ -83,5 +92,19 @@ describe("marketing content", () => {
     for (const text of collectText()) {
       expect(text).not.toMatch(/datadog|dynatrace/i);
     }
+  });
+
+  it("freezes CMS module catalogue against seed content keys", () => {
+    expect(CMS_MODULE_CODES).toContain(CMS_SITE_CHROME_MODULE);
+    expect(CMS_MODULE_CATALOGUE).toHaveLength(CMS_MODULE_CODES.length);
+    for (const module of CMS_MODULE_CATALOGUE) {
+      expect(module.pricingAmountsEditable).toBe(false);
+      const seed = seedContentForModule(module.code);
+      expect(validateCmsModulePayload(module.code, seed)).toEqual({ ok: true });
+    }
+    for (const page of Object.values(marketingPages)) {
+      expect(CMS_MODULE_CODES).toContain(page.cmsKey);
+    }
+    expect(marketingSiteChrome.cmsKey).toBe(CMS_SITE_CHROME_MODULE);
   });
 });
