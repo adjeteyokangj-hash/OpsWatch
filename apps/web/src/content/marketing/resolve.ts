@@ -31,7 +31,36 @@ const mergeModules = (
     }
     if (key.startsWith("opswatch.page.") && value && typeof value === "object") {
       const page = value as MarketingPageContent;
-      pages[page.slug] = page;
+      const seeded = base.pages[page.slug];
+      // Merge CMS overlays onto seed so partial Owner edits (hero-only) cannot
+      // drop required homepage sections and crash the public site.
+      const cmsSections = Array.isArray(page.sections) ? page.sections : [];
+      const seedSections = seeded?.sections ?? [];
+      const sectionById = new Map(seedSections.map((section) => [section.id, section]));
+      for (const section of cmsSections) {
+        if (section?.id) sectionById.set(section.id, section);
+      }
+      const mergedSections =
+        seedSections.length > 0
+          ? seedSections.map((seedSection) => sectionById.get(seedSection.id) ?? seedSection)
+          : cmsSections;
+
+      pages[page.slug] = {
+        ...(seeded ?? {
+          slug: page.slug,
+          cmsKey: key,
+          metaTitle: "",
+          metaDescription: "",
+          hero: { title: "", subtitle: "" },
+          sections: []
+        }),
+        ...page,
+        hero: {
+          ...(seeded?.hero ?? { title: "", subtitle: "" }),
+          ...(page.hero ?? {})
+        },
+        sections: mergedSections
+      };
     }
   }
   return { chrome, pages, source: base.source };
@@ -58,7 +87,9 @@ export async function resolveMarketingContent(options?: {
       }
     }
 
-    const response = await fetch(`${apiBase()}/cms/v1/published`, { next: { revalidate: 30 } });
+    // no-store so Owner publish/rollback is visible on the next homepage request
+    // (ISR revalidate:30 left stale HTML during the Owner CMS journey).
+    const response = await fetch(`${apiBase()}/cms/v1/published`, { cache: "no-store" });
     if (!response.ok) return seed;
     const payload = (await response.json()) as { modules?: Record<string, unknown> };
     const modules = payload.modules ?? {};
