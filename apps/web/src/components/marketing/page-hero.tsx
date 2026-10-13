@@ -17,7 +17,7 @@ export function PageHero({
   return (
     <section className={`ow-page-hero${media ? " ow-page-hero--split" : ""}`}>
       <div className="ow-page-hero-copy">
-        {eyebrow ? <p className="ow-eyebrow">{eyebrow}</p> : null}
+        {eyebrow ? <p className="ow-eyebrow ow-eyebrow--dark">{eyebrow}</p> : null}
         <h1>{title}</h1>
         <p className="ow-lead">{subtitle}</p>
         {actions ? <div className="ow-hero-actions">{actions}</div> : null}

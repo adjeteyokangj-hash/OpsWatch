@@ -1,13 +1,38 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { getMarketingPage, type MarketingSection } from "../../content/marketing";
 import { CommandCenterPreview } from "../../components/marketing/command-center-preview";
-import { FeatureCard } from "../../components/marketing/feature-card";
+import { FeatureCard, type CapabilityState } from "../../components/marketing/feature-card";
+import { HomePricing } from "../../components/marketing/home-pricing";
+import {
+  IntelligencePipeline,
+  MonitoringVisual,
+  RecoveryVisual
+} from "../../components/marketing/intelligence-pipeline";
+import { IntegrationsShowcase } from "../../components/marketing/integrations-showcase";
 import { PrimaryCta, SecondaryCta } from "../../components/marketing/page-hero";
 
+const page = getMarketingPage("home")!;
+
+function section(id: string): MarketingSection {
+  const found = page.sections.find((entry) => entry.id === id);
+  if (!found) {
+    throw new Error(`Missing home marketing section: ${id}`);
+  }
+  return found;
+}
+
+const capabilities = section("capabilities");
+const monitoring = section("monitoring");
+const intelligence = section("intelligence");
+const recovery = section("recovery");
+const integrations = section("integrations");
+const pricing = section("pricing");
+const cta = section("cta");
+
 export const metadata: Metadata = {
-  title: "OpsWatch | Application health and incident remediation",
-  description:
-    "Monitor application health without agents, understand topology impact, and remediate incidents with governed automation."
+  title: page.metaTitle,
+  description: page.metaDescription
 };
 
 export default function HomePage() {
@@ -15,176 +40,144 @@ export default function HomePage() {
     <>
       <section className="ow-home-hero">
         <div className="ow-home-hero-inner">
-          <div>
-            <p className="ow-eyebrow">OpsWatch Command Center</p>
-            <h1>See application health. Fix what matters.</h1>
-            <p className="ow-lead">
-              OpsWatch is an agentless application-health and incident-remediation platform with an
-              advanced topology foundation. Watch public URLs, services, and dependencies, then act
-              with governed repair workflows.
-            </p>
+          <div className="ow-home-hero-copy">
+            <p className="ow-eyebrow">{page.hero.eyebrow}</p>
+            <h1>{page.hero.title}</h1>
+            <p className="ow-lead">{page.hero.subtitle}</p>
             <div className="ow-hero-actions">
-              <PrimaryCta href="/register" label="Start monitoring" />
-              <SecondaryCta href="/platform" label="Explore the platform" />
+              {page.hero.primaryCta ? (
+                <PrimaryCta href={page.hero.primaryCta.href} label={page.hero.primaryCta.label} />
+              ) : null}
+              {page.hero.secondaryCta ? (
+                <SecondaryCta
+                  href={page.hero.secondaryCta.href}
+                  label={page.hero.secondaryCta.label}
+                />
+              ) : null}
             </div>
-            <div className="ow-hero-meta">
-              <span className="ow-pill">
-                <span className="ow-pill-dot" /> Agentless URL and HTTP checks
-              </span>
-              <span className="ow-pill">Topology-aware incidents</span>
-              <span className="ow-pill">Approval-gated remediation</span>
-            </div>
+            {page.hero.pills?.length ? (
+              <div className="ow-hero-meta">
+                {page.hero.pills.map((pill, index) => (
+                  <span key={pill} className="ow-pill">
+                    {index === 0 ? <span className="ow-pill-dot" /> : null}
+                    {pill}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
-          <CommandCenterPreview />
+          <div className="ow-home-hero-media">
+            <CommandCenterPreview />
+          </div>
         </div>
       </section>
 
-      <section className="ow-section">
-        <div className="ow-section-head">
-          <h2>Built for operators who need real signal</h2>
-          <p>
-            OpsWatch focuses on verified monitoring, clear impact, and controlled recovery. Every
-            capability below is labelled with its current product state.
-          </p>
+      <section className="ow-section ow-section--tight">
+        <div className="ow-section-head ow-section-head--center">
+          <h2>{capabilities.title}</h2>
+          <p>{capabilities.body}</p>
         </div>
         <div className="ow-grid-3">
-          <FeatureCard
-            title="Agentless health checks"
-            state="Live"
-            href="/features"
-            body="Register public and admin URLs, run HTTP and SSL checks, and surface health, alerts, and recovery without installing an agent."
-          />
-          <FeatureCard
-            title="Advanced topology"
-            state="Live"
-            href="/platform"
-            body="Understand how services, workflows, and components relate so incidents show blast radius instead of isolated noise."
-          />
-          <FeatureCard
-            title="Governed remediation"
-            state="Live"
-            href="/ai-intelligence"
-            body="Propose repairs, require approval where needed, and execute only registered actions with verification after the change."
-          />
+          {(capabilities.cards ?? []).map((card) => (
+            <FeatureCard
+              key={card.id}
+              title={card.title}
+              body={card.body}
+              state={card.state as CapabilityState}
+              href={card.href}
+            />
+          ))}
         </div>
+      </section>
+
+      <section className="ow-section ow-section--split">
+        <div className="ow-split-copy">
+          <p className="ow-eyebrow ow-eyebrow--dark">{monitoring.eyebrow}</p>
+          <h2>{monitoring.title}</h2>
+          <p className="ow-lead">{monitoring.body}</p>
+          {monitoring.ctas?.[0] ? (
+            <Link href={monitoring.ctas[0].href} className="ow-text-link">
+              {monitoring.ctas[0].label}
+            </Link>
+          ) : null}
+        </div>
+        <MonitoringVisual />
       </section>
 
       <section className="ow-band">
-        <div className="ow-section ow-band-grid">
-          <div>
-            <div className="ow-section-head">
-              <p className="ow-eyebrow">AI monitoring</p>
-              <h2>Intelligence that explains, then assists</h2>
-              <p>
-                OpsWatch correlates alerts and check failures into incidents, calculates baselines,
-                and helps operators decide what to repair. Predictions remain disabled until learning
-                evidence is verified.
-              </p>
-            </div>
-            <div className="ow-flow">
-              <div className="ow-flow-step">
-                <span className="ow-pill-dot" />
-                <div>
-                  <strong>Detect</strong>
-                  <span>Health checks and telemetry feed the operational spine.</span>
-                </div>
-              </div>
-              <div className="ow-flow-step">
-                <span className="ow-pill-dot" />
-                <div>
-                  <strong>Diagnose</strong>
-                  <span>AI diagnosis and topology context highlight likely impact paths.</span>
-                </div>
-              </div>
-              <div className="ow-flow-step">
-                <span className="ow-pill-dot" />
-                <div>
-                  <strong>Remediate</strong>
-                  <span>Suggested or approved actions run through the safety pipeline.</span>
-                </div>
-              </div>
-            </div>
+        <div className="ow-section">
+          <div className="ow-section-head ow-section-head--center">
+            <p className="ow-eyebrow">{intelligence.eyebrow}</p>
+            <h2>{intelligence.title}</h2>
+            <p>{intelligence.body}</p>
           </div>
-          <div className="ow-illustration">
-            <CommandCenterPreview compact />
-          </div>
+          <IntelligencePipeline />
         </div>
       </section>
 
-      <section className="ow-section">
-        <div className="ow-section-head">
-          <h2>Application monitoring and automated recovery</h2>
-          <p>
-            Connect applications once, watch the surfaces that matter, and keep recovery under
-            operator policy.
-          </p>
-        </div>
-        <div className="ow-grid-2">
-          <article className="ow-panel-card">
-            <h3>Application monitoring</h3>
-            <p>
-              Track frontend URLs, APIs, SSL certificates, and connected services. Portfolio views
-              show which applications are healthy, degraded, or down.
-            </p>
-          </article>
-          <article className="ow-panel-card">
-            <h3>Automated recovery</h3>
-            <p>
-              Run verified remediation actions such as restart workflows where providers are
-              registered. Higher-risk steps stay behind approvals and auto-run policy.
-            </p>
-          </article>
-          <article className="ow-panel-card">
-            <h3>Integrations that are ready</h3>
-            <p>
-              Agentless HTTP and API connections, webhooks, heartbeats, and OpenTelemetry ingest are
-              available when configured. Cloud-native connectors stay labelled until verified.
-            </p>
-          </article>
-          <article className="ow-panel-card">
-            <h3>Security controls in place</h3>
-            <p>
-              Platform authentication, encrypted credentials, roles, and audit trails protect the
-              Command Center. Broader threat analytics remain a foundation capability.
-            </p>
-          </article>
+      <section className="ow-section ow-section--split ow-section--split-reverse">
+        <RecoveryVisual />
+        <div className="ow-split-copy">
+          <p className="ow-eyebrow ow-eyebrow--dark">{recovery.eyebrow}</p>
+          <h2>{recovery.title}</h2>
+          <p className="ow-lead">{recovery.body}</p>
+          {recovery.ctas?.[0] ? (
+            <Link href={recovery.ctas[0].href} className="ow-text-link">
+              {recovery.ctas[0].label}
+            </Link>
+          ) : null}
         </div>
       </section>
 
-      <section className="ow-section">
-        <div className="ow-section-head">
-          <h2>Plans that match how OpsWatch bills</h2>
-          <p>
-            Subscriptions are chosen per application after you sign in. Compare Pilot, Growth,
-            Business, and Enterprise on the pricing page.
-          </p>
+      <section className="ow-section ow-section--tight">
+        <div className="ow-section-head ow-section-head--center">
+          <h2>{integrations.title}</h2>
+          <p>{integrations.body}</p>
         </div>
-        <div className="ow-hero-actions">
-          <Link href="/pricing" className="ow-btn ow-btn-primary">
-            View pricing
-          </Link>
-          <Link href="/contact" className="ow-btn ow-btn-light">
-            Contact sales
-          </Link>
+        <IntegrationsShowcase />
+      </section>
+
+      <section className="ow-section ow-section--tight ow-section--soft">
+        <div className="ow-section-head ow-section-head--center">
+          <h2>{pricing.title}</h2>
+          <p>{pricing.body}</p>
+        </div>
+        <HomePricing />
+        <div className="ow-section-actions">
+          {(pricing.ctas ?? []).map((ctaItem) => (
+            <Link
+              key={`${ctaItem.href}-${ctaItem.label}`}
+              href={ctaItem.href}
+              className={
+                ctaItem.variant === "primary" ? "ow-btn ow-btn-primary" : "ow-btn ow-btn-outline"
+              }
+            >
+              {ctaItem.label}
+            </Link>
+          ))}
         </div>
       </section>
 
       <div className="ow-cta-band">
         <div className="ow-cta-panel">
           <div>
-            <h2>Open the Command Center when you are ready</h2>
-            <p>
-              Existing customers sign in to the operational workspace. New teams can register and
-              connect their first application URL in minutes.
-            </p>
+            <h2>{cta.title}</h2>
+            <p>{cta.body}</p>
           </div>
           <div className="ow-hero-actions">
-            <Link href="/login" className="ow-btn ow-btn-secondary">
-              Sign in
-            </Link>
-            <Link href="/register" className="ow-btn ow-btn-primary">
-              Create account
-            </Link>
+            {(cta.ctas ?? []).map((ctaItem) => (
+              <Link
+                key={`${ctaItem.href}-${ctaItem.label}`}
+                href={ctaItem.href}
+                className={
+                  ctaItem.variant === "secondary"
+                    ? "ow-btn ow-btn-secondary"
+                    : "ow-btn ow-btn-primary"
+                }
+              >
+                {ctaItem.label}
+              </Link>
+            ))}
           </div>
         </div>
       </div>

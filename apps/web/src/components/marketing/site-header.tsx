@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { MARKETING_NAV } from "../../lib/marketing-nav";
+import { marketingSiteChrome } from "../../content/marketing";
 
 export function SiteHeader() {
   const pathname = usePathname();
@@ -17,8 +17,8 @@ export function SiteHeader() {
           <Image
             src="/brand/opswatch-logo-light.png"
             alt="OpsWatch"
-            width={168}
-            height={40}
+            width={240}
+            height={56}
             className="ow-brand-logo"
             priority
           />
@@ -38,7 +38,7 @@ export function SiteHeader() {
         </button>
 
         <nav id="ow-primary-nav" className={`ow-nav${open ? " is-open" : ""}`} aria-label="Primary">
-          {MARKETING_NAV.map((item) => {
+          {marketingSiteChrome.nav.map((item) => {
             const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
@@ -56,7 +56,7 @@ export function SiteHeader() {
               Sign in
             </Link>
             <Link href="/register" className="ow-btn ow-btn-primary" onClick={() => setOpen(false)}>
-              Start free
+              Start monitoring
             </Link>
           </div>
         </nav>

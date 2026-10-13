@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { MARKETING_FOOTER_LINKS, MARKETING_NAV } from "../../lib/marketing-nav";
+import { marketingSiteChrome } from "../../content/marketing";
 
 export function SiteFooter() {
   return (
@@ -10,21 +10,26 @@ export function SiteFooter() {
           <Image
             src="/brand/opswatch-logo-light.png"
             alt="OpsWatch"
-            width={148}
-            height={36}
+            width={180}
+            height={42}
             className="ow-brand-logo"
           />
-          <p>
-            Agentless application health and incident remediation with an advanced topology
-            foundation.
-          </p>
+          <p>{marketingSiteChrome.productBlurb}</p>
+          <div className="ow-footer-cta">
+            <Link href="/register" className="ow-btn ow-btn-primary">
+              Create account
+            </Link>
+            <Link href="/login" className="ow-btn ow-btn-ghost">
+              Open Command Center
+            </Link>
+          </div>
         </div>
 
         <div className="ow-footer-cols">
           <div>
             <h2>Product</h2>
             <ul>
-              {MARKETING_NAV.map((item) => (
+              {marketingSiteChrome.nav.map((item) => (
                 <li key={item.href}>
                   <Link href={item.href}>{item.label}</Link>
                 </li>
@@ -34,7 +39,17 @@ export function SiteFooter() {
           <div>
             <h2>Company</h2>
             <ul>
-              {MARKETING_FOOTER_LINKS.map((item) => (
+              {marketingSiteChrome.footerCompany.map((item) => (
+                <li key={item.href}>
+                  <Link href={item.href}>{item.label}</Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h2>Get started</h2>
+            <ul>
+              {marketingSiteChrome.footerGetStarted.map((item) => (
                 <li key={item.href}>
                   <Link href={item.href}>{item.label}</Link>
                 </li>
@@ -45,6 +60,7 @@ export function SiteFooter() {
       </div>
       <div className="ow-footer-base">
         <p>© {new Date().getFullYear()} OpsWatch. An Okang Group platform.</p>
+        <p>{marketingSiteChrome.footerNote}</p>
       </div>
     </footer>
   );

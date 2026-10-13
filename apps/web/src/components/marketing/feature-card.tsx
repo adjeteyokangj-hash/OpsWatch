@@ -3,26 +3,41 @@
 import Link from "next/link";
 import { useState } from "react";
 
-export type CapabilityState = "Live" | "Preview" | "Foundation" | "Coming soon";
+export type CapabilityState = "Live" | "Available" | "Preview" | "Foundation" | "Coming soon";
+
+const ICONS: Record<string, string> = {
+  "Agentless health checks": "⌁",
+  "Advanced topology": "⬡",
+  "Governed remediation": "↺",
+  "Application monitoring": "▣",
+  "Automated recovery": "⚙",
+  "Security controls": "⛨"
+};
 
 export function FeatureCard({
   title,
   body,
   state,
-  href
+  href,
+  icon
 }: {
   title: string;
   body: string;
   state: CapabilityState;
   href?: string;
+  icon?: string;
 }) {
   const [active, setActive] = useState(false);
+  const glyph = icon ?? ICONS[title] ?? "◆";
   const content = (
     <>
       <div className="ow-feature-card-top">
-        <h3>{title}</h3>
+        <span className="ow-feature-icon" aria-hidden="true">
+          {glyph}
+        </span>
         <span className={`ow-state ow-state--${state.toLowerCase().replace(" ", "-")}`}>{state}</span>
       </div>
+      <h3>{title}</h3>
       <p>{body}</p>
       {href ? <span className="ow-feature-link">Learn more</span> : null}
     </>
