@@ -78,7 +78,16 @@ export default async function HomePage({
             ) : null}
           </div>
           <div className="ow-home-hero-media">
-            <CommandCenterPreview />
+            {page.hero.image?.url ? (
+              // eslint-disable-next-line @next/next/no-img-element -- CMS absolute URLs
+              <img
+                className="ow-cms-hero-image"
+                src={page.hero.image.url}
+                alt={page.hero.image.alt || ""}
+              />
+            ) : (
+              <CommandCenterPreview />
+            )}
           </div>
         </div>
       </section>

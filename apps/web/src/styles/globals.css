@@ -8754,3 +8754,16 @@ body:has(.auth-shell) {
   }
 }
 
+
+/* CMS-managed marketing images (OkangGroup Visual CMS) */
+.ow-cms-hero-image,
+.ow-cms-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  object-fit: cover;
+}
+.ow-cms-figure {
+  margin: 1.25rem 0 0;
+}

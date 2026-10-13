@@ -28,6 +28,14 @@ export type MarketingCta = {
   variant?: "primary" | "secondary" | "outline" | "ghost" | "light";
 };
 
+export type MarketingImage = {
+  /** Absolute HTTPS URL served to the public site (no private credentials). */
+  url: string;
+  alt: string;
+  /** Optional OkangGroup storage path for Owner re-sign / replace flows. */
+  storagePath?: string;
+};
+
 export type MarketingCard = {
   id: string;
   title: string;
@@ -49,6 +57,8 @@ export type MarketingSection = {
   cards?: MarketingCard[];
   ctas?: MarketingCta[];
   note?: string;
+  /** Optional CMS-managed image (does not replace hardcoded illustration components). */
+  image?: MarketingImage;
 };
 
 export type MarketingPageContent = {
@@ -65,6 +75,7 @@ export type MarketingPageContent = {
     showCommandCenterPreview?: boolean;
     /** Optional trust pills under the home hero CTAs */
     pills?: string[];
+    image?: MarketingImage;
   };
   sections: MarketingSection[];
 };

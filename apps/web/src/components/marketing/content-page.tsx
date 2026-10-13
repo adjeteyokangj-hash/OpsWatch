@@ -85,6 +85,13 @@ function SectionBlock({
 
       {section.id === "plans" ? <PricingGrid /> : null}
 
+      {section.image?.url ? (
+        <figure className="ow-cms-figure">
+          {/* eslint-disable-next-line @next/next/no-img-element -- CMS absolute URLs */}
+          <img src={section.image.url} alt={section.image.alt || ""} />
+        </figure>
+      ) : null}
+
       {section.note ? <p className="ow-note">{section.note}</p> : null}
 
       {section.ctas?.length ? (
@@ -145,7 +152,16 @@ export function MarketingContentPage({
           ) : undefined
         }
         media={
-          page.hero.showCommandCenterPreview ? <CommandCenterPreview compact /> : undefined
+          page.hero.image?.url ? (
+            // eslint-disable-next-line @next/next/no-img-element -- CMS absolute URLs
+            <img
+              className="ow-cms-hero-image"
+              src={page.hero.image.url}
+              alt={page.hero.image.alt || ""}
+            />
+          ) : page.hero.showCommandCenterPreview ? (
+            <CommandCenterPreview compact />
+          ) : undefined
         }
       />
       {page.sections.map((section) => (
