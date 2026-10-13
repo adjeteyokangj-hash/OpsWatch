@@ -26,7 +26,7 @@ test.describe("phase8 security browser evidence", () => {
       await loginAs(page, primaryEmail, primaryPassword);
       expect((await sessionCookies(page)).session).toBeTruthy();
 
-      await gotoAuthed(page, "/security");
+      await gotoAuthed(page, "/app/security");
       await page.waitForTimeout(2_000);
       await expect(page.getByTestId("security-workspace")).toBeVisible();
       await saveShot(page, "01-security-not-configured");

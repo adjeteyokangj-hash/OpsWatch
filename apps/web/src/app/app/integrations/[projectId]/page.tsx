@@ -3,19 +3,19 @@
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { ProjectConnectionsPanel } from "../../../components/integrations/project-connections-panel";
-import type { ConnectionRecord } from "../../../components/connections/types";
-import { ProjectWorkspaceShell } from "../../../components/projects/project-workspace-shell";
-import { PageSection } from "../../../components/ui/page-section";
-import { apiFetch } from "../../../lib/api";
-import { ConfigureSetupReturnBanner } from "../../../components/ui/configure-setup-return-banner";
+import { ProjectConnectionsPanel } from "../../../../components/integrations/project-connections-panel";
+import type { ConnectionRecord } from "../../../../components/connections/types";
+import { ProjectWorkspaceShell } from "../../../../components/projects/project-workspace-shell";
+import { PageSection } from "../../../../components/ui/page-section";
+import { apiFetch } from "../../../../lib/api";
+import { ConfigureSetupReturnBanner } from "../../../../components/ui/configure-setup-return-banner";
 import {
   formatRelativeTime,
   summarizeProjectIntegrations,
   type IntegrationType,
   type ProjectIntegration,
   type ProjectOption
-} from "../../../lib/integrations";
+} from "../../../../lib/integrations";
 
 const latestTimestamp = (values: Array<string | null | undefined>): string | null => {
   const valid = values
@@ -132,7 +132,7 @@ export default function ProjectIntegrationsPage() {
       loading={loading}
       error={error}
       actions={
-        <Link className="secondary-button" href="/integrations">
+        <Link className="secondary-button" href="/app/integrations">
           All integrations
         </Link>
       }

@@ -7,5 +7,5 @@ export default async function ProjectIntegrationsIndexRedirect({
   params: Promise<{ projectId: string }>;
 }) {
   const resolved = await params;
-  redirect(`/integrations/${resolved.projectId}`);
+  redirect(`/app/integrations/${resolved.projectId}`);
 }

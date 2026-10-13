@@ -83,7 +83,7 @@ export const ProjectIntegrationRow = ({
 
       {!expanded ? (
         <div className="project-integration-row__footer">
-          <Link className="table-subtle" href={`/integrations/${project.id}`}>
+          <Link className="table-subtle" href={`/app/integrations/${project.id}`}>
             Open {project.name} integrations →
           </Link>
         </div>

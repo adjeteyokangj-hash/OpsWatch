@@ -127,7 +127,7 @@ export default function ProjectLogsPage() {
             title="Logs explorer disabled"
             description="Enable OPSWATCH_LOGS_EXPLORER_ENABLED and connect an OTEL collector to search retained log records. This is not a live stream counter."
             action={
-              <Link className="primary-button" href={`/integrations/${projectId}`}>
+              <Link className="primary-button" href={`/app/integrations/${projectId}`}>
                 Review integrations
               </Link>
             }
@@ -139,7 +139,7 @@ export default function ProjectLogsPage() {
             title="Not connected"
             description="No active OTEL collector connection is supplying log evidence for this application. Configure log forwarding to begin retaining searchable records."
             action={
-              <Link className="primary-button" href={`/integrations/${projectId}`}>
+              <Link className="primary-button" href={`/app/integrations/${projectId}`}>
                 Connect OTEL
               </Link>
             }

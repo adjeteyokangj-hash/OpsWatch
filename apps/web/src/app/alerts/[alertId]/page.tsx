@@ -321,7 +321,7 @@ export default function AlertDetailPage() {
   const automationHref = projectId ? `/projects/${projectId}/automation` : "/automation";
   const remediatorHref = projectId
     ? `/projects/${projectId}/integrations/worker_provider`
-    : "/integrations";
+    : "/app/integrations";
 
   return (
     <Shell>

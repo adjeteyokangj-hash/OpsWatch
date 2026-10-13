@@ -515,7 +515,7 @@ export default function PlatformStripeAdminPage() {
               <ul className="validation-health-list">
                 {legacy.map((row) => (
                   <li key={row.integrationId}>
-                    <Link href={`/integrations/${row.projectId}`}>{row.projectName}</Link>
+                    <Link href={`/app/integrations/${row.projectId}`}>{row.projectName}</Link>
                     {" — "}
                     {row.hasSecretKey ? "has API key" : "no API key"}
                     {row.hasWebhookSecret ? ", has webhook secret" : ""}

@@ -113,7 +113,7 @@ export default function ProjectSettingsPage() {
                 <strong>Deployments</strong>
                 <span>Change events correlated with this application.</span>
               </Link>
-              <Link className="quick-link-card" href={`/integrations/${projectId}`}>
+              <Link className="quick-link-card" href={`/app/integrations/${projectId}`}>
                 <strong>Connect / credentials</strong>
                 <span>API key, signing secret, and ingest setup.</span>
               </Link>

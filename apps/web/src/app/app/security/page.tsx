@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { Shell } from "../../components/layout/shell";
-import { Header } from "../../components/layout/header";
-import { ProductTruthStatus } from "../../components/ui/product-truth-status";
-import { PageSection } from "../../components/ui/page-section";
-import { apiFetch } from "../../lib/api";
+import { Shell } from "../../../components/layout/shell";
+import { Header } from "../../../components/layout/header";
+import { ProductTruthStatus } from "../../../components/ui/product-truth-status";
+import { PageSection } from "../../../components/ui/page-section";
+import { apiFetch } from "../../../lib/api";
 
 type CoverageDimension = {
   dimension: string;

@@ -112,7 +112,7 @@ export default function SettingsPage() {
     <Shell>
       <Header title="Settings" />
       <p className="dashboard-subtle">
-        Platform notification preferences. Provider connections live in <Link href="/integrations">Integrations</Link>.
+        Platform notification preferences. Provider connections live in <Link href="/app/integrations">Integrations</Link>.
       </p>
       {error ? <section className="panel error-panel">{error}</section> : null}
 

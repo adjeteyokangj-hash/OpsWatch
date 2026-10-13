@@ -148,7 +148,7 @@ export function ProjectPerformancePageInner() {
               "Enable OPSWATCH_APM_UI_ENABLED and TRACE_APM processing after connecting OTEL."
             }
             action={
-              <Link className="primary-button" href={`/integrations/${projectId}`}>
+              <Link className="primary-button" href={`/app/integrations/${projectId}`}>
                 Review integrations
               </Link>
             }

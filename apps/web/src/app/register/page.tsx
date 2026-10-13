@@ -1,7 +1,20 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { API_BASE_URL } from "../../lib/constants";
+
+function PlanHint() {
+  const searchParams = useSearchParams();
+  const plan = (searchParams.get("plan") || "").toUpperCase();
+  if (!["PILOT", "GROWTH", "BUSINESS", "ENTERPRISE"].includes(plan)) return null;
+  return (
+    <p className="dashboard-subtle" data-testid="register-plan-hint">
+      After you create your account and register an application, choose the {plan} plan from that
+      application Billing tab.
+    </p>
+  );
+}
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -69,6 +82,9 @@ export default function RegisterPage() {
       <section className="auth-card auth-card--wide">
         <h1>Create account</h1>
         <p>Set up your OpsWatch workspace.</p>
+        <Suspense fallback={null}>
+          <PlanHint />
+        </Suspense>
         <form onSubmit={(e) => void onSubmit(e)}>
           <fieldset className="form-section">
             <legend>Your details</legend>

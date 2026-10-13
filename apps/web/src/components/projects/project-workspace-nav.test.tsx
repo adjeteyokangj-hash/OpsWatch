@@ -74,7 +74,7 @@ describe("buildProjectNavGroups", () => {
     const integrations = buildProjectNavGroups("proj-1")
       .flatMap((group) => group.links)
       .find((link) => link.label === "Integrations");
-    expect(integrations?.href).toBe("/integrations/proj-1");
+    expect(integrations?.href).toBe("/app/integrations/proj-1");
   });
 });
 

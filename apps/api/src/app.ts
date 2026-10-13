@@ -45,6 +45,7 @@ import { connectionsRouter } from "./routes/connections.routes";
 import { connectionIngestRouter } from "./routes/connection-ingest.routes";
 import { logsApmRouter } from "./routes/logs-apm.routes";
 import { securityRouter } from "./routes/security.routes";
+import { publicRouter } from "./routes/public.routes";
 
 const webhookJsonParser = express.json({
   limit: "1mb",
@@ -99,6 +100,7 @@ app.use(rateLimit);
 app.use(API_PREFIX, healthRouter);
 app.use(healthRouter);
 app.use(API_PREFIX, authRouter);
+app.use(API_PREFIX, publicRouter);
 app.use(API_PREFIX, statusRouter);
 app.use(API_PREFIX, trueNumerisRouter);
 app.use(API_PREFIX, eventsRouter);

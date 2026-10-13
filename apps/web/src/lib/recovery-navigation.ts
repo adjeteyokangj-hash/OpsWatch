@@ -144,7 +144,7 @@ export const resolveConfigureSetupTarget = (input: {
     missingNames.some((name) => /connection|integration|heartbeat/i.test(name))
   ) {
     return {
-      href: withReturn(projectId ? `/integrations/${projectId}` : "/connections"),
+      href: withReturn(projectId ? `/app/integrations/${projectId}` : "/connections"),
       label: "Configure required setup →",
       banner: "A monitoring connection must be configured for this action.",
       missingNames

@@ -14,7 +14,7 @@ test.describe("smoke: configuration", () => {
     await runSmokeGroup(page, testInfo, "smoke-configuration", async () => {
       await ensureSmokeAuth(page);
 
-      await smokeGoto(page, "/integrations", /\/integrations/);
+      await smokeGoto(page, "/app/integrations", /\/app\/integrations/);
       await smokeAssertReady(page, "Integrations", /Integrations/i, /integration|provider|connection|application/i);
       await expect(page.getByRole("button", { name: /logout/i })).toBeVisible();
 

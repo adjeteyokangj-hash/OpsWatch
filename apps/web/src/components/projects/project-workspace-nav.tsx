@@ -50,7 +50,7 @@ export const buildProjectNavGroups = (projectId: string): ProjectNavGroup[] => [
   {
     label: "Administration",
     links: [
-      { label: "Integrations", href: `/integrations/${projectId}` },
+      { label: "Integrations", href: `/app/integrations/${projectId}` },
       { label: "Policies", href: `/projects/${projectId}/policies` },
       { label: "Contacts", href: `/projects/${projectId}/contacts` },
       { label: "Billing", href: `/projects/${projectId}/billing` },

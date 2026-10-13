@@ -1,19 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Shell } from "../../components/layout/shell";
-import { Header } from "../../components/layout/header";
-import type { ConnectionRecord } from "../../components/connections/types";
-import { IntegrationsOverviewSummary } from "../../components/integrations/integrations-overview-summary";
-import { ProjectIntegrationRow } from "../../components/integrations/project-integration-row";
-import { PageSection } from "../../components/ui/page-section";
-import { apiFetch } from "../../lib/api";
+import { Shell } from "../../../components/layout/shell";
+import { Header } from "../../../components/layout/header";
+import type { ConnectionRecord } from "../../../components/connections/types";
+import { IntegrationsOverviewSummary } from "../../../components/integrations/integrations-overview-summary";
+import { ProjectIntegrationRow } from "../../../components/integrations/project-integration-row";
+import { PageSection } from "../../../components/ui/page-section";
+import { apiFetch } from "../../../lib/api";
 import {
   summarizeOrganizationIntegrations,
   type IntegrationType,
   type ProjectIntegration,
   type ProjectOption
-} from "../../lib/integrations";
+} from "../../../lib/integrations";
 
 export default function IntegrationsPage() {
   const [projects, setProjects] = useState<ProjectOption[]>([]);

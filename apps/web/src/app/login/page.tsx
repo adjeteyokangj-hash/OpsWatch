@@ -2,6 +2,7 @@
 
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { APP_NAME, API_BASE_URL } from "../../lib/constants";
 import { SESSION_FETCH_TIMEOUT_MS } from "../../lib/auth";
@@ -168,7 +169,11 @@ export default function LoginPage() {
           </div>
           <h1>Command Center</h1>
           <p>
-            Central monitoring for every client application — health, alerts, incidents, and automation in one place.
+            Central monitoring for every client application: health, alerts, incidents, and automation in one place.
+            <br />
+            <Link href="/" style={{ color: "#93c5fd" }}>
+              Back to OpsWatch home
+            </Link>
           </p>
           <ul className="auth-feature-list">
             <li>Four-layer health across apps, modules, workflows, and components</li>

@@ -81,7 +81,7 @@ test.describe("Phase 5 product truth", () => {
       await slowExpect(page.getByTestId("project-test-data-indicator")).toContainText("Test data");
       await capture(page, "test-data-indicator");
 
-      await gotoSafe(page, "/security", 90_000);
+      await gotoSafe(page, "/app/security", 90_000);
       await slowExpect(page.getByTestId("security-workspace")).toBeVisible();
       await slowExpect(page.getByTestId("security-coverage")).toBeVisible();
       await capture(page, "security-workspace");

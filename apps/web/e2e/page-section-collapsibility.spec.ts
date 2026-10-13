@@ -40,7 +40,7 @@ test.describe("PageSection collapsibility route evidence", () => {
         { path: "/automation", shot: "05-automation", title: /Automation/i },
         { path: "/connections", shot: "06-monitoring-connections", title: /Connections|Monitoring/i },
         { path: "/settings", shot: "07-settings", title: /Settings/i },
-        { path: "/security", shot: "08-security", title: /Security/i },
+        { path: "/app/security", shot: "08-security", title: /Security/i },
         { path: "/org", shot: "09-org", title: /Organization|Org/i },
         { path: "/intelligence", shot: "10-intelligence", title: /Intelligence/i }
       ];

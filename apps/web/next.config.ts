@@ -25,6 +25,11 @@ const nextConfig: NextConfig = {
         permanent: false
       },
       {
+        source: "/integrations/:projectId",
+        destination: "/app/integrations/:projectId",
+        permanent: false
+      },
+      {
         source: "/:path*",
         has: [
           {

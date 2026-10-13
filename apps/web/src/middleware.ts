@@ -79,7 +79,24 @@ export async function middleware(request: NextRequest) {
   }
 
   const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/register");
-  const isPublicRoute = isAuthRoute || pathname.startsWith("/status") || pathname.startsWith("/status-page");
+  const marketingExact = new Set([
+    "/",
+    "/platform",
+    "/features",
+    "/ai-intelligence",
+    "/integrations",
+    "/solutions",
+    "/pricing",
+    "/security",
+    "/about",
+    "/contact"
+  ]);
+  const isMarketingRoute = marketingExact.has(pathname);
+  const isPublicRoute =
+    isAuthRoute ||
+    isMarketingRoute ||
+    pathname.startsWith("/status") ||
+    pathname.startsWith("/status-page");
   const sessionCheck = await checkSession(request);
   const sessionValid = sessionCheck === "valid";
 

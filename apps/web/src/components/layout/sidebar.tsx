@@ -26,12 +26,12 @@ const baseNavGroups = [
     label: "Platform",
     links: [
       ["Connections", "/connections"],
-      ["Integrations", "/integrations"],
+      ["Integrations", "/app/integrations"],
       ["Workflows", "/workflows"],
       ["Services", "/services"],
       ["Automation", "/automation"],
       ["AI & Automation Policies", "/settings/ai-automation-policies"],
-      ["Security", "/security"],
+      ["Security", "/app/security"],
       ["Maintenance", "/maintenance"]
     ] as const
   },

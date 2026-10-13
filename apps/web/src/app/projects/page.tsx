@@ -65,6 +65,10 @@ function ProjectsPageContent() {
   const envFilter = searchParams.get("environment") || "";
   const ownerFilter = searchParams.get("owner") || "";
   const testFilter = (searchParams.get("test") as TestFilter) || "hide";
+  const planHint = (searchParams.get("plan") || "").toUpperCase();
+  const knownPlanHint = ["PILOT", "GROWTH", "BUSINESS", "ENTERPRISE"].includes(planHint)
+    ? planHint
+    : null;
 
   const environments = useMemo(() => {
     const set = new Set<string>();
@@ -180,6 +184,14 @@ function ProjectsPageContent() {
           </button>
         }
       />
+      {knownPlanHint ? (
+        <section className="panel" data-testid="plan-hint-banner">
+          <p>
+            You selected the {knownPlanHint} plan from pricing. Open an application Billing tab to apply
+            that subscription for the application you want to monitor.
+          </p>
+        </section>
+      ) : null}
       <section className="grid-6">
         <StatCard label="Registered applications" value={projects.length} href="/projects" />
         <StatCard label="Healthy" value={healthyCount} href="/projects?health=HEALTHY" />
