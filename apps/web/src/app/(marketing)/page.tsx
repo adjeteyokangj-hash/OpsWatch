@@ -1,6 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { resolveMarketingPage, type MarketingSection } from "../../content/marketing";
+import {
+  resolveMarketingPage,
+  visualStyleToCss,
+  type MarketingSection
+} from "../../content/marketing";
 import { CommandCenterPreview } from "../../components/marketing/command-center-preview";
 import { FeatureCard, type CapabilityState } from "../../components/marketing/feature-card";
 import { HomePricing } from "../../components/marketing/home-pricing";
@@ -49,7 +53,7 @@ export default async function HomePage({
 
   return (
     <>
-      <section className="ow-home-hero">
+      <section className="ow-home-hero" style={visualStyleToCss(page.hero.style)}>
         <div className="ow-home-hero-inner">
           <div className="ow-home-hero-copy">
             <p className="ow-eyebrow">{page.hero.eyebrow}</p>
@@ -57,12 +61,17 @@ export default async function HomePage({
             <p className="ow-lead">{page.hero.subtitle}</p>
             <div className="ow-hero-actions">
               {page.hero.primaryCta ? (
-                <PrimaryCta href={page.hero.primaryCta.href} label={page.hero.primaryCta.label} />
+                <PrimaryCta
+                  href={page.hero.primaryCta.href}
+                  label={page.hero.primaryCta.label}
+                  style={visualStyleToCss(page.hero.primaryCta.style)}
+                />
               ) : null}
               {page.hero.secondaryCta ? (
                 <SecondaryCta
                   href={page.hero.secondaryCta.href}
                   label={page.hero.secondaryCta.label}
+                  style={visualStyleToCss(page.hero.secondaryCta.style)}
                 />
               ) : null}
             </div>
@@ -84,6 +93,7 @@ export default async function HomePage({
                 className="ow-cms-hero-image"
                 src={page.hero.image.url}
                 alt={page.hero.image.alt || ""}
+                style={visualStyleToCss(page.hero.image.style)}
               />
             ) : (
               <CommandCenterPreview />
@@ -92,12 +102,12 @@ export default async function HomePage({
         </div>
       </section>
 
-      <section className="ow-section ow-section--tight">
+      <section className="ow-section ow-section--tight" style={visualStyleToCss(capabilities.style)}>
         <div className="ow-section-head ow-section-head--center">
           <h2>{capabilities.title}</h2>
           <p>{capabilities.body}</p>
         </div>
-        <div className="ow-grid-3">
+        <div className={capabilities.columns === 2 ? "ow-grid-2" : "ow-grid-3"}>
           {(capabilities.cards ?? []).map((card) => (
             <FeatureCard
               key={card.id}
@@ -105,18 +115,23 @@ export default async function HomePage({
               body={card.body}
               state={card.state as CapabilityState}
               href={card.href}
+              style={visualStyleToCss(card.style)}
             />
           ))}
         </div>
       </section>
 
-      <section className="ow-section ow-section--split">
+      <section className="ow-section ow-section--split" style={visualStyleToCss(monitoring.style)}>
         <div className="ow-split-copy">
           <p className="ow-eyebrow ow-eyebrow--dark">{monitoring.eyebrow}</p>
           <h2>{monitoring.title}</h2>
           <p className="ow-lead">{monitoring.body}</p>
           {monitoring.ctas?.[0] ? (
-            <Link href={monitoring.ctas[0].href} className="ow-text-link">
+            <Link
+              href={monitoring.ctas[0].href}
+              className="ow-text-link"
+              style={visualStyleToCss(monitoring.ctas[0].style)}
+            >
               {monitoring.ctas[0].label}
             </Link>
           ) : null}
@@ -124,7 +139,7 @@ export default async function HomePage({
         <MonitoringVisual />
       </section>
 
-      <section className="ow-band">
+      <section className="ow-band" style={visualStyleToCss(intelligence.style)}>
         <div className="ow-section">
           <div className="ow-section-head ow-section-head--center">
             <p className="ow-eyebrow">{intelligence.eyebrow}</p>
@@ -135,21 +150,28 @@ export default async function HomePage({
         </div>
       </section>
 
-      <section className="ow-section ow-section--split ow-section--split-reverse">
+      <section
+        className="ow-section ow-section--split ow-section--split-reverse"
+        style={visualStyleToCss(recovery.style)}
+      >
         <RecoveryVisual />
         <div className="ow-split-copy">
           <p className="ow-eyebrow ow-eyebrow--dark">{recovery.eyebrow}</p>
           <h2>{recovery.title}</h2>
           <p className="ow-lead">{recovery.body}</p>
           {recovery.ctas?.[0] ? (
-            <Link href={recovery.ctas[0].href} className="ow-text-link">
+            <Link
+              href={recovery.ctas[0].href}
+              className="ow-text-link"
+              style={visualStyleToCss(recovery.ctas[0].style)}
+            >
               {recovery.ctas[0].label}
             </Link>
           ) : null}
         </div>
       </section>
 
-      <section className="ow-section ow-section--tight">
+      <section className="ow-section ow-section--tight" style={visualStyleToCss(integrations.style)}>
         <div className="ow-section-head ow-section-head--center">
           <h2>{integrations.title}</h2>
           <p>{integrations.body}</p>
@@ -157,7 +179,10 @@ export default async function HomePage({
         <IntegrationsShowcase />
       </section>
 
-      <section className="ow-section ow-section--tight ow-section--soft">
+      <section
+        className="ow-section ow-section--tight ow-section--soft"
+        style={visualStyleToCss(pricing.style)}
+      >
         <div className="ow-section-head ow-section-head--center">
           <h2>{pricing.title}</h2>
           <p>{pricing.body}</p>
@@ -171,6 +196,7 @@ export default async function HomePage({
               className={
                 ctaItem.variant === "primary" ? "ow-btn ow-btn-primary" : "ow-btn ow-btn-outline"
               }
+              style={visualStyleToCss(ctaItem.style)}
             >
               {ctaItem.label}
             </Link>
@@ -178,7 +204,7 @@ export default async function HomePage({
         </div>
       </section>
 
-      <div className="ow-cta-band">
+      <div className="ow-cta-band" style={visualStyleToCss(cta.style)}>
         <div className="ow-cta-panel">
           <div>
             <h2>{cta.title}</h2>
@@ -194,6 +220,7 @@ export default async function HomePage({
                     ? "ow-btn ow-btn-secondary"
                     : "ow-btn ow-btn-primary"
                 }
+                style={visualStyleToCss(ctaItem.style)}
               >
                 {ctaItem.label}
               </Link>

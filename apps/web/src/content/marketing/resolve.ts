@@ -2,6 +2,7 @@ import { CMS_SITE_CHROME_MODULE } from "./contract";
 import { marketingPages } from "./pages";
 import { marketingSiteChrome } from "./site";
 import type { MarketingPageContent, MarketingSiteChrome } from "./types";
+import { sanitizePageVisualStyles } from "./visualStyle";
 
 const apiBase = () =>
   (process.env.NEXT_PUBLIC_API_BASE_URL ||
@@ -45,22 +46,23 @@ const mergeModules = (
           ? seedSections.map((seedSection) => sectionById.get(seedSection.id) ?? seedSection)
           : cmsSections;
 
-      pages[page.slug] = {
+      const mergedPage: MarketingPageContent = {
         ...(seeded ?? {
           slug: page.slug,
           cmsKey: key,
           metaTitle: "",
           metaDescription: "",
-          hero: { title: "", subtitle: "" },
+          hero: { eyebrow: "", title: "", subtitle: "" },
           sections: []
         }),
         ...page,
         hero: {
-          ...(seeded?.hero ?? { title: "", subtitle: "" }),
+          ...(seeded?.hero ?? { eyebrow: "", title: "", subtitle: "" }),
           ...(page.hero ?? {})
         },
         sections: mergedSections
       };
+      pages[page.slug] = sanitizePageVisualStyles(mergedPage);
     }
   }
   return { chrome, pages, source: base.source };
@@ -105,7 +107,8 @@ export async function resolveMarketingPage(
   options?: { previewToken?: string | null }
 ): Promise<MarketingPageContent | null> {
   const content = await resolveMarketingContent(options);
-  return content.pages[slug] ?? null;
+  const page = content.pages[slug] ?? null;
+  return page ? sanitizePageVisualStyles(page) : null;
 }
 
 export async function resolveMarketingChrome(options?: {

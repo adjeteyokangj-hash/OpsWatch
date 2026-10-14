@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 
 export type CapabilityState = "Live" | "Available" | "Preview" | "Foundation" | "Coming soon";
 
@@ -19,13 +19,15 @@ export function FeatureCard({
   body,
   state,
   href,
-  icon
+  icon,
+  style
 }: {
   title: string;
   body: string;
   state: CapabilityState;
   href?: string;
   icon?: string;
+  style?: CSSProperties;
 }) {
   const [active, setActive] = useState(false);
   const glyph = icon ?? ICONS[title] ?? "◆";
@@ -48,6 +50,7 @@ export function FeatureCard({
       <Link
         href={href}
         className={`ow-feature-card${active ? " is-active" : ""}`}
+        style={style}
         onMouseEnter={() => setActive(true)}
         onMouseLeave={() => setActive(false)}
         onFocus={() => setActive(true)}
@@ -61,6 +64,7 @@ export function FeatureCard({
   return (
     <article
       className={`ow-feature-card${active ? " is-active" : ""}`}
+      style={style}
       onMouseEnter={() => setActive(true)}
       onMouseLeave={() => setActive(false)}
     >
