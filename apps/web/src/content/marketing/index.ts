@@ -24,8 +24,14 @@ export type {
   MarketingCta,
   MarketingPageContent,
   MarketingSection,
-  MarketingSiteChrome
+  MarketingSiteChrome,
+  MarketingVisualStyle
 } from "./types";
+export {
+  sanitizePageVisualStyles,
+  sanitizeVisualStyle,
+  visualStyleToCss
+} from "./visualStyle";
 
 /**
  * Sync seed accessor (tests / fallback). Prefer resolveMarketingContent() for pages.

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { MarketingCta, MarketingPageContent, MarketingSection } from "../../content/marketing";
+import { visualStyleToCss } from "../../content/marketing";
 import { FeatureCard, type CapabilityState } from "./feature-card";
 import { IntelligencePipeline } from "./intelligence-pipeline";
 import { CommandCenterPreview } from "./command-center-preview";
@@ -19,7 +20,7 @@ function CtaButton({ cta }: { cta: MarketingCta }) {
             ? "ow-btn ow-btn-light"
             : "ow-btn ow-btn-primary";
   return (
-    <Link href={cta.href} className={className}>
+    <Link href={cta.href} className={className} style={visualStyleToCss(cta.style)}>
       {cta.label}
     </Link>
   );
@@ -38,12 +39,12 @@ function SectionBlock({
 
   const cards = section.cards ?? [];
   const useSolutionStyle = section.cmsKey.includes(".solutions.");
-  const usePanelStyle = section.cmsKey.includes(".about.") || !cards.some((card) => card.state);
+  const sectionStyle = visualStyleToCss(section.style);
 
   const body = (
     <>
       {section.title || section.body ? (
-        <div className="ow-section-head">
+        <div className="ow-section-head" style={sectionStyle}>
           {section.eyebrow ? (
             <p className={`ow-eyebrow${section.tone === "band" ? "" : " ow-eyebrow--dark"}`}>
               {section.eyebrow}
@@ -67,14 +68,19 @@ function SectionBlock({
                 state={card.state as CapabilityState}
                 href={card.href}
                 icon={card.icon}
+                style={visualStyleToCss(card.style)}
               />
             ) : useSolutionStyle ? (
-              <article key={card.id} className="ow-solution-card">
+              <article
+                key={card.id}
+                className="ow-solution-card"
+                style={visualStyleToCss(card.style)}
+              >
                 <h3>{card.title}</h3>
                 <p>{card.body}</p>
               </article>
             ) : (
-              <article key={card.id} className="ow-panel-card">
+              <article key={card.id} className="ow-panel-card" style={visualStyleToCss(card.style)}>
                 <h3>{card.title}</h3>
                 <p>{card.body}</p>
               </article>
@@ -84,6 +90,17 @@ function SectionBlock({
       ) : null}
 
       {section.id === "plans" ? <PricingGrid /> : null}
+
+      {section.image?.url ? (
+        <figure className="ow-cms-figure" style={visualStyleToCss(section.image.style)}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- CMS absolute URLs */}
+          <img
+            src={section.image.url}
+            alt={section.image.alt || ""}
+            style={visualStyleToCss(section.image.style)}
+          />
+        </figure>
+      ) : null}
 
       {section.note ? <p className="ow-note">{section.note}</p> : null}
 
@@ -99,7 +116,7 @@ function SectionBlock({
 
   if (section.tone === "band") {
     return (
-      <section className="ow-band">
+      <section className="ow-band" style={sectionStyle}>
         <div className="ow-section">{body}</div>
       </section>
     );
@@ -107,13 +124,17 @@ function SectionBlock({
 
   if (section.tone === "soft") {
     return (
-      <section className="ow-section ow-section--soft">
+      <section className="ow-section ow-section--soft" style={sectionStyle}>
         {body}
       </section>
     );
   }
 
-  return <section className="ow-section ow-section--tight">{body}</section>;
+  return (
+    <section className="ow-section ow-section--tight" style={sectionStyle}>
+      {body}
+    </section>
+  );
 }
 
 export function MarketingContentPage({
@@ -129,23 +150,39 @@ export function MarketingContentPage({
         eyebrow={page.hero.eyebrow}
         title={page.hero.title}
         subtitle={page.hero.subtitle}
+        style={visualStyleToCss(page.hero.style)}
         actions={
           page.hero.primaryCta || page.hero.secondaryCta ? (
             <>
               {page.hero.primaryCta ? (
-                <PrimaryCta href={page.hero.primaryCta.href} label={page.hero.primaryCta.label} />
+                <PrimaryCta
+                  href={page.hero.primaryCta.href}
+                  label={page.hero.primaryCta.label}
+                  style={visualStyleToCss(page.hero.primaryCta.style)}
+                />
               ) : null}
               {page.hero.secondaryCta ? (
                 <SecondaryCta
                   href={page.hero.secondaryCta.href}
                   label={page.hero.secondaryCta.label}
+                  style={visualStyleToCss(page.hero.secondaryCta.style)}
                 />
               ) : null}
             </>
           ) : undefined
         }
         media={
-          page.hero.showCommandCenterPreview ? <CommandCenterPreview compact /> : undefined
+          page.hero.image?.url ? (
+            // eslint-disable-next-line @next/next/no-img-element -- CMS absolute URLs
+            <img
+              className="ow-cms-hero-image"
+              src={page.hero.image.url}
+              alt={page.hero.image.alt || ""}
+              style={visualStyleToCss(page.hero.image.style)}
+            />
+          ) : page.hero.showCommandCenterPreview ? (
+            <CommandCenterPreview compact />
+          ) : undefined
         }
       />
       {page.sections.map((section) => (

@@ -22,10 +22,25 @@ export type MarketingCapabilityState =
   | "Foundation"
   | "Coming soon";
 
+import type { MarketingVisualStyle } from "./visualStyle";
+
+export type { MarketingVisualStyle };
+
 export type MarketingCta = {
   label: string;
   href: string;
   variant?: "primary" | "secondary" | "outline" | "ghost" | "light";
+  /** Optional Visual Studio style tokens (sanitized before render). */
+  style?: MarketingVisualStyle;
+};
+
+export type MarketingImage = {
+  /** Absolute HTTPS URL served to the public site (no private credentials). */
+  url: string;
+  alt: string;
+  /** Optional OkangGroup storage path for Owner re-sign / replace flows. */
+  storagePath?: string;
+  style?: MarketingVisualStyle;
 };
 
 export type MarketingCard = {
@@ -35,6 +50,7 @@ export type MarketingCard = {
   state?: MarketingCapabilityState;
   href?: string;
   icon?: string;
+  style?: MarketingVisualStyle;
 };
 
 export type MarketingSection = {
@@ -49,6 +65,9 @@ export type MarketingSection = {
   cards?: MarketingCard[];
   ctas?: MarketingCta[];
   note?: string;
+  /** Optional CMS-managed image (does not replace hardcoded illustration components). */
+  image?: MarketingImage;
+  style?: MarketingVisualStyle;
 };
 
 export type MarketingPageContent = {
@@ -65,6 +84,8 @@ export type MarketingPageContent = {
     showCommandCenterPreview?: boolean;
     /** Optional trust pills under the home hero CTAs */
     pills?: string[];
+    image?: MarketingImage;
+    style?: MarketingVisualStyle;
   };
   sections: MarketingSection[];
 };

@@ -97,10 +97,10 @@ describe("marketing content", () => {
   it("freezes CMS module catalogue against seed content keys", () => {
     expect(CMS_MODULE_CODES).toContain(CMS_SITE_CHROME_MODULE);
     expect(CMS_MODULE_CATALOGUE).toHaveLength(CMS_MODULE_CODES.length);
-    for (const module of CMS_MODULE_CATALOGUE) {
-      expect(module.pricingAmountsEditable).toBe(false);
-      const seed = seedContentForModule(module.code);
-      expect(validateCmsModulePayload(module.code, seed)).toEqual({ ok: true });
+    for (const catalogueEntry of CMS_MODULE_CATALOGUE) {
+      expect(catalogueEntry.pricingAmountsEditable).toBe(false);
+      const seed = seedContentForModule(catalogueEntry.code);
+      expect(validateCmsModulePayload(catalogueEntry.code, seed)).toEqual({ ok: true });
     }
     for (const page of Object.values(marketingPages)) {
       expect(CMS_MODULE_CODES).toContain(page.cmsKey);

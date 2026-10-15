@@ -1,8 +1,10 @@
+import { createHmac } from "crypto";
 import express from "express";
 import http from "http";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../services/cms-content/cms-content.service", () => ({
+  CMS_DEV_API_KEY: "opswatch-cms-dev-key-not-for-production",
   verifyCmsApiKey: vi.fn(async (key: string | null | undefined) => key === "good-key"),
   listCmsCapabilities: () => ({
     ok: true,
@@ -90,8 +92,20 @@ const withServer = async (
 };
 
 describe("cms-content.routes", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousPreviewSecret = process.env.OPSWATCH_CMS_PREVIEW_SECRET;
+  const previousApiKey = process.env.OPSWATCH_CMS_API_KEY;
+
   beforeEach(() => {
     process.env.OPSWATCH_CMS_PREVIEW_SECRET = "preview-secret";
+  });
+
+  afterEach(() => {
+    process.env.NODE_ENV = previousNodeEnv;
+    if (previousPreviewSecret === undefined) delete process.env.OPSWATCH_CMS_PREVIEW_SECRET;
+    else process.env.OPSWATCH_CMS_PREVIEW_SECRET = previousPreviewSecret;
+    if (previousApiKey === undefined) delete process.env.OPSWATCH_CMS_API_KEY;
+    else process.env.OPSWATCH_CMS_API_KEY = previousApiKey;
   });
 
   it("serves health without API key", async () => {
@@ -138,6 +152,50 @@ describe("cms-content.routes", () => {
       expect(publish.status).toBe(200);
       const body = (await publish.json()) as { published_revision?: number };
       expect(body.published_revision).toBe(1);
+    });
+  });
+
+  it("rejects publish, rollback, and preview without a CMS key", async () => {
+    await withServer(async (baseUrl) => {
+      const publish = await fetch(`${baseUrl}/api/cms/v1/modules/opswatch.page.home/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}"
+      });
+      const rollback = await fetch(`${baseUrl}/api/cms/v1/modules/opswatch.page.home/rollback`, {
+        method: "POST",
+        headers: { "X-Api-Key": "wrong-key", "Content-Type": "application/json" },
+        body: "{}"
+      });
+      const preview = await fetch(`${baseUrl}/api/cms/v1/preview-token`, { method: "POST" });
+      const draft = await fetch(`${baseUrl}/api/cms/v1/preview?token=not-a-token`);
+      expect(publish.status).toBe(401);
+      expect(rollback.status).toBe(401);
+      expect(preview.status).toBe(401);
+      expect(draft.status).toBe(401);
+    });
+  });
+
+  it("refuses the development preview secret in production", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.OPSWATCH_CMS_PREVIEW_SECRET;
+    delete process.env.OPSWATCH_CMS_API_KEY;
+    const exp = Math.floor(Date.now() / 1000) + 60;
+    const payload = Buffer.from(JSON.stringify({ exp, scope: "cms_preview" })).toString("base64url");
+    const sig = createHmac("sha256", "opswatch-cms-preview-dev-secret").update(payload).digest("base64url");
+
+    await withServer(async (baseUrl) => {
+      const issued = await fetch(`${baseUrl}/api/cms/v1/preview-token`, {
+        method: "POST",
+        headers: { "X-Api-Key": "good-key", "Content-Type": "application/json" },
+        body: "{}"
+      });
+      expect(issued.status).toBe(503);
+
+      const forged = await fetch(
+        `${baseUrl}/api/cms/v1/preview?token=${encodeURIComponent(`${payload}.${sig}`)}`
+      );
+      expect(forged.status).toBe(401);
     });
   });
 });
