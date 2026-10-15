@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { MarketingPageContent } from "./types";
+import type { MarketingImage, MarketingPageContent } from "./types";
 
 /**
  * Optional CMS visual overrides from OkangGroup Visual Studio.
@@ -176,6 +176,34 @@ export function visualStyleToCss(style?: MarketingVisualStyle | null): CSSProper
   return Object.keys(css).length ? css : undefined;
 }
 
+/** Public CMS images must be absolute https URLs with no embedded credentials. */
+export function sanitizeMarketingImageUrl(url: unknown): string | undefined {
+  if (typeof url !== "string") return undefined;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.length > 2000) return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (parsed.protocol !== "https:") return undefined;
+  if (parsed.username || parsed.password) return undefined;
+  return parsed.toString();
+}
+
+function sanitizeMarketingImage(image: MarketingImage | undefined): MarketingImage | undefined {
+  if (!image) return undefined;
+  const url = sanitizeMarketingImageUrl(image.url);
+  if (!url) return undefined;
+  return {
+    url,
+    alt: typeof image.alt === "string" ? image.alt.slice(0, 300) : "",
+    storagePath: typeof image.storagePath === "string" ? image.storagePath.slice(0, 500) : undefined,
+    style: sanitizeVisualStyle(image.style)
+  };
+}
+
 /** Deep-sanitize style bags on a CMS page before render (preview or published). */
 export function sanitizePageVisualStyles(page: MarketingPageContent): MarketingPageContent {
   const hero = {
@@ -187,16 +215,12 @@ export function sanitizePageVisualStyles(page: MarketingPageContent): MarketingP
     secondaryCta: page.hero.secondaryCta
       ? { ...page.hero.secondaryCta, style: sanitizeVisualStyle(page.hero.secondaryCta.style) }
       : undefined,
-    image: page.hero.image
-      ? { ...page.hero.image, style: sanitizeVisualStyle(page.hero.image.style) }
-      : undefined
+    image: sanitizeMarketingImage(page.hero.image)
   };
   const sections = page.sections.map((section) => ({
     ...section,
     style: sanitizeVisualStyle(section.style),
-    image: section.image
-      ? { ...section.image, style: sanitizeVisualStyle(section.image.style) }
-      : undefined,
+    image: sanitizeMarketingImage(section.image),
     cards: (section.cards ?? []).map((card) => ({
       ...card,
       style: sanitizeVisualStyle(card.style)

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const documentStore = new Map<string, any>();
 const revisionStore: any[] = [];
@@ -57,6 +57,8 @@ vi.mock("../../lib/prisma", () => ({
 }));
 
 import {
+  CMS_DEV_API_KEY,
+  createCmsApiKey,
   getModuleContent,
   listCmsCapabilities,
   publishModuleContent,
@@ -75,11 +77,20 @@ const sampleHome = {
 };
 
 describe("cms-content.service", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousApiKey = process.env.OPSWATCH_CMS_API_KEY;
+
   beforeEach(() => {
     documentStore.clear();
     revisionStore.length = 0;
     keyStore.length = 0;
     process.env.OPSWATCH_CMS_API_KEY = "test-cms-key";
+  });
+
+  afterEach(() => {
+    process.env.NODE_ENV = previousNodeEnv;
+    if (previousApiKey === undefined) delete process.env.OPSWATCH_CMS_API_KEY;
+    else process.env.OPSWATCH_CMS_API_KEY = previousApiKey;
   });
 
   it("exposes marketing-only capabilities", () => {
@@ -130,5 +141,28 @@ describe("cms-content.service", () => {
   it("verifies env CMS API key", async () => {
     expect(await verifyCmsApiKey("test-cms-key")).toBe(true);
     expect(await verifyCmsApiKey("wrong")).toBe(false);
+    expect(await verifyCmsApiKey(undefined)).toBe(false);
+  });
+
+  it("rejects the development key and accepts only a real env key in production", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.OPSWATCH_CMS_API_KEY;
+    expect(await verifyCmsApiKey(CMS_DEV_API_KEY)).toBe(false);
+
+    process.env.OPSWATCH_CMS_API_KEY = CMS_DEV_API_KEY;
+    expect(await verifyCmsApiKey(CMS_DEV_API_KEY)).toBe(false);
+
+    process.env.OPSWATCH_CMS_API_KEY = "configured-production-key";
+    expect(await verifyCmsApiKey("configured-production-key")).toBe(true);
+    expect(await verifyCmsApiKey(CMS_DEV_API_KEY)).toBe(false);
+  });
+
+  it("accepts an issued key and rejects it after revocation", async () => {
+    const issued = await createCmsApiKey("gateway");
+    expect(await verifyCmsApiKey(issued.apiKey)).toBe(true);
+    const row = keyStore.find((entry) => entry.id === issued.id);
+    row.isActive = false;
+    row.revokedAt = new Date();
+    expect(await verifyCmsApiKey(issued.apiKey)).toBe(false);
   });
 });

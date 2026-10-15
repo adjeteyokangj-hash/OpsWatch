@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireCmsApiKey } from "../middleware/cms-api-key";
 import {
+  CMS_DEV_API_KEY,
   getModuleContent,
   listCmsCapabilities,
   listDraftModules,
@@ -84,23 +85,39 @@ cmsContentRouter.post("/v1/modules/:moduleCode/rollback", requireCmsApiKey, asyn
   res.json({ ok: true, correlation_id: correlation(req), ...result.state });
 });
 
-const previewSecret = () =>
-  process.env.OPSWATCH_CMS_PREVIEW_SECRET?.trim() ||
-  process.env.OPSWATCH_CMS_API_KEY?.trim() ||
-  "opswatch-cms-preview-dev-secret";
+/** Known local preview fallback. Never used when NODE_ENV is production. */
+export const CMS_DEV_PREVIEW_SECRET = "opswatch-cms-preview-dev-secret";
 
-export const signCmsPreviewToken = (ttlSeconds = 3600): string => {
+/**
+ * Dedicated preview secret, otherwise the configured CMS API key.
+ * Production refuses the known development literals.
+ */
+export const resolveCmsPreviewSecret = (): string | null => {
+  const dedicated = process.env.OPSWATCH_CMS_PREVIEW_SECRET?.trim() || "";
+  const apiKey = process.env.OPSWATCH_CMS_API_KEY?.trim() || "";
+  if (process.env.NODE_ENV === "production") {
+    if (dedicated && dedicated !== CMS_DEV_PREVIEW_SECRET) return dedicated;
+    if (apiKey && apiKey !== CMS_DEV_API_KEY) return apiKey;
+    return null;
+  }
+  return dedicated || apiKey || CMS_DEV_PREVIEW_SECRET;
+};
+
+export const signCmsPreviewToken = (ttlSeconds = 3600): string | null => {
+  const secret = resolveCmsPreviewSecret();
+  if (!secret) return null;
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
   const payload = Buffer.from(JSON.stringify({ exp, scope: "cms_preview" })).toString("base64url");
-  const sig = createHmac("sha256", previewSecret()).update(payload).digest("base64url");
+  const sig = createHmac("sha256", secret).update(payload).digest("base64url");
   return `${payload}.${sig}`;
 };
 
 export const verifyCmsPreviewToken = (token: string | null | undefined): boolean => {
-  if (!token?.includes(".")) return false;
+  const secret = resolveCmsPreviewSecret();
+  if (!secret || !token?.includes(".")) return false;
   const [payload, sig] = token.split(".");
   if (!payload || !sig) return false;
-  const expected = createHmac("sha256", previewSecret()).update(payload).digest("base64url");
+  const expected = createHmac("sha256", secret).update(payload).digest("base64url");
   try {
     const a = Buffer.from(sig);
     const b = Buffer.from(expected);
@@ -117,9 +134,18 @@ export const verifyCmsPreviewToken = (token: string | null | undefined): boolean
 };
 
 cmsContentRouter.post("/v1/preview-token", requireCmsApiKey, (_req, res) => {
+  const token = signCmsPreviewToken();
+  if (!token) {
+    res.status(503).json({
+      ok: false,
+      error: "Preview signing is not configured",
+      correlation_id: correlation(_req)
+    });
+    return;
+  }
   res.json({
     ok: true,
-    token: signCmsPreviewToken(),
+    token,
     expires_in_seconds: 3600,
     correlation_id: correlation(_req)
   });

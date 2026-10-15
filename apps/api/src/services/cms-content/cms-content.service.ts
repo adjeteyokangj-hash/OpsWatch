@@ -19,6 +19,9 @@ export type CmsModuleState = {
   published_at: string | null;
 };
 
+/** Known local fallback. Never accepted when NODE_ENV is production. */
+export const CMS_DEV_API_KEY = "opswatch-cms-dev-key-not-for-production";
+
 const hashKey = (raw: string): string => createHash("sha256").update(raw).digest("hex");
 
 const safeEqualHex = (a: string, b: string): boolean => {
@@ -32,10 +35,18 @@ const safeEqualHex = (a: string, b: string): boolean => {
   }
 };
 
-/** Dev-only fallback when no MarketingCmsApiKey rows exist. */
-export const resolveDevCmsApiKey = (): string | null =>
-  process.env.OPSWATCH_CMS_API_KEY?.trim() ||
-  (process.env.NODE_ENV === "production" ? null : "opswatch-cms-dev-key-not-for-production");
+/**
+ * Env key, or the local fallback outside production.
+ * Production ignores a missing key and the known development literal.
+ */
+export const resolveDevCmsApiKey = (): string | null => {
+  const fromEnv = process.env.OPSWATCH_CMS_API_KEY?.trim() || "";
+  if (process.env.NODE_ENV === "production") {
+    if (!fromEnv || fromEnv === CMS_DEV_API_KEY) return null;
+    return fromEnv;
+  }
+  return fromEnv || CMS_DEV_API_KEY;
+};
 
 export const verifyCmsApiKey = async (rawKey: string | undefined | null): Promise<boolean> => {
   if (!rawKey?.trim()) return false;
