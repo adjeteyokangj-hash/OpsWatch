@@ -10,7 +10,7 @@ import { PageSection } from "../../../../components/ui/page-section";
 import { StatusBadge } from "../../../../components/ui/status-badge";
 import { ProductTruthStatus } from "../../../../components/ui/product-truth-status";
 import { useProjectWorkspace } from "../../../../hooks/use-project-workspace";
-import { apiFetch } from "../../../../lib/api";
+import { apiFetch, PRODUCT_INSIGHTS_TIMEOUT_MS } from "../../../../lib/api";
 
 type Recommendation = {
   id: string;
@@ -55,7 +55,9 @@ export default function ProjectInsightsPage() {
       setDataLoading(true);
       try {
         const [insights, intelligence] = await Promise.all([
-          apiFetch<{ projects: InsightsProject[] }>("/insights/product").catch(() => ({ projects: [] })),
+          apiFetch<{ projects: InsightsProject[] }>("/insights/product", {
+            timeoutMs: PRODUCT_INSIGHTS_TIMEOUT_MS
+          }).catch(() => ({ projects: [] })),
           apiFetch<IntelligenceSlice>("/intelligence?harvest=false").catch(() => null)
         ]);
         const mine = (insights.projects ?? []).find((row) => row.id === projectId);

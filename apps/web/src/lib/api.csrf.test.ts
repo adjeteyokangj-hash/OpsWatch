@@ -64,6 +64,16 @@ describe("apiFetch CSRF handling", () => {
     expect((init.headers as Record<string, string>)["x-opswatch-csrf"]).toBe("tok-1");
   });
 
+  it("keeps timeoutMs off the fetch request and still aborts on a budget", async () => {
+    fetchMock.mockResolvedValue(makeResponse({ ok: true, status: 200, json: { ok: true } }));
+
+    await apiFetch("/insights/product", { timeoutMs: 75_000 });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(init).not.toHaveProperty("timeoutMs");
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
   it("does not send the CSRF header on a GET request", async () => {
     getCsrfToken.mockReturnValue("tok-1");
     fetchMock.mockResolvedValue(makeResponse({ ok: true, status: 200, json: { ok: true } }));

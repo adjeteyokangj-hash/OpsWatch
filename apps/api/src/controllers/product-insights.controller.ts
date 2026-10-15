@@ -394,19 +394,34 @@ const buildRecommendations = (
 const loadProjectsForInsights = async (orgId: string) => {
   const rows = await (prisma as any).project.findMany({
     where: { organizationId: orgId },
-    include: {
-      ProjectIntegration: true,
-      Event: { orderBy: { createdAt: "desc" }, take: 50 },
-      Heartbeat: { orderBy: { receivedAt: "desc" }, take: 1 },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      frontendUrl: true,
+      ProjectIntegration: { select: { type: true, enabled: true } },
+      Event: {
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        select: { type: true, message: true },
+      },
+      Heartbeat: {
+        orderBy: { receivedAt: "desc" },
+        take: 1,
+        select: { receivedAt: true },
+      },
       Alert: {
         where: { status: { in: ["OPEN", "ACKNOWLEDGED"] } },
         orderBy: { lastSeenAt: "desc" },
+        select: { id: true, title: true, message: true, severity: true },
       },
       Service: {
-        include: {
-          Check: {
-            include: { CheckResult: { orderBy: { checkedAt: "desc" }, take: 1 } },
-          },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          baseUrl: true,
+          Check: { select: { id: true, name: true, type: true } },
         },
       },
     },
@@ -415,6 +430,7 @@ const loadProjectsForInsights = async (orgId: string) => {
   const journeys = rows.length > 0
     ? await (prisma as any).syntheticJourney.findMany({
         where: { projectId: { in: rows.map((project: any) => project.id) } },
+        select: { id: true, projectId: true, name: true, type: true },
         orderBy: { createdAt: "desc" },
       })
     : [];
@@ -427,7 +443,7 @@ const loadProjectsForInsights = async (orgId: string) => {
     syntheticJourneyDrafts: journeys.filter((journey: any) => journey.projectId === project.id),
     services: project.Service.map((service: any) => ({
       ...service,
-      checks: service.Check.map((check: any) => ({ ...check, results: check.CheckResult })),
+      checks: service.Check.map((check: any) => ({ ...check, results: [] })),
     })),
   }));
 };
@@ -651,6 +667,37 @@ const upsertCoverageTargetForRecommendation = async (
   }).catch(() => null);
 };
 
+const persistedRecommendationFields = (rec: InsightRecommendationView) => ({
+  title: rec.title,
+  description: rec.description,
+  priority: 100 - rec.expectedCoverageGain,
+  riskLevel: rec.riskLevel,
+  actionLevel: rec.level,
+  payloadJson: rec.payload,
+  source: rec.source,
+});
+
+type PersistedRecommendationRow = {
+  id: string;
+  status: RecommendationStatus;
+  title: string;
+  description: string;
+  priority: number;
+  riskLevel: string;
+  actionLevel: string;
+  source: string;
+  payloadJson: unknown;
+};
+
+const recommendationUnchanged = (row: PersistedRecommendationRow, rec: InsightRecommendationView) =>
+  row.title === rec.title &&
+  row.description === rec.description &&
+  row.priority === 100 - rec.expectedCoverageGain &&
+  row.riskLevel === rec.riskLevel &&
+  row.actionLevel === rec.level &&
+  row.source === rec.source &&
+  JSON.stringify(row.payloadJson ?? {}) === JSON.stringify(rec.payload ?? {});
+
 const upsertPersistedRecommendation = async (rec: InsightRecommendationView) => {
   const existing = await (prisma as any).insightRecommendation.findUnique({ where: { id: rec.id } });
   if (!existing) {
@@ -659,28 +706,14 @@ const upsertPersistedRecommendation = async (rec: InsightRecommendationView) => 
         id: rec.id,
         projectId: rec.projectId,
         type: rec.type,
-        title: rec.title,
-        description: rec.description,
-        priority: 100 - rec.expectedCoverageGain,
-        riskLevel: rec.riskLevel,
-        actionLevel: rec.level,
-        payloadJson: rec.payload,
         status: RECOMMENDATION_STATUS.OPEN,
-        source: rec.source,
+        ...persistedRecommendationFields(rec),
       },
     });
   }
   return (prisma as any).insightRecommendation.update({
     where: { id: rec.id },
-    data: {
-      title: rec.title,
-      description: rec.description,
-      priority: 100 - rec.expectedCoverageGain,
-      riskLevel: rec.riskLevel,
-      actionLevel: rec.level,
-      payloadJson: rec.payload,
-      source: rec.source,
-    },
+    data: persistedRecommendationFields(rec),
   });
 };
 
@@ -725,31 +758,72 @@ const ensureProjectIntegration = async (tx: any, projectId: string, type: string
 
 const syncPersistedRecommendationState = async (projectInsights: any[]) => {
   try {
-    for (const insight of projectInsights) {
-      for (const rec of insight.recommendations as InsightRecommendationView[]) {
-        await upsertPersistedRecommendation(rec);
+    const allRecs = projectInsights.flatMap(
+      (insight) => insight.recommendations as InsightRecommendationView[],
+    );
+    const allIds = allRecs.map((rec) => rec.id);
+    const persisted = allIds.length
+      ? await (prisma as any).insightRecommendation.findMany({
+          where: { id: { in: allIds } },
+          select: {
+            id: true,
+            status: true,
+            title: true,
+            description: true,
+            priority: true,
+            riskLevel: true,
+            actionLevel: true,
+            source: true,
+            payloadJson: true,
+          },
+        })
+      : [];
+    const persistedById = new Map<string, PersistedRecommendationRow>(
+      persisted.map((row: PersistedRecommendationRow) => [row.id, row]),
+    );
+
+    const writes = allRecs.flatMap((rec) => {
+      const existing = persistedById.get(rec.id);
+      if (!existing) {
+        return [(prisma as any).insightRecommendation.create({
+          data: {
+            id: rec.id,
+            projectId: rec.projectId,
+            type: rec.type,
+            status: RECOMMENDATION_STATUS.OPEN,
+            ...persistedRecommendationFields(rec),
+          },
+        })];
       }
+      if (recommendationUnchanged(existing, rec)) return [];
+      return [(prisma as any).insightRecommendation.update({
+        where: { id: rec.id },
+        data: persistedRecommendationFields(rec),
+      })];
+    });
 
+    const expireWhere = projectInsights.map((insight) => {
       const activeIds = (insight.recommendations as InsightRecommendationView[]).map((rec) => rec.id);
-      await (prisma as any).insightRecommendation.updateMany({
-        where: {
-          projectId: insight.id,
-          status: RECOMMENDATION_STATUS.OPEN,
-          ...(activeIds.length ? { id: { notIn: activeIds } } : {}),
-        },
+      return {
+        projectId: insight.id,
+        status: RECOMMENDATION_STATUS.OPEN,
+        ...(activeIds.length ? { id: { notIn: activeIds } } : {}),
+      };
+    });
+    if (expireWhere.length) {
+      writes.push((prisma as any).insightRecommendation.updateMany({
+        where: { OR: expireWhere },
         data: { status: RECOMMENDATION_STATUS.EXPIRED },
-      });
+      }));
+    }
 
-      const persisted = await (prisma as any).insightRecommendation.findMany({
-        where: { projectId: insight.id, id: { in: activeIds } },
-        select: { id: true, status: true },
-      });
-      const persistedById = new Map<string, RecommendationStatus>(
-        persisted.map((row: { id: string; status: RecommendationStatus }) => [row.id, row.status]),
-      );
+    if (writes.length) {
+      await (prisma as any).$transaction(writes);
+    }
 
+    for (const insight of projectInsights) {
       insight.recommendations = (insight.recommendations as InsightRecommendationView[])
-        .map((rec) => ({ ...rec, status: persistedById.get(rec.id) || rec.status }))
+        .map((rec) => ({ ...rec, status: persistedById.get(rec.id)?.status || rec.status }))
         .filter((rec) => rec.status === RECOMMENDATION_STATUS.OPEN);
     }
   } catch (error) {
@@ -773,12 +847,14 @@ export const getProductInsights = async (req: Request, res: Response) => {
     return;
   }
   try {
-    const projects = await loadProjectsForInsights(orgId);
+    const [projects, learningLoop, actionHistory] = await Promise.all([
+      loadProjectsForInsights(orgId),
+      remediationLearning(orgId),
+      (prisma as any).event
+        .findMany({ where: { Project: { organizationId: orgId }, source: "insight-action" }, orderBy: { createdAt: "desc" }, take: 30 })
+        .catch(() => []),
+    ]);
     const projectInsights = await syncPersistedRecommendationState(projects.map(buildProjectInsight));
-    const learningLoop = await remediationLearning(orgId);
-    const actionHistory = await (prisma as any).event
-      .findMany({ where: { Project: { organizationId: orgId }, source: "insight-action" }, orderBy: { createdAt: "desc" }, take: 30 })
-      .catch(() => []);
     res.json({
       generatedAt: new Date().toISOString(),
       projects: projectInsights,
@@ -806,23 +882,7 @@ export const getInsightRecommendations = async (req: Request, res: Response) => 
   const { projectId, status } = req.query as Record<string, string>;
   const projects = await loadProjectsForInsights(orgId);
   const filteredProjects = projectId ? projects.filter((project: any) => project.id === projectId) : projects;
-  const generatedByProject = new Map<string, InsightRecommendationView[]>();
-  for (const project of filteredProjects) {
-    const insight = buildProjectInsight(project);
-    generatedByProject.set(project.id, insight.recommendations);
-    for (const rec of insight.recommendations) await upsertPersistedRecommendation(rec);
-  }
-  for (const [currentProjectId, recs] of generatedByProject.entries()) {
-    const activeIds = recs.map((rec) => rec.id);
-    await (prisma as any).insightRecommendation.updateMany({
-      where: {
-        projectId: currentProjectId,
-        status: RECOMMENDATION_STATUS.OPEN,
-        ...(activeIds.length ? { id: { notIn: activeIds } } : {}),
-      },
-      data: { status: RECOMMENDATION_STATUS.EXPIRED },
-    });
-  }
+  await syncPersistedRecommendationState(filteredProjects.map(buildProjectInsight));
   const recommendations = await (prisma as any).insightRecommendation.findMany({
     where: {
       projectId: { in: filteredProjects.map((project: any) => project.id) },

@@ -52,6 +52,8 @@ const buildHeaders = (init?: RequestInit): HeadersInit => {
 
 export type ApiFetchOptions = RequestInit & {
   suppressAuthRedirect?: boolean;
+  /** Overrides the 30s client abort. Heavy reads such as product insights need more than that. */
+  timeoutMs?: number;
 };
 
 /** Snapshot from GET /intelligence/feature-gates → operatingProfile */
@@ -119,6 +121,8 @@ const toNetworkError = (error: unknown, path: string): Error => {
 };
 
 const DEFAULT_API_TIMEOUT_MS = 30_000;
+/** Product insights still reads the org portfolio. Stay under the 90s proxy budget. */
+export const PRODUCT_INSIGHTS_TIMEOUT_MS = 75_000;
 
 const withTimeout = (init: RequestInit, timeoutMs: number): { init: RequestInit; cancel: () => void } => {
   if (init.signal) {
@@ -133,7 +137,8 @@ const withTimeout = (init: RequestInit, timeoutMs: number): { init: RequestInit;
 };
 
 export const apiFetch = async <T>(path: string, init?: ApiFetchOptions): Promise<T> => {
-  const { suppressAuthRedirect, ...requestInit } = init ?? {};
+  const { suppressAuthRedirect, timeoutMs, ...requestInit } = init ?? {};
+  const budget = timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
   const baseInit: RequestInit = {
     ...requestInit,
     headers: buildHeaders(requestInit),
@@ -142,7 +147,7 @@ export const apiFetch = async <T>(path: string, init?: ApiFetchOptions): Promise
   };
 
   let response: Response;
-  const primary = withTimeout(baseInit, DEFAULT_API_TIMEOUT_MS);
+  const primary = withTimeout(baseInit, budget);
   try {
     response = await fetch(`${API_BASE_URL}${path}`, primary.init);
   } catch (error) {
@@ -152,7 +157,7 @@ export const apiFetch = async <T>(path: string, init?: ApiFetchOptions): Promise
   primary.cancel();
 
   if (!response.ok && shouldTryLocalFallback(response.status, API_BASE_URL)) {
-    const fallback = withTimeout(baseInit, DEFAULT_API_TIMEOUT_MS);
+    const fallback = withTimeout(baseInit, budget);
     try {
       response = await fetch(`${localApiFallbackBase()}${path}`, fallback.init);
     } catch (error) {

@@ -4,7 +4,10 @@ import { apiFetch } from "../../lib/api";
 import { fetchSessionUser } from "../../lib/auth";
 import DashboardPage from "./page";
 
-vi.mock("../../lib/api", () => ({ apiFetch: vi.fn() }));
+vi.mock("../../lib/api", () => ({
+  apiFetch: vi.fn(),
+  PRODUCT_INSIGHTS_TIMEOUT_MS: 75_000
+}));
 vi.mock("../../lib/auth", () => ({ fetchSessionUser: vi.fn() }));
 
 vi.mock("../../components/layout/shell", () => ({

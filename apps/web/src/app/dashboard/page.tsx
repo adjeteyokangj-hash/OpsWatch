@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Shell } from "../../components/layout/shell";
 import { Header } from "../../components/layout/header";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, PRODUCT_INSIGHTS_TIMEOUT_MS } from "../../lib/api";
 import { fetchSessionUser } from "../../lib/auth";
 import { StatCard } from "../../components/dashboard/stat-card";
 import { HealthOverview } from "../../components/dashboard/health-overview";
@@ -193,7 +193,8 @@ export default function DashboardPage() {
       runMetric(
         "insights",
         apiFetch<{ projects: InsightsProject[] }>("/insights/product", {
-          suppressAuthRedirect: true
+          suppressAuthRedirect: true,
+          timeoutMs: PRODUCT_INSIGHTS_TIMEOUT_MS
         }),
         (value) => {
           const openRecommendations = (value.projects || [])

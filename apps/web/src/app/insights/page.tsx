@@ -7,7 +7,7 @@ import { Header } from "../../components/layout/header";
 import { StatCard } from "../../components/dashboard/stat-card";
 import { ProductTruthStatus } from "../../components/ui/product-truth-status";
 import { PageSection } from "../../components/ui/page-section";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, PRODUCT_INSIGHTS_TIMEOUT_MS } from "../../lib/api";
 
 type CoverageItem = {
   key: string;
@@ -177,7 +177,7 @@ export default function InsightsPage() {
     setError(null);
     try {
       const [insightsResponse, actionRunsResponse] = await Promise.all([
-        apiFetch<ProductInsights>("/insights/product"),
+        apiFetch<ProductInsights>("/insights/product", { timeoutMs: PRODUCT_INSIGHTS_TIMEOUT_MS }),
         apiFetch<{ actionRuns: InsightActionRun[] }>("/insights/action-runs")
       ]);
       setData(insightsResponse);
