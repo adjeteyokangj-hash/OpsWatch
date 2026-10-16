@@ -21,6 +21,9 @@ type AlertListFilters = {
   onlyUnresolved?: boolean;
   dateFrom?: Date;
   dateTo?: Date;
+  /** Caps payload size; defaults applied by callers via resolveListPagination. */
+  take?: number;
+  skip?: number;
 };
 
 export const listAlerts = async (organizationId: string, filters: AlertListFilters = {}) => {
@@ -61,18 +64,31 @@ export const listAlerts = async (organizationId: string, filters: AlertListFilte
 
   const rows = await prisma.alert.findMany({
     where,
-    include: {
-      Project: true,
-      Service: true,
+    select: {
+      id: true,
+      title: true,
+      message: true,
+      severity: true,
+      status: true,
+      category: true,
+      sourceType: true,
+      firstSeenAt: true,
+      lastSeenAt: true,
+      acknowledgedAt: true,
+      resolvedAt: true,
+      Project: { select: { id: true, name: true } },
+      Service: { select: { id: true, name: true } },
       User: { select: { id: true, name: true, email: true } },
       IncidentAlert: {
-        include: {
+        select: {
           Incident: { select: { id: true, title: true, status: true } }
         },
         take: 5
       }
     },
-    orderBy: { lastSeenAt: "desc" }
+    orderBy: { lastSeenAt: "desc" },
+    take: filters.take,
+    skip: filters.skip
   });
 
   return rows.map((r): AlertListItemDto => ({

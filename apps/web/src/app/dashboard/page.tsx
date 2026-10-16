@@ -171,12 +171,17 @@ export default function DashboardPage() {
       ),
       runMetric(
         "alerts",
-        apiFetch<AlertRow[]>("/alerts", { suppressAuthRedirect: true }),
+        // Unresolved only — production held 800+ historical rows and timed out the 30s client.
+        apiFetch<AlertRow[]>("/alerts?onlyUnresolved=true&limit=50", {
+          suppressAuthRedirect: true
+        }),
         setAlerts
       ),
       runMetric(
         "incidents",
-        apiFetch<IncidentRow[]>("/incidents", { suppressAuthRedirect: true }),
+        apiFetch<IncidentRow[]>("/incidents?onlyUnresolved=true&limit=50", {
+          suppressAuthRedirect: true
+        }),
         setIncidents
       ),
       runMetric(
@@ -260,9 +265,9 @@ export default function DashboardPage() {
   const degraded = projects.filter((p) => p.status === "DEGRADED").length;
   const down = projects.filter((p) => p.status === "DOWN").length;
   const primaryProject = projects[0] ?? null;
+  // Core fetch is already unresolved-only; keep filters defensive for stale caches.
   const openAlerts = alerts.filter((a) => a.status === "OPEN" || a.status === "ACKNOWLEDGED");
   const unresolvedIncidents = incidents.filter((incident) => incident.status !== "RESOLVED");
-  const resolvedIncidents = incidents.filter((incident) => incident.status === "RESOLVED");
 
   const latestAlerts = [...openAlerts]
     .sort((a, b) => new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime())
@@ -271,8 +276,6 @@ export default function DashboardPage() {
   const latestIncidents = [...unresolvedIncidents]
     .sort((a, b) => new Date(b.openedAt).getTime() - new Date(a.openedAt).getTime())
     .slice(0, 8);
-
-  const noisyHistoryCount = alerts.length - openAlerts.length;
   const checkFailures = checks.filter((check) => check.latestResult?.status === "FAIL").length;
   const checkWarns = checks.filter((check) => check.latestResult?.status === "WARN").length;
   const weakServiceMap = checks.reduce<Record<string, number>>((acc, check) => {
@@ -370,8 +373,8 @@ export default function DashboardPage() {
               <strong>{openAlerts.length} open alerts · {unresolvedIncidents.length} unresolved incidents</strong>
             </div>
             <div className="snapshot-item">
-              <span className="snapshot-label">Historical excluded</span>
-              <strong>{noisyHistoryCount} resolved or historical alert records kept secondary</strong>
+              <span className="snapshot-label">Signal scope</span>
+              <strong>Open alerts and unresolved incidents only; full history remains on Alerts / Incidents</strong>
             </div>
             <div className="snapshot-item">
               <span className="snapshot-label">Check posture</span>
@@ -414,7 +417,7 @@ export default function DashboardPage() {
             projectName: incident.project?.name || "Unknown project",
             openedAt: incident.openedAt
           }))}
-          resolvedCount={resolvedIncidents.length}
+          resolvedCount={0}
           loading={loading}
         />
       </section>

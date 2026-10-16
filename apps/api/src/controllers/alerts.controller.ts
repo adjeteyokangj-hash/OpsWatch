@@ -1,5 +1,6 @@
 import { Response } from "express";
 import { prisma } from "../lib/prisma";
+import { resolveListPagination } from "../lib/list-pagination";
 import type { AuthRequest } from "../middleware/auth";
 import { listAlerts, mapAlertDetail } from "../services/checks.service";
 
@@ -23,6 +24,11 @@ export const getAlerts = async (req: AuthRequest, res: Response) => {
 	const orgId = requireOrg(req, res);
 	if (!orgId) return;
 
+	const pagination = resolveListPagination({
+		limit: req.query.limit,
+		offset: req.query.offset
+	});
+
 	const rows = await listAlerts(orgId, {
 		projectId: typeof req.query.projectId === "string" ? req.query.projectId : undefined,
 		serviceId: typeof req.query.serviceId === "string" ? req.query.serviceId : undefined,
@@ -32,7 +38,9 @@ export const getAlerts = async (req: AuthRequest, res: Response) => {
 		onlyOpen: req.query.onlyOpen === "true",
 		onlyUnresolved: req.query.onlyUnresolved === "true",
 		dateFrom: parseDateQuery(req.query.dateFrom),
-		dateTo: parseDateQuery(req.query.dateTo)
+		dateTo: parseDateQuery(req.query.dateTo),
+		take: pagination.take,
+		skip: pagination.skip
 	});
 
 	res.json(rows);

@@ -43,7 +43,13 @@ export const JOB_CADENCES: JobCadence[] = [
   { name: "pruneRetentionJob", envKey: "WORKER_RETENTION_INTERVAL_MS", defaultMs: 6 * 60 * 60_000 }
 ];
 
-export const DEFAULT_TICK_BUDGET_MS = 50_000;
+/**
+ * Soft wall-clock budget per tick. Kept below typical interactive request
+ * latency budgets so long serverless ticks release the shared Supabase pool
+ * sooner. HTTP/heartbeat jobs stay first in JOB_CADENCES so detection cadence
+ * is preserved; heavier jobs defer to the next minute when budget is spent.
+ */
+export const DEFAULT_TICK_BUDGET_MS = 35_000;
 export const TICK_BUDGET_ENV_KEY = "OPSWATCH_WORKER_TICK_BUDGET_MS";
 
 const readPositiveInt = (raw: string | undefined, fallback: number): number => {

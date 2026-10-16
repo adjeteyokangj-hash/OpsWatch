@@ -143,7 +143,16 @@ const buildMonitoringSummary = (row: any) => {
 	};
 };
 
-const normalizeProjectRow = async (row: any) => {
+type NormalizeProjectOptions = {
+	/**
+	 * OTEL signal aggregation is expensive (several queries per project).
+	 * List endpoints skip it; detail endpoints keep full foundation stats.
+	 */
+	includeOtelStatus?: boolean;
+};
+
+const normalizeProjectRow = async (row: any, options: NormalizeProjectOptions = {}) => {
+	const includeOtelStatus = options.includeOtelStatus !== false;
 	const { signingSecret: _signingSecret, apiKey: _apiKey, ...safeRow } = row;
 	const connections = row.connections ?? row.Connection ?? [];
 	const otelConnections = connections.filter(
@@ -151,7 +160,7 @@ const normalizeProjectRow = async (row: any) => {
 	);
 	const organizationId = row.organizationId ?? null;
 	let otelStatus: Awaited<ReturnType<typeof loadProjectOtelStatus>> | null = null;
-	if (organizationId && row.id) {
+	if (includeOtelStatus && organizationId && row.id) {
 		try {
 			otelStatus = await loadProjectOtelStatus(organizationId, row.id, otelConnections);
 		} catch (error) {
@@ -302,13 +311,15 @@ export const listProjects = async (req: AuthRequest, res: Response) => {
 	const enriched = await Promise.all(
 		rows.map(async (row) => {
 			try {
-				return await normalizeProjectRow(await enrichProjectRow(row as any));
+				return await normalizeProjectRow(await enrichProjectRow(row as any), {
+					includeOtelStatus: false
+				});
 			} catch (error) {
 				console.error("PROJECT_ENRICH_ERROR", {
 					projectId: row.id,
 					message: error instanceof Error ? error.message : String(error)
 				});
-				return await normalizeProjectRow(row as any);
+				return await normalizeProjectRow(row as any, { includeOtelStatus: false });
 			}
 		})
 	);
@@ -321,7 +332,14 @@ export const createProject = async (req: AuthRequest, res: Response) => {
 	if (!orgId) return;
 
 	try {
-		await assertWithinLimit(orgId, ENTITLEMENT.APPLICATIONS_MAX);
+		await assertWithinLimit(orgId, ENTITLEMENT.APPLICATIONS_MAX, 1, {
+			allowPlatformSuperAdminLimitOverride: true,
+			actorEmail: req.user?.email,
+			actorIsPlatformSuperAdmin:
+				typeof req.user?.isPlatformSuperAdmin === "boolean"
+					? req.user.isPlatformSuperAdmin
+					: null
+		});
 	} catch (error) {
 		if (handleEntitlementFailure(res, error)) return;
 		throw error;

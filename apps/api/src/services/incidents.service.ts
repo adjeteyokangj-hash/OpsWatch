@@ -24,6 +24,9 @@ type IncidentListFilters = {
   onlyUnresolved?: boolean;
   dateFrom?: Date;
   dateTo?: Date;
+  /** Caps payload size; defaults applied by callers via resolveListPagination. */
+  take?: number;
+  skip?: number;
 };
 
 export const listIncidents = async (organizationId: string, filters: IncidentListFilters = {}) => {
@@ -71,14 +74,16 @@ export const listIncidents = async (organizationId: string, filters: IncidentLis
             include: { Service: { select: { id: true, name: true } } }
           }
         },
-        take: 40
+        take: 8
       },
       ChangeEvent: {
         select: { id: true },
-        take: 10
+        take: 5
       }
     },
-    orderBy: { openedAt: "desc" }
+    orderBy: { openedAt: "desc" },
+    take: filters.take,
+    skip: filters.skip
   });
 
   return rows.map((r): IncidentListItemDto => {

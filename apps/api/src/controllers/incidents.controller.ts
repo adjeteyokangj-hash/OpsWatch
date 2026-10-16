@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { Response } from "express";
 import { prisma } from "../lib/prisma";
+import { resolveListPagination } from "../lib/list-pagination";
 import type { AuthRequest } from "../middleware/auth";
 import {
 	listIncidents,
@@ -34,6 +35,11 @@ export const getIncidents = async (req: AuthRequest, res: Response) => {
 	const orgId = requireOrg(req, res);
 	if (!orgId) return;
 
+	const pagination = resolveListPagination({
+		limit: req.query.limit,
+		offset: req.query.offset
+	});
+
 	const rows = await listIncidents(orgId, {
 		projectId: typeof req.query.projectId === "string" ? req.query.projectId : undefined,
 		severity: typeof req.query.severity === "string" ? (req.query.severity as any) : undefined,
@@ -42,7 +48,9 @@ export const getIncidents = async (req: AuthRequest, res: Response) => {
 		onlyOpen: req.query.onlyOpen === "true",
 		onlyUnresolved: req.query.onlyUnresolved === "true",
 		dateFrom: parseDateQuery(req.query.dateFrom),
-		dateTo: parseDateQuery(req.query.dateTo)
+		dateTo: parseDateQuery(req.query.dateTo),
+		take: pagination.take,
+		skip: pagination.skip
 	});
 
 	res.json(rows);

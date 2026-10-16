@@ -7,6 +7,7 @@ import {
   entitlementLimitExceeded,
   subscriptionReadOnly
 } from "../../lib/entitlement-errors";
+import { isPlatformSuperAdmin } from "../../middleware/require-platform-super-admin";
 import {
   ENTITLEMENT_KEYS,
   LIMIT_ENTITLEMENT_KEYS,
@@ -191,10 +192,22 @@ export const assertEntitlementEnabled = async (
   }
 };
 
+export type AssertWithinLimitOptions = {
+  /**
+   * When true and the actor is a verified platform super admin, numeric plan
+   * caps (e.g. applications.max) are skipped. Subscription read-only mode and
+   * disabled features still apply — this is not a blanket entitlement bypass.
+   */
+  allowPlatformSuperAdminLimitOverride?: boolean;
+  actorEmail?: string | null;
+  actorIsPlatformSuperAdmin?: boolean | null;
+};
+
 export const assertWithinLimit = async (
   organizationId: string,
   featureKey: LimitEntitlementKey,
-  increment = 1
+  increment = 1,
+  options: AssertWithinLimitOptions = {}
 ): Promise<void> => {
   await assertMutationsAllowed(organizationId, increment);
   const entitlement = await getEntitlement(organizationId, featureKey);
@@ -203,6 +216,13 @@ export const assertWithinLimit = async (
   }
   const limit = entitlement.limit;
   if (limit == null) return;
+
+  if (
+    options.allowPlatformSuperAdminLimitOverride &&
+    isPlatformSuperAdmin(options.actorEmail, options.actorIsPlatformSuperAdmin)
+  ) {
+    return;
+  }
 
   const current = await countUsage(organizationId, featureKey);
   if (current + increment > limit) {

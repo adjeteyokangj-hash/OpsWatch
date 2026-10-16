@@ -62,8 +62,8 @@ const project = {
 
 const coreResponse = (path: string): unknown => {
   if (path === "/projects") return [project];
-  if (path === "/alerts") return [];
-  if (path === "/incidents") return [];
+  if (path.startsWith("/alerts")) return [];
+  if (path.startsWith("/incidents")) return [];
   if (path === "/checks") {
     return {
       items: [],
@@ -96,6 +96,12 @@ describe("DashboardPage incremental loading", () => {
     });
     expect(screen.getByText("Applications: Noble Express")).toBeInTheDocument();
     expect(screen.queryByText("No monitoring data visible")).not.toBeInTheDocument();
+    expect(vi.mocked(apiFetch).mock.calls.map(([path]) => path)).toEqual(
+      expect.arrayContaining([
+        "/alerts?onlyUnresolved=true&limit=50",
+        "/incidents?onlyUnresolved=true&limit=50"
+      ])
+    );
   });
 
   it("keeps core monitoring data visible when a secondary endpoint fails", async () => {
