@@ -10,6 +10,7 @@
 import { randomUUID } from "crypto";
 import { prisma as defaultPrisma } from "../../lib/prisma";
 import {
+  DETECTION_PRIORITY_JOBS,
   JOB_CADENCES,
   JobCadence,
   computeDueJobs,
@@ -156,6 +157,9 @@ const resolveFailureBackoffMs = (
  * release its lease while the original runner continued mutating data. Instead
  * we mark the overrun, keep renewing the lease, wait for the runner to settle,
  * and only then return a TIMED_OUT outcome or propagate its real failure.
+ *
+ * Soft timeout also disconnects the Prisma pool slot so interactive API
+ * requests are not blocked while the overdue runner winds down.
  */
 const runWithLeaseAwareSoftTimeout = async (input: {
   jobName: string;
@@ -164,6 +168,7 @@ const runWithLeaseAwareSoftTimeout = async (input: {
   lock: TickLock;
   lockTtlMs: number;
   logger: Pick<Console, "error" | "info">;
+  disconnect?: () => Promise<void>;
 }): Promise<void | JobRunOutcome> => {
   let timedOut = false;
   let leaseLost = false;
@@ -174,6 +179,9 @@ const runWithLeaseAwareSoftTimeout = async (input: {
     input.logger.info(
       `[serverless-tick] job ${input.jobName} exceeded ${input.timeoutMs}ms; retaining lease until it settles`
     );
+    if (typeof input.disconnect === "function") {
+      void input.disconnect().catch(() => undefined);
+    }
   }, input.timeoutMs);
 
   const renewLease = input.lock.renew;
@@ -234,6 +242,12 @@ const orderDueJobsFairly = (
   priorityByName: Map<string, number>
 ): string[] =>
   [...dueJobs].sort((left, right) => {
+    // Detection jobs always precede heavy sync/learning work so fairness can
+    // defer the rest after the interactive window without starving checks.
+    const leftBand = DETECTION_PRIORITY_JOBS.has(left) ? 0 : 1;
+    const rightBand = DETECTION_PRIORITY_JOBS.has(right) ? 0 : 1;
+    if (leftBand !== rightBand) return leftBand - rightBand;
+
     const leftState = stateByName.get(left);
     const rightState = stateByName.get(right);
     const leftDue = leftState?.nextDueAt?.getTime() ?? Number.NEGATIVE_INFINITY;
@@ -384,7 +398,11 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
           timeoutMs: jobTimeoutMs,
           lock,
           lockTtlMs,
-          logger
+          logger,
+          disconnect:
+            typeof prisma.$disconnect === "function"
+              ? () => prisma.$disconnect!()
+              : undefined
         });
         const durationMs = clock() - jobStart;
 

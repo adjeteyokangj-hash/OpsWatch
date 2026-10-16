@@ -30,4 +30,19 @@ describe("buildDatabaseUrl", () => {
     expect(url).not.toContain("pgbouncer=true");
     expect(url).toContain("connection_limit=20");
   });
+
+  it("uses a small multi-slot pool on Vercel so ticks and dashboard reads can share", () => {
+    process.env.VERCEL = "1";
+    process.env.DATABASE_URL =
+      "postgresql://postgres.ref:secret@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true";
+    expect(buildDatabaseUrl()).toContain("connection_limit=3");
+  });
+
+  it("lifts a historical connection_limit=1 on Vercel", () => {
+    process.env.VERCEL = "1";
+    process.env.DATABASE_URL =
+      "postgresql://postgres.ref:secret@aws-0-eu-west-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1";
+    expect(buildDatabaseUrl()).toContain("connection_limit=3");
+    expect(buildDatabaseUrl()).not.toMatch(/connection_limit=1(?!\d)/);
+  });
 });

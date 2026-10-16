@@ -35,6 +35,7 @@ describe("serverless worker timeout lease safety", () => {
       expect(runnerSettled).toBe(true);
     });
     const renew = vi.fn(async () => true);
+    const disconnect = vi.fn(async () => undefined);
     const acquireLock = vi.fn(async (): Promise<TickLock> => ({
       acquired: true,
       holder: "timeout-test",
@@ -42,8 +43,11 @@ describe("serverless worker timeout lease safety", () => {
       release
     }));
 
+    const prisma = makePrisma();
+    prisma.$disconnect = disconnect;
+
     const tickPromise = runServerlessWorkerTick({
-      prismaClient: makePrisma(),
+      prismaClient: prisma,
       cadences: [{ name: "slowJob", envKey: "WORKER_SLOW_INTERVAL_MS", defaultMs: 60_000 }],
       runners: {
         slowJob: async () => {
@@ -68,6 +72,7 @@ describe("serverless worker timeout lease safety", () => {
     await vi.advanceTimersByTimeAsync(10);
     expect(runnerSettled).toBe(false);
     expect(release).not.toHaveBeenCalled();
+    expect(disconnect).toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(40);
     const summary = await tickPromise;

@@ -295,4 +295,55 @@ describe("runServerlessWorkerTick", () => {
     expect(summary.heartbeatUpdated).toBe(false);
     expect(release).toHaveBeenCalledTimes(1);
   });
+
+  it("runs detection jobs before overdue heavy sync work", async () => {
+    const prisma = makeFakePrisma([
+      {
+        jobName: "runMonitoringSyncJob",
+        nextDueAt: new Date("2026-07-21T06:00:00.000Z"),
+        lastFinishedAt: new Date("2026-07-21T05:00:00.000Z"),
+        consecutiveFailures: 0,
+        totalRuns: 1,
+        totalFailures: 0
+      },
+      {
+        jobName: "runHttpChecksJob",
+        nextDueAt: new Date("2026-07-21T06:59:00.000Z"),
+        lastFinishedAt: new Date("2026-07-21T06:58:00.000Z"),
+        consecutiveFailures: 0,
+        totalRuns: 1,
+        totalFailures: 0
+      }
+    ]);
+    const { acquire } = acquireGranted();
+    const order: string[] = [];
+    const runners: JobRunners = {
+      runHttpChecksJob: vi.fn(async () => {
+        order.push("runHttpChecksJob");
+      }),
+      runMonitoringSyncJob: vi.fn(async () => {
+        order.push("runMonitoringSyncJob");
+      })
+    };
+
+    await runServerlessWorkerTick({
+      prismaClient: prisma,
+      runners,
+      cadences: [
+        { name: "runHttpChecksJob", envKey: "WORKER_HTTP_CHECK_INTERVAL_MS", defaultMs: 60_000 },
+        {
+          name: "runMonitoringSyncJob",
+          envKey: "WORKER_MONITORING_SYNC_INTERVAL_MS",
+          defaultMs: 15 * 60_000
+        }
+      ],
+      now,
+      env: {},
+      clock: () => 0,
+      acquireLock: acquire,
+      recordHeartbeat: vi.fn(async () => true)
+    });
+
+    expect(order).toEqual(["runHttpChecksJob", "runMonitoringSyncJob"]);
+  });
 });

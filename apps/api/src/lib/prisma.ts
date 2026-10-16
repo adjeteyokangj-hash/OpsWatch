@@ -17,11 +17,21 @@ export const buildDatabaseUrl = (rawUrl = process.env.DATABASE_URL ?? ""): strin
     url += "pgbouncer=true";
   }
 
+  const serverless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  // Serverless: keep a small multi-slot pool so a worker tick and dashboard
+  // reads can share the transaction pooler (connection_limit=1 starved UI).
+  const defaultLimit = serverless ? "3" : "20";
+
   if (!/connection_limit=/i.test(url)) {
-    // Local/dev needs more than serverless (5 was too low for next start + browser smoke storms).
-    const limit = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME ? "1" : "20";
     url += url.includes("?") ? "&" : "?";
-    url += `connection_limit=${limit}&pool_timeout=30`;
+    url += `connection_limit=${defaultLimit}&pool_timeout=30`;
+  } else if (serverless && /([?&])connection_limit=1(?=&|$)/i.test(url)) {
+    url = url.replace(/([?&])connection_limit=1(?=&|$)/i, `$1connection_limit=${defaultLimit}`);
+  }
+
+  if (!/pool_timeout=/i.test(url)) {
+    url += url.includes("?") ? "&" : "?";
+    url += "pool_timeout=30";
   }
 
   return url;
