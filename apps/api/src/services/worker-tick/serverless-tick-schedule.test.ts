@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_INTERACTIVE_FAIRNESS_MS,
   DEFAULT_TICK_BUDGET_MS,
   JOB_CADENCES,
+  MAX_TICK_BUDGET_MS,
   computeDueJobs,
   isJobDue,
   resolveCadenceMs,
-  resolveTickBudgetMs
+  resolveInteractiveFairnessMs,
+  resolveTickBudgetMs,
+  shouldDeferForInteractiveFairness
 } from "./serverless-tick-schedule";
 
 describe("serverless-tick-schedule", () => {
@@ -79,6 +83,22 @@ describe("serverless-tick-schedule", () => {
 
     it("honours a positive override", () => {
       expect(resolveTickBudgetMs({ OPSWATCH_WORKER_TICK_BUDGET_MS: "30000" })).toBe(30_000);
+    });
+
+    it("caps oversized overrides", () => {
+      expect(resolveTickBudgetMs({ OPSWATCH_WORKER_TICK_BUDGET_MS: "90000" })).toBe(MAX_TICK_BUDGET_MS);
+    });
+  });
+
+  describe("interactive fairness", () => {
+    it("defaults fairness window", () => {
+      expect(resolveInteractiveFairnessMs({})).toBe(DEFAULT_INTERACTIVE_FAIRNESS_MS);
+    });
+
+    it("keeps detection jobs running after the fairness window", () => {
+      expect(shouldDeferForInteractiveFairness("runHttpChecksJob", 25_000, 20_000)).toBe(false);
+      expect(shouldDeferForInteractiveFairness("runLearningCycleJob", 25_000, 20_000)).toBe(true);
+      expect(shouldDeferForInteractiveFairness("runMonitoringSyncJob", 5_000, 20_000)).toBe(false);
     });
   });
 

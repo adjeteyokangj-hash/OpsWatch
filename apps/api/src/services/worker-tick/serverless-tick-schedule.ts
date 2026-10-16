@@ -50,7 +50,25 @@ export const JOB_CADENCES: JobCadence[] = [
  * is preserved; heavier jobs defer to the next minute when budget is spent.
  */
 export const DEFAULT_TICK_BUDGET_MS = 35_000;
+/** Hard ceiling so a production env override cannot recreate 50–90s ticks. */
+export const MAX_TICK_BUDGET_MS = 40_000;
 export const TICK_BUDGET_ENV_KEY = "OPSWATCH_WORKER_TICK_BUDGET_MS";
+
+/**
+ * After this elapsed wall time, only detection-priority jobs may still start.
+ * Keeps HTTP/heartbeat cadence while deferring learning/sync/SSL so dashboard
+ * reads are not starved on the shared Supabase pooler.
+ */
+export const DEFAULT_INTERACTIVE_FAIRNESS_MS = 20_000;
+export const INTERACTIVE_FAIRNESS_ENV_KEY = "OPSWATCH_WORKER_INTERACTIVE_FAIRNESS_MS";
+
+/** Jobs that must keep running for prompt incident detection. */
+export const DETECTION_PRIORITY_JOBS = new Set<string>([
+  "processHeartbeatStaleJob",
+  "runHttpChecksJob",
+  "processOtelBatchesJob",
+  "processOtelFreshnessJob"
+]);
 
 const readPositiveInt = (raw: string | undefined, fallback: number): number => {
   if (!raw) {
@@ -68,7 +86,17 @@ export const resolveCadenceMs = (
 
 /** Soft execution budget; new jobs are not started once it is exceeded. */
 export const resolveTickBudgetMs = (env: NodeJS.ProcessEnv = process.env): number =>
-  readPositiveInt(env[TICK_BUDGET_ENV_KEY], DEFAULT_TICK_BUDGET_MS);
+  Math.min(MAX_TICK_BUDGET_MS, readPositiveInt(env[TICK_BUDGET_ENV_KEY], DEFAULT_TICK_BUDGET_MS));
+
+export const resolveInteractiveFairnessMs = (env: NodeJS.ProcessEnv = process.env): number =>
+  readPositiveInt(env[INTERACTIVE_FAIRNESS_ENV_KEY], DEFAULT_INTERACTIVE_FAIRNESS_MS);
+
+/** True when a non-detection job should yield the remainder of the tick. */
+export const shouldDeferForInteractiveFairness = (
+  jobName: string,
+  elapsedMs: number,
+  fairnessMs: number
+): boolean => elapsedMs >= fairnessMs && !DETECTION_PRIORITY_JOBS.has(jobName);
 
 export type JobStateLike = {
   nextDueAt?: Date | null;

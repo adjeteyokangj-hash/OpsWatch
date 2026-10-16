@@ -163,87 +163,126 @@ export default function DashboardPage() {
       );
     }, CORE_LOAD_BUDGET_MS);
 
-    const coreTasks = [
-      runMetric(
-        "projects",
-        apiFetch<ProjectRow[]>("/projects", { suppressAuthRedirect: true }),
-        setProjects
-      ),
-      runMetric(
-        "alerts",
-        // Unresolved only — production held 800+ historical rows and timed out the 30s client.
-        apiFetch<AlertRow[]>("/alerts?onlyUnresolved=true&limit=50", {
-          suppressAuthRedirect: true
-        }),
-        setAlerts
-      ),
-      runMetric(
-        "incidents",
-        apiFetch<IncidentRow[]>("/incidents?onlyUnresolved=true&limit=50", {
-          suppressAuthRedirect: true
-        }),
-        setIncidents
-      ),
-      runMetric(
-        "checks",
-        apiFetch<CheckMetrics>("/checks", { suppressAuthRedirect: true }),
-        (value) => {
-          setChecks(value.items);
-          setCheckSummary(value.summary);
+    type MetricTask = { label: string; run: () => Promise<void> };
+
+    const runPool = async (tasks: MetricTask[], concurrency: number): Promise<void> => {
+      const queue = [...tasks];
+      const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, async () => {
+        while (queue.length > 0) {
+          const next = queue.shift();
+          if (!next) return;
+          await next.run();
         }
-      )
+      });
+      await Promise.all(workers);
+    };
+
+    const coreTasks: MetricTask[] = [
+      {
+        label: "projects",
+        run: () =>
+          runMetric("projects", apiFetch<ProjectRow[]>("/projects", { suppressAuthRedirect: true }), setProjects)
+      },
+      {
+        label: "alerts",
+        run: () =>
+          runMetric(
+            "alerts",
+            // Unresolved only — production held 800+ historical rows and timed out the 30s client.
+            apiFetch<AlertRow[]>("/alerts?onlyUnresolved=true&limit=50", {
+              suppressAuthRedirect: true
+            }),
+            setAlerts
+          )
+      },
+      {
+        label: "incidents",
+        run: () =>
+          runMetric(
+            "incidents",
+            apiFetch<IncidentRow[]>("/incidents?onlyUnresolved=true&limit=50", {
+              suppressAuthRedirect: true
+            }),
+            setIncidents
+          )
+      },
+      {
+        label: "checks",
+        run: () =>
+          runMetric(
+            "checks",
+            apiFetch<CheckMetrics>("/checks", { suppressAuthRedirect: true }),
+            (value) => {
+              setChecks(value.items);
+              setCheckSummary(value.summary);
+            }
+          )
+      },
+      {
+        label: "layer health",
+        run: () =>
+          runMetric(
+            "layer health",
+            apiFetch<LayerHealthRow[]>("/analytics/layer-health", {
+              suppressAuthRedirect: true
+            }),
+            setLayerHealth
+          )
+      }
     ];
 
-    const secondaryTasks = [
-      runMetric(
-        "insights",
-        apiFetch<{ projects: InsightsProject[] }>("/insights/product", {
-          suppressAuthRedirect: true,
-          timeoutMs: PRODUCT_INSIGHTS_TIMEOUT_MS
-        }),
-        (value) => {
-          const openRecommendations = (value.projects || [])
-            .flatMap((project) =>
-              (project.recommendations || []).map((recommendation) => ({
-                ...recommendation,
-                projectName: project.name
-              }))
-            )
-            .filter((recommendation) => recommendation.status === "OPEN")
-            .filter(
-              (recommendation) =>
-                !/localhost|127\.0\.0\.1|http:\/\//i.test(
-                  `${recommendation.title} ${recommendation.description}`
+    const secondaryTasks: MetricTask[] = [
+      {
+        label: "insights",
+        run: () =>
+          runMetric(
+            "insights",
+            apiFetch<{ projects: InsightsProject[] }>("/insights/product", {
+              suppressAuthRedirect: true,
+              timeoutMs: PRODUCT_INSIGHTS_TIMEOUT_MS
+            }),
+            (value) => {
+              const openRecommendations = (value.projects || [])
+                .flatMap((project) =>
+                  (project.recommendations || []).map((recommendation) => ({
+                    ...recommendation,
+                    projectName: project.name
+                  }))
                 )
-            );
-          setRecommendations(openRecommendations.slice(0, 4));
-        }
-      ),
-      runMetric(
-        "layer health",
-        apiFetch<LayerHealthRow[]>("/analytics/layer-health", {
-          suppressAuthRedirect: true
-        }),
-        setLayerHealth
-      ),
-      runMetric(
-        "intelligence",
-        apiFetch<IntelligenceTeaser>("/intelligence?harvest=false", {
-          suppressAuthRedirect: true
-        }),
-        setIntelligence
-      )
+                .filter((recommendation) => recommendation.status === "OPEN")
+                .filter(
+                  (recommendation) =>
+                    !/localhost|127\.0\.0\.1|http:\/\//i.test(
+                      `${recommendation.title} ${recommendation.description}`
+                    )
+                );
+              setRecommendations(openRecommendations.slice(0, 4));
+            }
+          )
+      },
+      {
+        label: "intelligence",
+        run: () =>
+          runMetric(
+            "intelligence",
+            apiFetch<IntelligenceTeaser>("/intelligence?harvest=false", {
+              suppressAuthRedirect: true
+            }),
+            setIntelligence
+          )
+      }
     ];
 
-    void Promise.all(coreTasks).then(() => {
+    // Cap concurrency so a refresh does not stampede the shared Supabase pooler
+    // while a worker tick is also holding connections.
+    void runPool(coreTasks, 2).then(() => {
       window.clearTimeout(coreBudgetTimer);
       if (cancelled) return;
       setLoading(false);
       publishFailures();
+      // Secondary only after core — never compete with incidents/checks for slots.
+      void runPool(secondaryTasks, 1).then(publishFailures);
     });
-
-    // Secondary insights must never hold Projects, Alerts, Incidents or Checks hostage.
-    void Promise.all(secondaryTasks).then(publishFailures);
 
     void fetchSessionUser()
       .then((sessionUser) => {

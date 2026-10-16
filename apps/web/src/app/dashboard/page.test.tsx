@@ -118,7 +118,36 @@ describe("DashboardPage incremental loading", () => {
     await waitFor(() => {
       expect(screen.getByText("Projects: 1")).toBeInTheDocument();
     });
-    expect(screen.getByText(/intelligence query timed out/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/intelligence query timed out/i)).toBeInTheDocument();
+    });
     expect(screen.queryByText("No monitoring data visible")).not.toBeInTheDocument();
+  });
+
+  it("does not start secondary fetches until core metrics have been requested", async () => {
+    const gate = { release: null as (() => void) | null };
+    const blocked = new Promise<unknown[]>((resolve) => {
+      gate.release = () => resolve([project]);
+    });
+    vi.mocked(fetchSessionUser).mockResolvedValue({ organizationId: "org-1" } as never);
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path === "/projects") return blocked as never;
+      return coreResponse(path) as never;
+    });
+
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(vi.mocked(apiFetch).mock.calls.some(([path]) => path === "/projects")).toBe(true);
+    });
+    expect(vi.mocked(apiFetch).mock.calls.map(([path]) => path)).not.toContain(
+      "/intelligence?harvest=false"
+    );
+    expect(vi.mocked(apiFetch).mock.calls.map(([path]) => path)).not.toContain("/insights/product");
+
+    gate.release?.();
+    await waitFor(() => {
+      expect(screen.getByText("Projects: 1")).toBeInTheDocument();
+    });
   });
 });

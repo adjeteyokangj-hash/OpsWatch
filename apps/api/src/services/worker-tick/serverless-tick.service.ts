@@ -14,7 +14,9 @@ import {
   JobCadence,
   computeDueJobs,
   resolveCadenceMs,
-  resolveTickBudgetMs
+  resolveInteractiveFairnessMs,
+  resolveTickBudgetMs,
+  shouldDeferForInteractiveFairness
 } from "./serverless-tick-schedule";
 import {
   TICK_LOCK_KEY,
@@ -83,6 +85,8 @@ export interface TickPrisma extends TickLockPrisma {
     >;
     upsert(args: { where: { jobName: string }; create: unknown; update: unknown }): Promise<unknown>;
   };
+  /** Present on the real Prisma client; optional for unit-test fakes. */
+  $disconnect?: () => Promise<void>;
 }
 
 export type RunTickOptions = {
@@ -106,6 +110,8 @@ export type RunTickOptions = {
 };
 
 const DEFAULT_JOB_TIMEOUT_MS = 20_000;
+/** Cap env overrides so one job cannot hold the isolate until the 90s platform kill. */
+const MAX_JOB_TIMEOUT_MS = 35_000;
 const DEFAULT_FAILURE_BACKOFF_BASE_MS = 60_000;
 const DEFAULT_FAILURE_BACKOFF_MAX_MS = 30 * 60_000;
 
@@ -121,7 +127,10 @@ const readPositiveInt = (value: string | undefined, fallback: number): number =>
 };
 
 const resolveJobTimeoutMs = (env: NodeJS.ProcessEnv): number =>
-  readPositiveInt(env.OPSWATCH_WORKER_JOB_TIMEOUT_MS, DEFAULT_JOB_TIMEOUT_MS);
+  Math.min(
+    MAX_JOB_TIMEOUT_MS,
+    readPositiveInt(env.OPSWATCH_WORKER_JOB_TIMEOUT_MS, DEFAULT_JOB_TIMEOUT_MS)
+  );
 
 const resolveFailureBackoffMs = (
   previousFailures: number,
@@ -318,15 +327,28 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
     const jobResults: TickJobResult[] = [];
     const deferred: string[] = [];
     let budgetExhausted = false;
+    const fairnessMs = resolveInteractiveFairnessMs(env);
 
     for (const jobName of dueJobs) {
       const cadence = cadenceByName.get(jobName)!;
       const cadenceMs = resolveCadenceMs(cadence, env);
+      const elapsedMs = clock() - startedClock;
 
-      if (budgetExhausted || clock() - startedClock >= budgetMs) {
+      if (budgetExhausted || elapsedMs >= budgetMs) {
         budgetExhausted = true;
         deferred.push(jobName);
         jobResults.push({ job: jobName, status: "DEFERRED", durationMs: 0 });
+        continue;
+      }
+
+      if (shouldDeferForInteractiveFairness(jobName, elapsedMs, fairnessMs)) {
+        deferred.push(jobName);
+        jobResults.push({
+          job: jobName,
+          status: "DEFERRED",
+          durationMs: 0,
+          error: "interactive fairness"
+        });
         continue;
       }
 
@@ -434,6 +456,12 @@ export const runServerlessWorkerTick = async (options: RunTickOptions): Promise<
       if (lock.renew && !renewed) {
         logger.error(`[serverless-tick] lost lease after ${jobName}`);
         budgetExhausted = true;
+      }
+
+      // Release this isolate's pool slot between jobs so interactive API
+      // requests can acquire a Supabase pooler connection.
+      if (typeof prisma.$disconnect === "function") {
+        await prisma.$disconnect().catch(() => undefined);
       }
     }
 
