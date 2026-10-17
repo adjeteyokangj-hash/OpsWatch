@@ -27,9 +27,12 @@ export const redactMonitoringSecret = (message: string, secret: string | undefin
 
 const openDirectoryClient = async (connectionString: string): Promise<DirectoryClient> => {
   const { Client } = await import("pg");
-  const local = connectionString.includes("localhost") || connectionString.includes("127.0.0.1");
+  const target = new URL(connectionString);
+  const local = target.hostname === "localhost" || target.hostname === "127.0.0.1";
+  target.searchParams.delete("sslmode");
+  target.searchParams.delete("ssl");
   const client = new Client({
-    connectionString,
+    connectionString: target.toString(),
     ssl: local ? undefined : { rejectUnauthorized: false },
     connectionTimeoutMillis: 8000,
     statement_timeout: 10000
@@ -86,5 +89,6 @@ export const syncNiinaiStaffDirectory = async (options?: {
 
   const replace = options?.replace ?? replaceStaffDirectory;
   const count = await replace(project.id, staff);
+  console.log(`NiiNai directory stored ${count} staff`);
   return { status: "SYNCED", count };
 };
