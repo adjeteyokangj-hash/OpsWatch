@@ -23,9 +23,10 @@ const hopByHopHeaders = new Set([
 const loadExpressApp = async (): Promise<ExpressApplication> => {
   if (!appPromise) {
     appPromise = (async () => {
-      const { bootstrapApi } = await import("@opswatch/api/bootstrap");
+      const { bootstrapApi, ensureNiinaiDirectoryFresh } = await import("@opswatch/api/bootstrap");
       const { app } = await import("@opswatch/api/app");
       bootstrapApi();
+      await ensureNiinaiDirectoryFresh();
       return app;
     })();
   }

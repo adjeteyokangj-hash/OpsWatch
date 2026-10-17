@@ -370,6 +370,8 @@ export const projectInclude = {
   Incident: { where: { status: { in: ["OPEN", "INVESTIGATING", "MONITORING"] as ("OPEN" | "INVESTIGATING" | "MONITORING")[] } } },
   Heartbeat: { where: { deviceId: null }, orderBy: { receivedAt: "desc" as const }, take: 1 },
   MonitoredDevice: { orderBy: { lastSeenAt: "desc" as const } },
+  MonitoredStaff: { orderBy: { displayName: "asc" as const } },
+  MonitoredSession: { orderBy: { lastSeenAt: "desc" as const } },
   ProjectBilling: true,
   Connection: {
     where: { isActive: true },
@@ -406,6 +408,8 @@ export const projectIncludeLite = {
   Incident: { where: { status: { in: ["OPEN", "INVESTIGATING", "MONITORING"] as ("OPEN" | "INVESTIGATING" | "MONITORING")[] } } },
   Heartbeat: { where: { deviceId: null }, orderBy: { receivedAt: "desc" as const }, take: 1 },
   MonitoredDevice: { orderBy: { lastSeenAt: "desc" as const } },
+  MonitoredStaff: { orderBy: { displayName: "asc" as const } },
+  MonitoredSession: { orderBy: { lastSeenAt: "desc" as const } },
   NotificationChannel: {
     where: { isActive: true },
     select: { type: true, target: true, name: true }

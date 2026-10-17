@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ProjectConnectionsSection } from "../../../components/connections/project-connections-section";
 import { ProjectComputersPanel } from "../../../components/projects/project-computers-panel";
+import { ProjectUsersPanel } from "../../../components/projects/project-users-panel";
 import { ProjectActivityFeed } from "../../../components/projects/project-activity-feed";
 import { ProjectHealthCard, ProjectSnapshotPanel } from "../../../components/projects/project-health-card";
 import { ProjectWorkspaceShell } from "../../../components/projects/project-workspace-shell";
@@ -136,6 +137,13 @@ export default function ProjectDetailPage() {
 							</Link>
 						</div>
 					</PageSection>
+					{project.slug === "niinai-guest-house" ||
+					(Array.isArray(project.monitoredUsers) && project.monitoredUsers.length > 0) ? (
+						<ProjectUsersPanel
+							users={Array.isArray(project.monitoredUsers) ? project.monitoredUsers : []}
+							persistKey={`project:${project.id}:overview:users`}
+						/>
+					) : null}
 					{project.slug === "niinai-guest-house" ||
 					(Array.isArray(project.monitoredDevices) && project.monitoredDevices.length > 0) ? (
 						<ProjectComputersPanel

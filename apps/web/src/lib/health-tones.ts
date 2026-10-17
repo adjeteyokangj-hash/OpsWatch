@@ -3,7 +3,8 @@ export type HealthTone = "healthy" | "degraded" | "down" | "unknown" | "maintena
 export const healthTone = (status: string): HealthTone => {
   if (status === "HEALTHY" || status === "ONLINE") return "healthy";
   if (status === "DOWN") return "down";
-  if (status === "UNKNOWN" || status === "OFFLINE") return "unknown";
+  if (status === "UNKNOWN" || status === "OFFLINE" || status === "NEVER_CONNECTED") return "unknown";
+  if (status === "SUSPENDED") return "down";
   if (status === "MAINTENANCE") return "maintenance";
   if (status === "PAUSED" || status === "RECOVERING") return "paused";
   return "degraded";

@@ -18,6 +18,7 @@ export const loadDefaultJobRunners = async (
   env: NodeJS.ProcessEnv = process.env
 ): Promise<JobRunners> => {
   const jobs = await import("@opswatch/worker/jobs");
+  const { syncNiinaiStaffDirectory, redactMonitoringSecret } = await import("../niinai-directory-sync");
   const { runAutoHealSweep } = await import("../remediation/auto-heal.service");
   const { runAutonomousAutomationSweep } = await import(
     "../automation/automation-run-executor.service"
@@ -27,6 +28,15 @@ export const loadDefaultJobRunners = async (
     runHttpChecksJob: () => jobs.runHttpChecksJob(),
     runSslChecksJob: () => jobs.runSslChecksJob(),
     processHeartbeatStaleJob: () => jobs.processHeartbeatStaleJob(),
+    syncNiinaiStaffDirectoryJob: async () => {
+      try {
+        const result = await syncNiinaiStaffDirectory({ env });
+        if (result.status === "DISABLED") return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "NiiNai directory sync failed";
+        throw new Error(redactMonitoringSecret(message, env.NIINAI_MONITORING_DATABASE_URL));
+      }
+    },
     processAlertEscalationJob: () => jobs.processAlertEscalationJob(),
     resolveIncidentsJob: () => jobs.resolveIncidentsJob(),
     runIncidentCorrelationJob: () => jobs.runIncidentCorrelationJob(),

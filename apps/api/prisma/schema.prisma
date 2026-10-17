@@ -178,6 +178,50 @@ model MonitoredDevice {
   @@index([presence, lastSeenAt])
 }
 
+/// Read-only mirror of an authorised NiiNai staff profile. NiiNai Supabase remains the source of truth.
+model MonitoredStaff {
+  id              String   @id
+  projectId       String
+  userId          String
+  displayName     String
+  role            String
+  accountStatus   String
+  propertyAccess  String
+  propertyIds     Json
+  directorySeenAt DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime
+  Project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([projectId, accountStatus])
+}
+
+/// One signed-in NiiNai application. Several sessions can belong to the same staff profile.
+model MonitoredSession {
+  id                   String    @id
+  projectId            String
+  sessionId            String
+  userId               String
+  installationId       String
+  appVersion           String?
+  lifecycleSync        String    @default("UNKNOWN")
+  financialSync        String    @default("UNKNOWN")
+  lastSuccessfulSyncAt DateTime?
+  presence             String    @default("ONLINE")
+  endedAt              DateTime?
+  lastSeenAt           DateTime
+  offlineAfterSeconds  Int       @default(600)
+  sanitizedPayloadJson Json?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime
+  Project              Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, sessionId])
+  @@index([projectId, userId, lastSeenAt])
+  @@index([presence, lastSeenAt])
+}
+
 model Incident {
   id                    String                     @id
   projectId             String
@@ -437,6 +481,8 @@ model Project {
   Event                               Event[]
   Heartbeat                           Heartbeat[]
   MonitoredDevice                     MonitoredDevice[]
+  MonitoredStaff                      MonitoredStaff[]
+  MonitoredSession                    MonitoredSession[]
   Incident                            Incident[]
   IncidentTimelineEvent               IncidentTimelineEvent[]
   NotificationChannel                 NotificationChannel[]

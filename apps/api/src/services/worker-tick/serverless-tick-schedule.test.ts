@@ -112,6 +112,7 @@ describe("serverless-tick-schedule", () => {
       const names = new Set(JOB_CADENCES.map((cadence) => cadence.name));
       for (const required of [
         "processHeartbeatStaleJob",
+        "syncNiinaiStaffDirectoryJob",
         "runHttpChecksJob",
         "runSslChecksJob",
         "runIncidentCorrelationJob",

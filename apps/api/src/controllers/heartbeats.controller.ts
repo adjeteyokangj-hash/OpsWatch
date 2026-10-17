@@ -2,8 +2,9 @@ import { Response } from "express";
 import { z } from "zod";
 import type { AuthRequest } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
-import { deviceCredentialRejection, parseDeviceHeartbeatPayload } from "../services/device-heartbeat";
+import { deviceCredentialRejection, NIINAI_DEVICE_CREDENTIAL_PREFIX, parseDeviceHeartbeatPayload } from "../services/device-heartbeat";
 import { ingestHeartbeat } from "../services/heartbeats.service";
+import { bindMonitoringUser, parseSessionHeartbeat, verifyMonitoringTicket } from "../services/user-monitoring";
 
 const heartbeatBodySchema = z.object({
 	projectSlug: z.string().min(1),
@@ -37,6 +38,12 @@ export const ingestHeartbeatController = async (req: AuthRequest, res: Response)
 		return;
 	}
 
+	const session = parseSessionHeartbeat(body.payload);
+	if (session.kind === "invalid") {
+		res.status(400).json({ error: session.reason });
+		return;
+	}
+
 	if (parseDeviceHeartbeatPayload(body.payload).kind === "invalid") {
 		res.status(400).json({ error: "Device heartbeat requires a UUID device id" });
 		return;
@@ -47,13 +54,33 @@ export const ingestHeartbeatController = async (req: AuthRequest, res: Response)
 			where: { id: req.apiKeyId },
 			select: { name: true }
 		});
-		const rejection = deviceCredentialRejection(key?.name, body.payload);
-		if (rejection) {
-			res.status(403).json({ error: rejection });
-			return;
+		const name = key?.name?.trim() ?? "";
+		if (session.kind === "session" && name.startsWith(NIINAI_DEVICE_CREDENTIAL_PREFIX)) {
+			const boundId = name.slice(NIINAI_DEVICE_CREDENTIAL_PREFIX.length).trim().toLowerCase();
+			if (boundId !== session.value.installationId) {
+				res.status(403).json({ error: "Device credential does not match this computer" });
+				return;
+			}
+		} else {
+			const rejection = deviceCredentialRejection(key?.name, body.payload);
+			if (rejection) {
+				res.status(403).json({ error: rejection });
+				return;
+			}
 		}
 	}
 
-	await ingestHeartbeat(project.id, body);
+	let verifiedUserId: string | null = null;
+	if (session.kind === "session") {
+		verifiedUserId = await verifyMonitoringTicket(session.value.ticket);
+		const bound = bindMonitoringUser(session.value.claimedUserId, verifiedUserId);
+		if (!bound.ok) {
+			res.status(403).json({ error: bound.reason });
+			return;
+		}
+		verifiedUserId = bound.userId;
+	}
+
+	await ingestHeartbeat(project.id, body, { verifiedUserId });
 	res.status(202).json({ ok: true });
 };

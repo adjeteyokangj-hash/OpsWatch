@@ -27,6 +27,7 @@ import {
 } from "../services/url-monitoring-provisioning.service";
 import { loadProjectOtelStatus } from "../services/otel/otel-project-status.service";
 import { presentMonitoredDevices } from "../services/device-heartbeat";
+import { presentMonitoredUsers } from "../services/user-monitoring";
 
 const logMonitoringProvisionError = (stage: string, projectId: string, error: unknown): void => {
 	const detail =
@@ -158,6 +159,8 @@ const normalizeProjectRow = async (row: any, options: NormalizeProjectOptions = 
 		signingSecret: _signingSecret,
 		apiKey: _apiKey,
 		MonitoredDevice: monitoredDeviceRows,
+		MonitoredStaff: monitoredStaffRows,
+		MonitoredSession: monitoredSessionRows,
 		...safeRow
 	} = row;
 	const connections = row.connections ?? row.Connection ?? [];
@@ -235,6 +238,10 @@ const normalizeProjectRow = async (row: any, options: NormalizeProjectOptions = 
 	return {
 		...safeRow,
 		monitoredDevices: presentMonitoredDevices(Array.isArray(monitoredDeviceRows) ? monitoredDeviceRows : []),
+		monitoredUsers: presentMonitoredUsers(
+			Array.isArray(monitoredStaffRows) ? monitoredStaffRows : [],
+			Array.isArray(monitoredSessionRows) ? monitoredSessionRows : []
+		),
 		signingSecretConfigured: Boolean(row.signingSecret?.trim?.() || row.signingCredentialFamilyId),
 		signingSecretRotatedAt: row.signingSecretRotatedAt
 			? new Date(row.signingSecretRotatedAt).toISOString()

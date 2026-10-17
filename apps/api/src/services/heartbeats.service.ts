@@ -17,6 +17,8 @@ import {
   sanitizeDeviceMessage,
   type SanitizedDeviceHeartbeat
 } from "./device-heartbeat";
+import { bindMonitoringUser, parseSessionHeartbeat } from "./user-monitoring";
+import { ingestUserSession } from "./user-monitoring-store";
 
 export const projectStatusFromHeartbeat = (status: unknown): ProjectStatus => {
   if (status === "DOWN") return ProjectStatus.DOWN;
@@ -161,7 +163,20 @@ const ingestDeviceHeartbeat = async (
   });
 };
 
-export const ingestHeartbeat = async (projectId: string, body: any): Promise<void> => {
+export const ingestHeartbeat = async (
+  projectId: string,
+  body: any,
+  options?: { verifiedUserId?: string | null }
+): Promise<void> => {
+  const parsedSession = parseSessionHeartbeat(body?.payload);
+  if (parsedSession.kind === "invalid") return;
+  if (parsedSession.kind === "session") {
+    const bound = bindMonitoringUser(parsedSession.value.claimedUserId, options?.verifiedUserId ?? null);
+    if (!bound.ok) return;
+    await ingestUserSession(projectId, body, parsedSession.value, bound.userId);
+    return;
+  }
+
   const parsedDevice = parseDeviceHeartbeatPayload(body?.payload);
   if (parsedDevice.kind === "invalid") return;
   if (parsedDevice.kind === "device") {

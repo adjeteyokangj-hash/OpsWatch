@@ -1,6 +1,31 @@
 import { assertProductionEnv } from "./config/production-env";
+import { redactMonitoringSecret, syncNiinaiStaffDirectory } from "./services/niinai-directory-sync";
 
 let bootstrapped = false;
+let directorySync: Promise<void> | null = null;
+let directorySyncedAt = 0;
+const DIRECTORY_REFRESH_MS = 5 * 60 * 1000;
+
+/** Pull the staff directory at most once every five minutes for this process. */
+export const ensureNiinaiDirectoryFresh = (): Promise<void> => {
+  if (Date.now() - directorySyncedAt < DIRECTORY_REFRESH_MS) {
+    return Promise.resolve();
+  }
+  if (!directorySync) {
+    directorySync = syncNiinaiStaffDirectory()
+      .then((result) => {
+        if (result.status === "SYNCED") directorySyncedAt = Date.now();
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : "NiiNai directory sync failed";
+        console.error(redactMonitoringSecret(message, process.env.NIINAI_MONITORING_DATABASE_URL));
+      })
+      .finally(() => {
+        directorySync = null;
+      });
+  }
+  return directorySync;
+};
 
 /** Shared startup guard for long-running server and Vercel serverless entry. */
 export const bootstrapApi = (): void => {
@@ -9,4 +34,5 @@ export const bootstrapApi = (): void => {
   }
   assertProductionEnv();
   bootstrapped = true;
+  void ensureNiinaiDirectoryFresh();
 };

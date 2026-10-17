@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "vercel-build": "pnpm --filter @opswatch/api build && next build",
+    "vercel-build": "pnpm --filter @opswatch/api exec node ./scripts/apply-niinai-users-migration.mjs && pnpm --filter @opswatch/api build && next build",
     "start": "next start",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",

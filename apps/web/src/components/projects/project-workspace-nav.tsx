@@ -21,6 +21,7 @@ export const buildProjectNavGroups = (projectId: string): ProjectNavGroup[] => [
     label: "Core Operations",
     links: [
       { label: "Overview", href: `/projects/${projectId}` },
+      { label: "Users", href: `/projects/${projectId}/users` },
       { label: "Computers", href: `/projects/${projectId}/computers` },
       { label: "Topology", href: `/projects/${projectId}/topology` },
       { label: "Modules", href: `/projects/${projectId}/modules` },

@@ -26,6 +26,7 @@ export type JobCadence = {
  */
 export const JOB_CADENCES: JobCadence[] = [
   { name: "processHeartbeatStaleJob", envKey: "WORKER_HEARTBEAT_STALE_INTERVAL_MS", defaultMs: 60_000 },
+  { name: "syncNiinaiStaffDirectoryJob", envKey: "WORKER_NIINAI_DIRECTORY_INTERVAL_MS", defaultMs: 5 * 60_000 },
   { name: "runHttpChecksJob", envKey: "WORKER_HTTP_CHECK_INTERVAL_MS", defaultMs: 60_000 },
   { name: "processOtelBatchesJob", envKey: "WORKER_OTEL_BATCH_INTERVAL_MS", defaultMs: 30_000 },
   { name: "processOtelFreshnessJob", envKey: "WORKER_OTEL_FRESHNESS_INTERVAL_MS", defaultMs: 60_000 },
