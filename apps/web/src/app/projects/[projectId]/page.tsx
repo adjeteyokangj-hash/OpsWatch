@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ProjectConnectionsSection } from "../../../components/connections/project-connections-section";
+import { ProjectComputersPanel } from "../../../components/projects/project-computers-panel";
 import { ProjectActivityFeed } from "../../../components/projects/project-activity-feed";
 import { ProjectHealthCard, ProjectSnapshotPanel } from "../../../components/projects/project-health-card";
 import { ProjectWorkspaceShell } from "../../../components/projects/project-workspace-shell";
@@ -135,6 +136,23 @@ export default function ProjectDetailPage() {
 							</Link>
 						</div>
 					</PageSection>
+					{project.slug === "niinai-guest-house" ||
+					(Array.isArray(project.monitoredDevices) && project.monitoredDevices.length > 0) ? (
+						<ProjectComputersPanel
+							projectId={project.id}
+							devices={Array.isArray(project.monitoredDevices) ? project.monitoredDevices : []}
+							cloud={(() => {
+								const services = Array.isArray(project.services) ? project.services : [];
+								const cloud = services.find((service: { name?: string; status?: string; healthDisplayLabel?: string }) => service?.name === "NiiNai Cloud");
+								if (!cloud) return null;
+								return {
+									status: String(cloud.status ?? "UNKNOWN"),
+									label: String(cloud.healthDisplayLabel ?? cloud.status ?? "Waiting")
+								};
+							})()}
+							persistKey={`project:${project.id}:overview:computers`}
+						/>
+					) : null}
 					<ProjectConnectionsSection projectId={project.id} />
 					<ProjectActivityFeed
 						title="Open alerts"

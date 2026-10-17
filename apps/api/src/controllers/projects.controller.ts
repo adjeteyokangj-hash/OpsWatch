@@ -26,6 +26,7 @@ import {
 	UrlMonitorEntitlementError
 } from "../services/url-monitoring-provisioning.service";
 import { loadProjectOtelStatus } from "../services/otel/otel-project-status.service";
+import { presentMonitoredDevices } from "../services/device-heartbeat";
 
 const logMonitoringProvisionError = (stage: string, projectId: string, error: unknown): void => {
 	const detail =
@@ -153,7 +154,12 @@ type NormalizeProjectOptions = {
 
 const normalizeProjectRow = async (row: any, options: NormalizeProjectOptions = {}) => {
 	const includeOtelStatus = options.includeOtelStatus !== false;
-	const { signingSecret: _signingSecret, apiKey: _apiKey, ...safeRow } = row;
+	const {
+		signingSecret: _signingSecret,
+		apiKey: _apiKey,
+		MonitoredDevice: monitoredDeviceRows,
+		...safeRow
+	} = row;
 	const connections = row.connections ?? row.Connection ?? [];
 	const otelConnections = connections.filter(
 		(connection: any) => connection?.mode === "OTEL_COLLECTOR" && connection?.isActive !== false
@@ -228,6 +234,7 @@ const normalizeProjectRow = async (row: any, options: NormalizeProjectOptions = 
 
 	return {
 		...safeRow,
+		monitoredDevices: presentMonitoredDevices(Array.isArray(monitoredDeviceRows) ? monitoredDeviceRows : []),
 		signingSecretConfigured: Boolean(row.signingSecret?.trim?.() || row.signingCredentialFamilyId),
 		signingSecretRotatedAt: row.signingSecretRotatedAt
 			? new Date(row.signingSecretRotatedAt).toISOString()
@@ -514,7 +521,7 @@ export const getProjectById = async (req: AuthRequest, res: Response) => {
 			...projectInclude,
 			Alert: { orderBy: { lastSeenAt: "desc" }, take: 100 },
 			Incident: { orderBy: { openedAt: "desc" }, take: 50 },
-			Heartbeat: { orderBy: { receivedAt: "desc" }, take: 50 },
+			Heartbeat: { where: { deviceId: null }, orderBy: { receivedAt: "desc" }, take: 50 },
 			Event: { orderBy: { createdAt: "desc" }, take: 100 },
 			ProjectIntegration: true,
 			NotificationChannel: true

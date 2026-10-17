@@ -244,6 +244,7 @@ export const executeRequestFreshHeartbeat: RemediationExecutor = async ({
   const recent = await prisma.heartbeat.findFirst({
     where: {
       projectId: project.id,
+      deviceId: null,
       receivedAt: { gte: new Date(requestedAt.getTime() - 60_000) }
     },
     orderBy: { receivedAt: "desc" },

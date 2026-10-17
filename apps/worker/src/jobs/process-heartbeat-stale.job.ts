@@ -9,6 +9,7 @@ import {
   updateRuntimeEvidenceHeartbeatHealth
 } from "../services/inherited-module-heartbeat.service";
 
+const DEVICE_OFFLINE_AFTER_SECONDS = 10 * 60;
 const HEARTBEAT_RECOVERY_MIN_COUNT = 3;
 const HEARTBEAT_RECOVERY_STABLE_SECONDS = 180;
 
@@ -128,12 +129,48 @@ const progressHeartbeatStaleRecovery = async (projectId: string): Promise<void> 
   }
 };
 
+/**
+ * A quiet computer becomes Offline. This does not open an alert or change the
+ * parent project: a switched-off reception PC is not an application failure.
+ */
+export const markSilentMonitoredDevicesOffline = async (now = new Date()): Promise<number> => {
+  const delegate = (prisma as unknown as {
+    monitoredDevice?: {
+      findMany(args: unknown): Promise<Array<{ id: string; lastSeenAt: Date; offlineAfterSeconds: number }>>;
+      update(args: unknown): Promise<unknown>;
+    };
+  }).monitoredDevice;
+  if (!delegate) return 0;
+
+  const rows = await delegate.findMany({
+    where: { presence: "ONLINE" },
+    select: { id: true, lastSeenAt: true, offlineAfterSeconds: true }
+  });
+  let updated = 0;
+  for (const row of rows) {
+    const limitSeconds = row.offlineAfterSeconds > 0 ? row.offlineAfterSeconds : DEVICE_OFFLINE_AFTER_SECONDS;
+    if (now.getTime() - new Date(row.lastSeenAt).getTime() < limitSeconds * 1000) continue;
+    await delegate.update({
+      where: { id: row.id },
+      data: { presence: "OFFLINE", updatedAt: now }
+    });
+    updated += 1;
+  }
+  return updated;
+};
+
 export const processHeartbeatStaleJob = async (): Promise<void> => {
+  try {
+    await markSilentMonitoredDevicesOffline();
+  } catch (error) {
+    logger.error("Monitored device presence sweep failed", error);
+  }
+
   const projects = await prisma.project.findMany({ where: { isActive: true } });
 
   for (const project of projects) {
     const latest = await prisma.heartbeat.findFirst({
-      where: { projectId: project.id },
+      where: { projectId: project.id, deviceId: null },
       orderBy: { receivedAt: "desc" }
     });
 

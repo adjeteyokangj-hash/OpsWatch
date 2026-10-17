@@ -137,7 +137,7 @@ export const buildAiOperationsStatus = async (input: {
     recentPredictions
   ] = await Promise.all([
     prisma.heartbeat.findFirst({
-      where: { Project: projectFilter },
+      where: { deviceId: null, Project: projectFilter },
       orderBy: { receivedAt: "desc" },
       select: {
         receivedAt: true,

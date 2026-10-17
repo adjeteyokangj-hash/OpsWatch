@@ -38,6 +38,7 @@ import {
   listProjectInvoicesHandler,
   listBillingPlansHandler
 } from "../controllers/project-billing.controller";
+import { patchMonitoredDeviceLabel } from "../controllers/monitored-devices.controller";
 import { requireAdmin } from "../middleware/auth";
 
 export const projectsRouter = Router();
@@ -45,6 +46,7 @@ export const projectsRouter = Router();
 projectsRouter.get("/projects", listProjects);
 projectsRouter.post("/projects", createProject);
 projectsRouter.get("/projects/:projectId", getProjectById);
+projectsRouter.patch("/projects/:projectId/devices/:deviceId", patchMonitoredDeviceLabel);
 projectsRouter.patch("/projects/:projectId", patchProject);
 projectsRouter.delete("/projects/:projectId", requireAdmin, deleteProject);
 

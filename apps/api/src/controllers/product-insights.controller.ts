@@ -406,6 +406,7 @@ const loadProjectsForInsights = async (orgId: string) => {
         select: { type: true, message: true },
       },
       Heartbeat: {
+        where: { deviceId: null },
         orderBy: { receivedAt: "desc" },
         take: 1,
         select: { receivedAt: true },

@@ -10,6 +10,13 @@ import { OBSERVATION_SOURCE, TIMELINE_EVENT } from "./intelligence/intelligence-
 import { progressHeartbeatAlertRecovery } from "./alert-automation-evaluation.service";
 import { canonicalGraph } from "./canonical-graph.service";
 import { ingestSignedRuntimeEvidence } from "./evidence/signed-runtime-evidence.service";
+import {
+  DEVICE_OFFLINE_AFTER_SECONDS,
+  parseDeviceHeartbeatPayload,
+  sanitizeAppVersion,
+  sanitizeDeviceMessage,
+  type SanitizedDeviceHeartbeat
+} from "./device-heartbeat";
 
 export const projectStatusFromHeartbeat = (status: unknown): ProjectStatus => {
   if (status === "DOWN") return ProjectStatus.DOWN;
@@ -82,7 +89,85 @@ export const inheritHeartbeatToDiscoveredModules = async (params: {
   return moduleIds.length;
 };
 
+const ingestDeviceHeartbeat = async (
+  projectId: string,
+  body: any,
+  device: SanitizedDeviceHeartbeat
+): Promise<void> => {
+  const observedAt = new Date();
+  const appVersion = sanitizeAppVersion(body.appVersion);
+  const message = sanitizeDeviceMessage(body.message);
+  await prisma.heartbeat.create({
+    data: {
+      id: randomUUID(),
+      projectId,
+      deviceId: device.deviceId,
+      environment: body.environment,
+      appVersion,
+      commitSha: null,
+      status: body.status,
+      message,
+      payloadJson: device.payload,
+      receivedAt: observedAt
+    }
+  });
+
+  await prisma.monitoredDevice.upsert({
+    where: { projectId_deviceId: { projectId, deviceId: device.deviceId } },
+    create: {
+      id: randomUUID(),
+      projectId,
+      deviceId: device.deviceId,
+      label: device.suggestedLabel,
+      reportedName: device.reportedName,
+      propertyId: device.propertyId,
+      environment: String(body.environment || "unknown"),
+      appVersion,
+      presence: "ONLINE",
+      reportedStatus: String(body.status || "HEALTHY"),
+      message,
+      lifecycleSync: device.lifecycleSync,
+      financialSync: device.financialSync,
+      pendingCount: device.pendingCount,
+      failedCount: device.failedCount,
+      conflictCount: device.conflictCount,
+      oldestPendingAgeSeconds: device.oldestPendingAgeSeconds,
+      lastSuccessfulSyncAt: device.lastSuccessfulSyncAt ? new Date(device.lastSuccessfulSyncAt) : null,
+      lastSeenAt: observedAt,
+      offlineAfterSeconds: DEVICE_OFFLINE_AFTER_SECONDS,
+      sanitizedPayloadJson: device.payload,
+      updatedAt: observedAt
+    },
+    update: {
+      reportedName: device.reportedName,
+      propertyId: device.propertyId,
+      environment: String(body.environment || "unknown"),
+      appVersion,
+      presence: "ONLINE",
+      reportedStatus: String(body.status || "HEALTHY"),
+      message,
+      lifecycleSync: device.lifecycleSync,
+      financialSync: device.financialSync,
+      pendingCount: device.pendingCount,
+      failedCount: device.failedCount,
+      conflictCount: device.conflictCount,
+      oldestPendingAgeSeconds: device.oldestPendingAgeSeconds,
+      lastSuccessfulSyncAt: device.lastSuccessfulSyncAt ? new Date(device.lastSuccessfulSyncAt) : null,
+      lastSeenAt: observedAt,
+      sanitizedPayloadJson: device.payload,
+      updatedAt: observedAt
+    }
+  });
+};
+
 export const ingestHeartbeat = async (projectId: string, body: any): Promise<void> => {
+  const parsedDevice = parseDeviceHeartbeatPayload(body?.payload);
+  if (parsedDevice.kind === "invalid") return;
+  if (parsedDevice.kind === "device") {
+    await ingestDeviceHeartbeat(projectId, body, parsedDevice.value);
+    return;
+  }
+
   const observedAt = new Date();
   await prisma.heartbeat.create({
     data: {

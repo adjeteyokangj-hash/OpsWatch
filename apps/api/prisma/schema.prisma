@@ -130,6 +130,8 @@ model Event {
 model Heartbeat {
   id          String   @id
   projectId   String
+  /// Set for a single computer. Null heartbeats still represent the whole application.
+  deviceId    String?
   environment String
   appVersion  String?
   commitSha   String?
@@ -140,6 +142,40 @@ model Heartbeat {
   Project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, receivedAt])
+  @@index([projectId, deviceId, receivedAt])
+}
+
+/// Latest technical status for one installed desktop application.
+/// Offline is presence only: silence must not open an incident or change project status.
+model MonitoredDevice {
+  id                      String    @id
+  projectId               String
+  deviceId                String
+  label                   String?
+  reportedName            String?
+  propertyId              String?
+  environment             String
+  appVersion              String?
+  presence                String    @default("ONLINE")
+  reportedStatus          String
+  message                 String?
+  lifecycleSync           String    @default("UNKNOWN")
+  financialSync           String    @default("UNKNOWN")
+  pendingCount            Int       @default(0)
+  failedCount             Int       @default(0)
+  conflictCount           Int       @default(0)
+  oldestPendingAgeSeconds Int?
+  lastSuccessfulSyncAt    DateTime?
+  lastSeenAt              DateTime
+  offlineAfterSeconds     Int       @default(600)
+  sanitizedPayloadJson    Json?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime
+  Project                 Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, deviceId])
+  @@index([projectId, lastSeenAt])
+  @@index([presence, lastSeenAt])
 }
 
 model Incident {
@@ -400,6 +436,7 @@ model Project {
   ChangeEvent                         ChangeEvent[]
   Event                               Event[]
   Heartbeat                           Heartbeat[]
+  MonitoredDevice                     MonitoredDevice[]
   Incident                            Incident[]
   IncidentTimelineEvent               IncidentTimelineEvent[]
   NotificationChannel                 NotificationChannel[]

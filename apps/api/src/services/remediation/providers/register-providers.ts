@@ -203,6 +203,7 @@ const defaultVerify = async (
       const hb = await prisma.heartbeat.findFirst({
         where: {
           projectId: context.projectId,
+          deviceId: null,
           receivedAt: { gt: since },
           status: { in: ["ok", "OK", "healthy", "HEALTHY", "UP"] }
         },

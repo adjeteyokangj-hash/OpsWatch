@@ -44,6 +44,7 @@ describe("buildProjectNavGroups", () => {
     const labels = groups.flatMap((group) => group.links.map((link) => link.label));
     expect(labels).toEqual([
       "Overview",
+      "Computers",
       "Topology",
       "Modules",
       "Components",

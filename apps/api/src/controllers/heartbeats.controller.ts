@@ -2,6 +2,7 @@ import { Response } from "express";
 import { z } from "zod";
 import type { AuthRequest } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
+import { deviceCredentialRejection, parseDeviceHeartbeatPayload } from "../services/device-heartbeat";
 import { ingestHeartbeat } from "../services/heartbeats.service";
 
 const heartbeatBodySchema = z.object({
@@ -34,6 +35,23 @@ export const ingestHeartbeatController = async (req: AuthRequest, res: Response)
 	if (!project) {
 		res.status(404).json({ error: "Project not found for API key scope" });
 		return;
+	}
+
+	if (parseDeviceHeartbeatPayload(body.payload).kind === "invalid") {
+		res.status(400).json({ error: "Device heartbeat requires a UUID device id" });
+		return;
+	}
+
+	if (req.apiKeyId) {
+		const key = await prisma.orgApiKey.findUnique({
+			where: { id: req.apiKeyId },
+			select: { name: true }
+		});
+		const rejection = deviceCredentialRejection(key?.name, body.payload);
+		if (rejection) {
+			res.status(403).json({ error: rejection });
+			return;
+		}
 	}
 
 	await ingestHeartbeat(project.id, body);

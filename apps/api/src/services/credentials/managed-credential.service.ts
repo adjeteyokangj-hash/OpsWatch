@@ -12,6 +12,7 @@ import { recordCredentialAudit } from "./credential-audit.service";
 
 export type CredentialPurpose =
   | "PROJECT_SIGNING"
+  | "DEVICE_HEARTBEAT"
   | "CONNECTION_AUTH"
   | "REMEDIATOR"
   | "WEBHOOK"
@@ -453,21 +454,64 @@ export type ProjectSigningContext = Pick<
   "id" | "organizationId" | "environment" | "signingSecret" | "signingCredentialFamilyId"
 >;
 
+const loadDeviceHeartbeatSecrets = async (
+  project: ProjectSigningContext
+): Promise<ResolvedCredentialSecret[]> => {
+  if (!project.organizationId || !project.id) return [];
+  const rows = await prisma.managedCredential.findMany({
+    where: {
+      organizationId: project.organizationId,
+      projectId: project.id,
+      purpose: "DEVICE_HEARTBEAT",
+      status: { in: ["ACTIVE", "GRACE"] }
+    }
+  });
+  const now = new Date();
+  const resolved: ResolvedCredentialSecret[] = [];
+  for (const row of rows) {
+    if (!isResolvableStatus(row, now)) continue;
+    resolved.push({
+      id: row.id,
+      version: row.version,
+      status: row.status as CredentialStatus,
+      plaintext: decryptRow(row),
+      fingerprint: row.fingerprint
+    });
+  }
+  return resolved;
+};
+
+const withDeviceHeartbeatSecrets = async (
+  project: ProjectSigningContext,
+  secrets: ResolvedCredentialSecret[]
+): Promise<ResolvedCredentialSecret[]> => {
+  try {
+    const extra = await loadDeviceHeartbeatSecrets(project);
+    for (const secret of extra) {
+      if (!secrets.some((row) => row.plaintext === secret.plaintext)) secrets.push(secret);
+    }
+  } catch {
+    // A device-credential lookup must not block the project signing secret.
+  }
+  return secrets;
+};
+
 export const resolveSigningSecretsForProject = async (
   project: ProjectSigningContext
 ): Promise<ResolvedCredentialSecret[]> => {
   if (!project.organizationId) {
-    return project.signingSecret?.trim()
+    const legacy = project.signingSecret?.trim()
       ? [
           {
             id: `legacy:${project.id}`,
             version: 0,
-            status: "ACTIVE",
+            status: "ACTIVE" as const,
             plaintext: project.signingSecret.trim(),
             fingerprint: fingerprintSecret(project.signingSecret.trim())
           }
         ]
       : [];
+    return withDeviceHeartbeatSecrets(project, legacy);
   }
 
   const secrets: ResolvedCredentialSecret[] = [];
@@ -496,11 +540,7 @@ export const resolveSigningSecretsForProject = async (
     }
   }
 
-  if (secrets.length > 0) {
-    return secrets;
-  }
-
-  return [];
+  return withDeviceHeartbeatSecrets(project, secrets);
 };
 
 export const markCredentialUsed = async (credentialId: string, organizationId: string): Promise<void> => {

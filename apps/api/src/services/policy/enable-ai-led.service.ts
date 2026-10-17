@@ -175,6 +175,7 @@ export const assessAiLedReadiness = async (
     prisma.heartbeat.findFirst({
       where: {
         projectId,
+        deviceId: null,
         receivedAt: { gte: twentyMinutesAgo }
       },
       orderBy: { receivedAt: "desc" },
