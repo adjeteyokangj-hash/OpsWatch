@@ -2,7 +2,11 @@ import { Response } from "express";
 import type { AuthRequest } from "../middleware/auth";
 import { hasPermission } from "../auth/permissions";
 import { prisma } from "../lib/prisma";
-import { getProjectBilling, updateProjectBilling } from "../services/project-billing.service";
+import {
+  createDefaultProjectBilling,
+  getProjectBilling,
+  updateProjectBilling
+} from "../services/project-billing.service";
 import { isStripeConfigured } from "../services/billing/stripe.service";
 import {
   createProjectCheckoutSession,
@@ -61,11 +65,15 @@ export const getProjectBillingHandler = async (req: AuthRequest, res: Response):
     return;
   }
 
-  const billing = await getProjectBilling(project.id, {
-    includeInternalNotes: hasPermission(req.user?.role, "policy:manage")
-  });
+  const includeInternalNotes = hasPermission(req.user?.role, "policy:manage");
+  let billing = await getProjectBilling(project.id, { includeInternalNotes });
+  // Older / scripted creates may omit ProjectBilling — provision FREE defaults on read.
   if (!billing) {
-    res.status(404).json({ error: "Project billing not configured" });
+    await createDefaultProjectBilling(project.id, "FREE");
+    billing = await getProjectBilling(project.id, { includeInternalNotes });
+  }
+  if (!billing) {
+    res.status(500).json({ error: "Failed to provision project billing" });
     return;
   }
   res.json(billing);

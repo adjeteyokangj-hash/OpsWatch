@@ -463,10 +463,18 @@ export default function ProjectBillingPage() {
       </section>
 
       {!billing || !draft ? (
-        <section className="panel workspace-loading">
-          <div className="loading-pulse" />
-          <p>Loading billing…</p>
-        </section>
+        error ? (
+          <section className="panel" role="status">
+            <p style={{ margin: 0 }}>
+              Billing could not be loaded for this application. Refresh the page; if it persists, contact support.
+            </p>
+          </section>
+        ) : (
+          <section className="panel workspace-loading">
+            <div className="loading-pulse" />
+            <p>Loading billing…</p>
+          </section>
+        )
       ) : (
         <>
           <PageSection

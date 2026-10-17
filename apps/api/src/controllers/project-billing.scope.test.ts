@@ -13,13 +13,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * deterministic (no HTTP round-trip).
  */
 
-const { mockProjectFindFirst, mockGetProjectBilling, mockUpdateProjectBilling, mockHasPermission } =
-  vi.hoisted(() => ({
-    mockProjectFindFirst: vi.fn(),
-    mockGetProjectBilling: vi.fn(),
-    mockUpdateProjectBilling: vi.fn(),
-    mockHasPermission: vi.fn()
-  }));
+const {
+  mockProjectFindFirst,
+  mockGetProjectBilling,
+  mockUpdateProjectBilling,
+  mockCreateDefaultProjectBilling,
+  mockHasPermission
+} = vi.hoisted(() => ({
+  mockProjectFindFirst: vi.fn(),
+  mockGetProjectBilling: vi.fn(),
+  mockUpdateProjectBilling: vi.fn(),
+  mockCreateDefaultProjectBilling: vi.fn(),
+  mockHasPermission: vi.fn()
+}));
 
 vi.mock("../lib/prisma", () => ({
   prisma: {
@@ -29,7 +35,8 @@ vi.mock("../lib/prisma", () => ({
 
 vi.mock("../services/project-billing.service", () => ({
   getProjectBilling: mockGetProjectBilling,
-  updateProjectBilling: mockUpdateProjectBilling
+  updateProjectBilling: mockUpdateProjectBilling,
+  createDefaultProjectBilling: mockCreateDefaultProjectBilling
 }));
 
 vi.mock("../auth/permissions", () => ({
@@ -144,6 +151,26 @@ describe("application-scoped billing isolation", () => {
     );
     expect(res.statusCode).toBe(404);
     expect(mockGetProjectBilling).not.toHaveBeenCalled();
+  });
+
+  it("provisions FREE billing defaults when a project has no billing row yet", async () => {
+    orgScopedFindFirst();
+    mockHasPermission.mockReturnValue(true);
+    const provisioned = { plan: "FREE", project: { id: NOBLE, name: "Noble Express" } };
+    mockGetProjectBilling
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(provisioned);
+    mockCreateDefaultProjectBilling.mockResolvedValue({ id: "billing-1" });
+
+    const res = makeRes();
+    await getProjectBillingHandler(
+      makeReq({ organizationId: "org-1", role: "ADMIN" }, NOBLE) as never,
+      res as never
+    );
+
+    expect(mockCreateDefaultProjectBilling).toHaveBeenCalledWith(NOBLE, "FREE");
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual(provisioned);
   });
 
   it("rejects billing access to a project in another organisation (cross-org isolation)", async () => {
