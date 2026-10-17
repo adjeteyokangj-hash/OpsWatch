@@ -1,3 +1,4 @@
+/// <reference path="../types/pg.d.ts" />
 import { prisma } from "../lib/prisma";
 import { replaceStaffDirectory } from "./user-monitoring-store";
 import { sanitizeDirectory, type SanitizedStaff } from "./user-monitoring";
