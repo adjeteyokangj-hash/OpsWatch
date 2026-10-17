@@ -1,4 +1,4 @@
-import { ProjectStatus } from "@prisma/client";
+import { Prisma, ProjectStatus } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { prisma } from "../lib/prisma";
 import { createAlert } from "./alerting.service";
@@ -97,6 +97,7 @@ const ingestDeviceHeartbeat = async (
   const observedAt = new Date();
   const appVersion = sanitizeAppVersion(body.appVersion);
   const message = sanitizeDeviceMessage(body.message);
+  const payloadJson = device.payload as Prisma.InputJsonValue;
   await prisma.heartbeat.create({
     data: {
       id: randomUUID(),
@@ -107,7 +108,7 @@ const ingestDeviceHeartbeat = async (
       commitSha: null,
       status: body.status,
       message,
-      payloadJson: device.payload,
+      payloadJson,
       receivedAt: observedAt
     }
   });
@@ -135,7 +136,7 @@ const ingestDeviceHeartbeat = async (
       lastSuccessfulSyncAt: device.lastSuccessfulSyncAt ? new Date(device.lastSuccessfulSyncAt) : null,
       lastSeenAt: observedAt,
       offlineAfterSeconds: DEVICE_OFFLINE_AFTER_SECONDS,
-      sanitizedPayloadJson: device.payload,
+      sanitizedPayloadJson: payloadJson,
       updatedAt: observedAt
     },
     update: {
@@ -154,7 +155,7 @@ const ingestDeviceHeartbeat = async (
       oldestPendingAgeSeconds: device.oldestPendingAgeSeconds,
       lastSuccessfulSyncAt: device.lastSuccessfulSyncAt ? new Date(device.lastSuccessfulSyncAt) : null,
       lastSeenAt: observedAt,
-      sanitizedPayloadJson: device.payload,
+      sanitizedPayloadJson: payloadJson,
       updatedAt: observedAt
     }
   });
