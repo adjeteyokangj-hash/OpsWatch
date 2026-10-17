@@ -15,7 +15,7 @@ export type DirectorySyncResult =
 
 type DirectoryClient = {
   connect(): Promise<void>;
-  query(sql: string): Promise<{ rows: unknown[] }>;
+  query(sql: string, params?: readonly unknown[]): Promise<{ rows: unknown[] }>;
   end(): Promise<void>;
 };
 
@@ -23,6 +23,22 @@ export const redactMonitoringSecret = (message: string, secret: string | undefin
   const trimmed = secret?.trim();
   if (!trimmed) return message;
   return message.split(trimmed).join("[redacted]");
+};
+
+/** One short query on the restricted monitoring login. The caller must not log the connection string. */
+export const withNiinaiMonitoringClient = async <T>(
+  connectionString: string,
+  run: (client: DirectoryClient) => Promise<T>
+): Promise<T> => {
+  const client = await openDirectoryClient(connectionString);
+  try {
+    return await run(client);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "NiiNai monitoring query failed";
+    throw new Error(redactMonitoringSecret(message, connectionString));
+  } finally {
+    await client.end().catch(() => undefined);
+  }
 };
 
 const openDirectoryClient = async (connectionString: string): Promise<DirectoryClient> => {
@@ -70,16 +86,8 @@ export const syncNiinaiStaffDirectory = async (options?: {
   if (options?.queryDirectory) {
     rows = await options.queryDirectory();
   } else {
-    const client = await openDirectoryClient(connectionString);
-    try {
-      const result = await client.query(DIRECTORY_SQL);
-      rows = result.rows;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "NiiNai directory query failed";
-      throw new Error(redactMonitoringSecret(message, connectionString));
-    } finally {
-      await client.end().catch(() => undefined);
-    }
+    const result = await withNiinaiMonitoringClient(connectionString, (client) => client.query(DIRECTORY_SQL));
+    rows = result.rows;
   }
 
   const staff = sanitizeDirectory(rows);

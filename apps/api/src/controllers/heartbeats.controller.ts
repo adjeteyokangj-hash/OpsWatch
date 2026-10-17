@@ -82,5 +82,8 @@ export const ingestHeartbeatController = async (req: AuthRequest, res: Response)
 	}
 
 	await ingestHeartbeat(project.id, body, { verifiedUserId });
+	if (session.kind === "session") {
+		console.info(session.value.ended ? "NiiNai user session ended" : "NiiNai user session recorded");
+	}
 	res.status(202).json({ ok: true });
 };

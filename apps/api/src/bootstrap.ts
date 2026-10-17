@@ -1,5 +1,7 @@
 import { assertProductionEnv } from "./config/production-env";
 import { redactMonitoringSecret, syncNiinaiStaffDirectory } from "./services/niinai-directory-sync";
+import { redeemNiinaiMonitoringTicket } from "./services/niinai-ticket-redeem";
+import { setMonitoringTicketVerifier } from "./services/user-monitoring";
 
 let bootstrapped = false;
 let directorySync: Promise<void> | null = null;
@@ -34,5 +36,6 @@ export const bootstrapApi = (): void => {
   }
   assertProductionEnv();
   bootstrapped = true;
+  setMonitoringTicketVerifier((ticket) => redeemNiinaiMonitoringTicket(ticket));
   void ensureNiinaiDirectoryFresh();
 };
