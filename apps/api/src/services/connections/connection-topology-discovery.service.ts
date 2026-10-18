@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import {
   joinConnectionUrl,
@@ -424,6 +425,55 @@ const fetchManifestPayload = async (connection: ApiTopologyConnection): Promise<
   }
 };
 
+const TOPOLOGY_TRANSACTION_MAX_WAIT_MS = 10_000;
+const TOPOLOGY_TRANSACTION_TIMEOUT_MS = 30_000;
+
+/** Transaction-pooler URLs cannot keep Prisma's interactive transaction open. */
+export const topologyImportUsesSessionConnection = (
+  databaseUrl = process.env.DATABASE_URL ?? "",
+  directUrl = process.env.DIRECT_URL ?? ""
+): boolean => {
+  const pooled =
+    /:6543(?:\/|\?|$)/.test(databaseUrl) ||
+    /(?:^|[?&])pgbouncer=true(?:&|$)/i.test(databaseUrl);
+  const direct = directUrl.trim();
+  if (!pooled || !direct) return false;
+  if (/:6543(?:\/|\?|$)/.test(direct) || /(?:^|[?&])pgbouncer=true(?:&|$)/i.test(direct)) {
+    return false;
+  }
+  return true;
+};
+
+const singleSessionUrl = (directUrl: string): string => {
+  if (/connection_limit=/i.test(directUrl)) {
+    return directUrl.replace(/connection_limit=\d+/i, "connection_limit=1");
+  }
+  return `${directUrl}${directUrl.includes("?") ? "&" : "?"}connection_limit=1`;
+};
+
+const runTopologyImportTransaction = async (
+  work: (tx: Prisma.TransactionClient) => Promise<void>
+): Promise<void> => {
+  const options = {
+    maxWait: TOPOLOGY_TRANSACTION_MAX_WAIT_MS,
+    timeout: TOPOLOGY_TRANSACTION_TIMEOUT_MS
+  };
+  if (!topologyImportUsesSessionConnection()) {
+    await prisma.$transaction(work, options);
+    return;
+  }
+
+  const { PrismaClient } = await import("@prisma/client");
+  const client = new PrismaClient({
+    datasources: { db: { url: singleSessionUrl(process.env.DIRECT_URL?.trim() ?? "") } }
+  });
+  try {
+    await client.$transaction(work, options);
+  } finally {
+    await client.$disconnect();
+  }
+};
+
 export const reconcileConnectionTopologyManifest = async (
   connection: ApiTopologyConnection,
   manifest: ConnectionTopologyManifest
@@ -451,7 +501,7 @@ export const reconcileConnectionTopologyManifest = async (
   let componentCount = 0;
   let relationshipCount = 0;
 
-  await prisma.$transaction(async (tx) => {
+  await runTopologyImportTransaction(async (tx) => {
     const existingApp = await tx.service.findFirst({
       where: {
         projectId: project.id,
