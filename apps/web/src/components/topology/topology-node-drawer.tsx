@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { ProjectTopologyResponse, TopologyNode } from "./topology-types";
-import { canonicalDiscoveryLabel, healthClassName, healthLabel, unknownHealthReason } from "./topology-types";
+import { canonicalDiscoveryLabel, componentKindLabel, healthClassName, healthLabel, unknownHealthReason } from "./topology-types";
 import { TopologySparkline } from "./topology-sparkline";
 import { TopologyApplicationPanel } from "./topology-application-panel";
 import { buildNodeRelationshipDiagnostics } from "./topology-relationship";
@@ -72,6 +72,31 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
     { label: "Child workflows", value: String(childWorkflows) },
     { label: "Child components", value: String(childComponents) },
     { label: "Open alerts", value: String(node.risk.openAlerts) },
+    ...(context?.manifest
+      ? [
+          { label: "Evidence", value: context.manifest.evidence === "measured" ? "Measured" : "Not measured" },
+          { label: "Last success", value: formatRelativeTime(context.manifest.lastSuccessAt) },
+          { label: "Last failure", value: formatRelativeTime(context.manifest.lastFailureAt) },
+          {
+            label: "Computers",
+            value: context.manifest.computers.length
+              ? context.manifest.computers.map((computer) => `${computer.displayName} (${computer.presence})`).join(", ")
+              : "—"
+          },
+          {
+            label: "Synchronisation",
+            value: context.manifest.healthBinding?.signal === "heartbeat_lane"
+              ? `${context.manifest.healthBinding.lane ?? "lane"} · ${context.lastCheckStatus ?? "—"}`
+              : "—"
+          },
+          {
+            label: "Potential impact",
+            value: context.manifest.potentialImpact.length
+              ? context.manifest.potentialImpact.map((item) => `${item.name} is ${healthLabel(item.health).toLowerCase()}; this component is not failed because of that`).join(". ")
+              : "None from verified dependencies"
+          }
+        ]
+      : []),
     { label: "SLO state", value: context?.sloStatus ?? "—" },
     ...(context?.canonical
       ? [
@@ -155,7 +180,7 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
     <aside className="topology-detail-panel panel" aria-label="Selected node details">
       <div className="topology-detail-head">
         <div>
-          <p className="topology-detail-type">{node.type}</p>
+          <p className="topology-detail-type">{componentKindLabel(node.kind, context?.manifest?.category, node.type)}</p>
           <h2>{node.name}</h2>
         </div>
         <div className="topology-detail-head-actions">
@@ -198,7 +223,9 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
             <section className="topology-detail-section topology-unknown-reason" role="status">
               <h3>Why health is unknown</h3>
               <p data-testid="topology-unknown-reason">
-                {context?.otel?.freshness === "STALE"
+                {context?.manifest?.evidence === "missing"
+                  ? "This component is declared, and no monitoring evidence is bound to it. Missing evidence is not a failure."
+                  : context?.otel?.freshness === "STALE"
                   ? "Health is Unknown because OTEL telemetry for this node is stale — not because recovery was observed."
                   : unknownHealthReason({
                       monitoringState: context?.monitoringState,
@@ -271,20 +298,33 @@ export const TopologyNodeDrawer = ({ topology, node, projectId, project, onClose
 
       {tab === "dependencies" ? (
         <section className="topology-detail-section">
-          <p className="topology-detail-subheading">Upstream</p>
+          <p className="topology-detail-subheading">Verified dependencies</p>
           <ul className="topology-mini-list">
             {(context?.upstreamIds ?? []).length === 0 ? (
               <li className="dashboard-subtle">None</li>
             ) : (
-              context!.upstreamIds.map((id) => <li key={id}>{nodeById.get(id)?.name ?? id}</li>)
+              context!.upstreamIds.map((id) => {
+                const edge = topology.edges.find((row) => row.sourceId === node.id && row.targetId === id && row.type !== "HIERARCHY");
+                const relation = (edge?.relationshipType ?? "depends on").replaceAll("_", " ").toLowerCase();
+                return <li key={id}>{nodeById.get(id)?.name ?? id} · {relation}</li>;
+              })
             )}
           </ul>
-          <p className="topology-detail-subheading">Dependants</p>
+          <p className="topology-detail-subheading">Potentially affected</p>
           <ul className="topology-mini-list">
             {(context?.downstreamIds ?? []).length === 0 ? (
               <li className="dashboard-subtle">None</li>
             ) : (
-              context!.downstreamIds.map((id) => <li key={id}>{nodeById.get(id)?.name ?? id}</li>)
+              context!.downstreamIds.map((id) => {
+                const related = nodeById.get(id);
+                const unhealthy = node.status === "CRITICAL" || node.status === "DEGRADED";
+                return (
+                  <li key={id}>
+                    {related?.name ?? id}
+                    {unhealthy ? ` · still ${healthLabel(related?.status ?? "UNKNOWN").toLowerCase()}; not failed by this component` : ""}
+                  </li>
+                );
+              })
             )}
           </ul>
         </section>

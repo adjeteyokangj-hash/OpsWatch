@@ -26,6 +26,16 @@ export type TopologyServiceRecord = {
   name: string;
   type: ServiceType;
   status: string;
+  meta?: {
+    declaredKind?: string | null;
+    category?: string | null;
+    externalId?: string | null;
+    healthBinding?: {
+      signal?: string | null;
+      lane?: string | null;
+      checkName?: string | null;
+    } | null;
+  } | null;
   Check: Array<{
     isActive: boolean;
     CheckResult: Array<{ status: string; checkedAt: Date; responseTimeMs: number | null }>;
@@ -314,7 +324,31 @@ export const buildProjectTopologyResponse = (input: TopologyBuildInput): Project
         .filter((row) => row.serviceIds.includes(service.id))
         .map((row) => ({ id: row.id, title: row.title, severity: row.severity, status: row.status })),
       upstreamIds: upstreamMap.get(service.id) ?? [],
-      downstreamIds: downstreamMap.get(service.id) ?? []
+      downstreamIds: downstreamMap.get(service.id) ?? [],
+      ...(service.meta
+        ? {
+            manifest: {
+              kind: service.meta.declaredKind ?? null,
+              category: service.meta.category ?? null,
+              externalId: service.meta.externalId ?? null,
+              healthBinding: service.meta.healthBinding?.signal
+                ? {
+                    signal: service.meta.healthBinding.signal as "http_check" | "heartbeat_lane" | "unbound",
+                    lane:
+                      service.meta.healthBinding.lane === "lifecycle" || service.meta.healthBinding.lane === "financial"
+                        ? service.meta.healthBinding.lane
+                        : null,
+                    checkName: service.meta.healthBinding.checkName ?? null
+                  }
+                : null,
+              evidence: "missing" as const,
+              lastSuccessAt: null,
+              lastFailureAt: null,
+              computers: [],
+              potentialImpact: []
+            }
+          }
+        : {})
     };
   }
 
@@ -337,6 +371,7 @@ export const buildProjectTopologyResponse = (input: TopologyBuildInput): Project
       type: mapServiceTypeToTopology(service.type),
       status: healthByService.get(service.id)!,
       parentId: hierarchyParents.get(service.id) ?? null,
+      kind: service.meta?.declaredKind ?? null,
       metrics: {
         availabilityPercent: slo?.latestWindow?.availabilityPct ?? liveMetrics.availabilityPercent,
         latencyMs: slo?.latestWindow?.p95LatencyMs ?? liveMetrics.latencyMs,
@@ -419,6 +454,7 @@ export const buildProjectTopologyResponse = (input: TopologyBuildInput): Project
           sourceId: row.fromServiceId,
           targetId: row.toServiceId,
           type: "HIERARCHY" as const,
+          relationshipType: row.dependencyType,
           critical,
           status: targetHealth
         } satisfies TopologyEdge;
@@ -441,6 +477,7 @@ export const buildProjectTopologyResponse = (input: TopologyBuildInput): Project
         sourceId: row.fromServiceId,
         targetId: row.toServiceId,
         type: "DEPENDENCY" as const,
+        relationshipType: row.dependencyType,
         critical,
         status: resolved.status
       } satisfies TopologyEdge;

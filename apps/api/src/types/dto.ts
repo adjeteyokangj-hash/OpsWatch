@@ -357,6 +357,8 @@ export type TopologyNode = {
   type: TopologyNodeType;
   status: TopologyHealthStatus;
   parentId: string | null;
+  /** Declared manifest kind, when the application published one. */
+  kind?: string | null;
   metrics: TopologyNodeMetrics;
   risk: TopologyNodeRisk;
 };
@@ -368,6 +370,8 @@ export type TopologyEdge = {
   sourceId: string;
   targetId: string;
   type: TopologyEdgeType;
+  /** Original manifest relationship, such as DEPENDS_ON or SYNCS. */
+  relationshipType?: string;
   critical: boolean;
   status: TopologyHealthStatus;
   provenance?: string;
@@ -405,6 +409,33 @@ export type TopologyNodeContext = {
   unresolvedIncidents: Array<{ id: string; title: string; severity: string; status: string }>;
   upstreamIds: string[];
   downstreamIds: string[];
+  manifest?: {
+    kind: string | null;
+    category: string | null;
+    externalId: string | null;
+    healthBinding: {
+      signal: "http_check" | "heartbeat_lane" | "unbound";
+      lane: "lifecycle" | "financial" | null;
+      checkName: string | null;
+    } | null;
+    evidence: "measured" | "missing";
+    lastSuccessAt: string | null;
+    lastFailureAt: string | null;
+    computers: Array<{
+      displayName: string;
+      presence: "ONLINE" | "OFFLINE";
+      appVersion: string | null;
+      lifecycleSync: string;
+      financialSync: string;
+      lastSeenAt: string;
+    }>;
+    potentialImpact: Array<{
+      id: string;
+      name: string;
+      via: string;
+      health: TopologyHealthStatus;
+    }>;
+  };
   canonical?: {
     environment: string;
     entityType: string;

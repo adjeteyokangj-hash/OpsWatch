@@ -4,7 +4,8 @@ import type { ProjectTopologyResponse } from "../types/dto";
 import { loadRecentCheckResultsByCheckIds } from "./check-result-batch.service";
 import { buildProjectTopologyResponse, type TopologyServiceRecord } from "./topology.service";
 import { loadCanonicalProjectTopology } from "./canonical-topology-loader.service";
-import { presentMonitoredDevices } from "./device-heartbeat";
+import { applyDeclaredHealth, type TopologyCheckEvidence } from "./topology-health-bindings";
+import { presentMonitoredDevices, type PresentedDevice } from "./device-heartbeat";
 import { preserveUnmappedLegacyServices } from "./topology-reader-safety";
 import { projectDeviceTelemetry } from "./topology-telemetry-projection";
 
@@ -40,6 +41,26 @@ export const clearTopologyLoaderCache = (): void => {
   topologyCache.clear();
 };
 
+const readServiceMeta = (value: unknown): TopologyServiceRecord["meta"] => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const binding = row.healthBinding && typeof row.healthBinding === "object" && !Array.isArray(row.healthBinding)
+    ? row.healthBinding as Record<string, unknown>
+    : null;
+  return {
+    declaredKind: typeof row.declaredKind === "string" ? row.declaredKind : null,
+    category: typeof row.category === "string" ? row.category : null,
+    externalId: typeof row.externalId === "string" ? row.externalId : null,
+    healthBinding: binding
+      ? {
+          signal: typeof binding.signal === "string" ? binding.signal : null,
+          lane: typeof binding.lane === "string" ? binding.lane : null,
+          checkName: typeof binding.checkName === "string" ? binding.checkName : null
+        }
+      : null
+  };
+};
+
 const attachDeviceTelemetry = async (
   projectId: string,
   topology: ProjectTopologyResponse
@@ -61,10 +82,31 @@ const attachDeviceTelemetry = async (
         pendingCount: true,
         failedCount: true,
         lastSeenAt: true,
-        offlineAfterSeconds: true
+        offlineAfterSeconds: true,
+        lastSuccessfulSyncAt: true
       }
     });
-    return projectDeviceTelemetry(topology, presentMonitoredDevices(rows));
+    const devices: PresentedDevice[] = presentMonitoredDevices(rows);
+    const projected = projectDeviceTelemetry(topology, devices);
+    let evidence: TopologyCheckEvidence[] = [];
+    try {
+      const checks = await prisma.check.findMany({
+        where: { Service: { projectId }, isActive: true },
+        select: { id: true, name: true }
+      });
+      const results = await loadRecentCheckResultsByCheckIds(checks.map((check) => check.id), 1);
+      evidence = checks.map((check) => {
+        const latest = results.get(check.id)?.[0];
+        return {
+          name: check.name,
+          status: latest?.status ?? null,
+          checkedAt: latest?.checkedAt.toISOString() ?? null
+        };
+      });
+    } catch {
+      evidence = [];
+    }
+    return applyDeclaredHealth(projected, devices, evidence);
   } catch (error) {
     console.warn("TOPOLOGY_DEVICE_PROJECTION_FAILED", {
       projectId,
@@ -105,6 +147,7 @@ const attachCheckResults = (
     name: string;
     type: TopologyServiceRecord["type"];
     status: string;
+    topologyMetaJson?: unknown;
     Check: Array<{ id: string; isActive: boolean }>;
   }>,
   resultsByCheckId: Awaited<ReturnType<typeof loadRecentCheckResultsByCheckIds>>
@@ -114,6 +157,7 @@ const attachCheckResults = (
     name: service.name,
     type: service.type,
     status: service.status,
+    meta: readServiceMeta(service.topologyMetaJson),
     Check: service.Check.map((check) => ({
       isActive: check.isActive,
       CheckResult: (resultsByCheckId.get(check.id) ?? []).map((row) => ({
@@ -222,6 +266,7 @@ const buildLegacyProjectTopology = async (
         name: true,
         type: true,
         status: true,
+        topologyMetaJson: true,
         Check: {
           // Include inactive checks so recent results remain usable as topology evidence
           // when operators pause polling (or local evidence seeds freeze checks).

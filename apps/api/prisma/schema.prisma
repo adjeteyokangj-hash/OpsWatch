@@ -1257,6 +1257,8 @@ model Service {
   criticality               String                       @default("MEDIUM")
   baseUrl                   String?
   isCritical                Boolean                      @default(false)
+  /// Declared kind, external id, and health binding from an application manifest.
+  topologyMetaJson          Json?
   /// Phase 7 ownership / routing
   ownerUserId               String?
   ownerTeam                 String?

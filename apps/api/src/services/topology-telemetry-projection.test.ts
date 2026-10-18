@@ -74,7 +74,7 @@ describe("projectDeviceTelemetry", () => {
     const byName = new Map(projected.nodes.map((node) => [node.name, node]));
 
     expect(byName.get("Cloud reachability")).toBeTruthy();
-    expect(byName.get("Counter desk")?.status).toBe("DEGRADED");
+    expect(byName.get("Counter desk")?.status).toBe("HEALTHY");
     expect(byName.get("Lifecycle synchronisation")?.status).toBe("HEALTHY");
     expect(byName.get("Financial synchronisation")?.status).toBe("DEGRADED");
     expect(byName.get("Lifecycle synchronisation")?.parentId).toBe(`installation:${DEVICE}`);

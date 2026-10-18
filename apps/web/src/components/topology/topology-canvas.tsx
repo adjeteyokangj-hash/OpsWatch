@@ -152,6 +152,7 @@ export const TopologyCanvas = ({
   const [referenceScale, setReferenceScale] = useState(1);
   const [dragging, setDragging] = useState(false);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
+  const seededGroups = useRef(false);
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -180,6 +181,21 @@ export const TopologyCanvas = ({
     () => getCollapsedDescendantIds(collapsedNodeIds, topology.edges),
     [collapsedNodeIds, topology.edges]
   );
+
+  useEffect(() => {
+    if (seededGroups.current || topology.nodes.length < 16) return;
+    const childOf = new Map<string, string>();
+    const parents = new Set<string>();
+    for (const edge of topology.edges) {
+      if (edge.type !== "HIERARCHY") continue;
+      parents.add(edge.targetId);
+      childOf.set(edge.sourceId, edge.targetId);
+    }
+    const groups = [...parents].filter((id) => childOf.has(id));
+    if (groups.length === 0) return;
+    seededGroups.current = true;
+    setCollapsedNodeIds(new Set(groups));
+  }, [topology.nodes.length, topology.edges]);
 
   const baseNodes = useMemo(() => {
     let rows = topology.nodes.filter((node) => !hiddenDescendants.has(node.id));
@@ -881,6 +897,7 @@ export const TopologyCanvas = ({
                     alertCount={openAlerts}
                     isolationLabel={isolationLabel}
                     childCount={childCount}
+                    groupCollapsed={collapsedNodeIds.has(node.id)}
                     onToggleCollapse={() => toggleCollapse(node.id)}
                   />
                 </foreignObject>

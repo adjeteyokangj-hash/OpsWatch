@@ -8,6 +8,7 @@ export type TopologyNode = {
   type: TopologyNodeType;
   status: TopologyHealthStatus;
   parentId: string | null;
+  kind?: string | null;
   metrics: {
     availabilityPercent: number | null;
     latencyMs: number | null;
@@ -26,6 +27,7 @@ export type TopologyEdge = {
   sourceId: string;
   targetId: string;
   type: "HIERARCHY" | "DEPENDENCY";
+  relationshipType?: string;
   critical: boolean;
   status: TopologyHealthStatus;
   provenance?: string;
@@ -50,6 +52,28 @@ export type TopologyNodeContext = {
   unresolvedIncidents: Array<{ id: string; title: string; severity: string; status: string }>;
   upstreamIds: string[];
   downstreamIds: string[];
+  manifest?: {
+    kind: string | null;
+    category: string | null;
+    externalId: string | null;
+    healthBinding: {
+      signal: "http_check" | "heartbeat_lane" | "unbound";
+      lane: "lifecycle" | "financial" | null;
+      checkName: string | null;
+    } | null;
+    evidence: "measured" | "missing";
+    lastSuccessAt: string | null;
+    lastFailureAt: string | null;
+    computers: Array<{
+      displayName: string;
+      presence: string;
+      appVersion: string | null;
+      lifecycleSync: string;
+      financialSync: string;
+      lastSeenAt: string;
+    }>;
+    potentialImpact: Array<{ id: string; name: string; via: string; health: TopologyHealthStatus }>;
+  };
   canonical?: {
     environment: string;
     entityType: string;
@@ -114,6 +138,18 @@ export const LAYER_ORDER: TopologyNodeType[] = ["APP", "MODULE", "WORKFLOW", "CO
 export const healthLabel = (status: TopologyHealthStatus): string => {
   if (status === "UNKNOWN") return "Unknown";
   return status.charAt(0) + status.slice(1).toLowerCase();
+};
+
+export const componentKindLabel = (kind?: string | null, category?: string | null, type?: string | null): string => {
+  if (category === "cloud") return "Cloud service";
+  if (category === "sync" || kind === "workflow" && category === "sync") return "Synchronisation process";
+  if (kind === "installation" || category === "installation") return "Desktop installation";
+  if (kind === "property") return "Property";
+  if (kind === "workflow") return "Workflow";
+  if (kind === "module") return "Module";
+  if (kind === "application") return "Application";
+  if (kind === "component") return "Component";
+  return type ?? "Component";
 };
 
 export const canonicalDiscoveryLabel = (

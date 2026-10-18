@@ -148,4 +148,34 @@ describe("parseConnectionTopologyManifest", () => {
       }
     })).toThrow(/schema version 1.1/);
   });
+
+  it("accepts a verified property identifier and rejects an invented one", () => {
+    const accepted = parseConnectionTopologyManifest({
+      opswatchTopology: {
+        schemaVersion: "1.1",
+        source: "harbor-ledger",
+        application: { key: "harbor-ledger", name: "Harbor Ledger" },
+        modules: [{ key: "sites", name: "Sites" }],
+        components: [
+          {
+            key: "north",
+            name: "North",
+            kind: "property",
+            externalId: "10000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    });
+    expect(accepted?.components?.[0]?.externalId).toBe("10000000-0000-4000-8000-000000000001");
+
+    expect(() => parseConnectionTopologyManifest({
+      opswatchTopology: {
+        schemaVersion: "1.1",
+        source: "harbor-ledger",
+        application: { key: "harbor-ledger", name: "Harbor Ledger" },
+        modules: [{ key: "sites", name: "Sites" }],
+        components: [{ key: "south", name: "South", kind: "property", externalId: "community-25" }]
+      }
+    })).toThrow(/UUID/);
+  });
 });

@@ -18,6 +18,7 @@ export type DeclaredModuleManifest = {
   description: string;
   criticality: "HIGH" | "MEDIUM";
   routePrefixes: string[];
+  externalId?: string;
 };
 
 export type TopologyComponentKind = "module" | "workflow" | "component" | "property" | "installation";
@@ -34,6 +35,7 @@ export type DeclaredTopologyComponent = {
   criticality: "HIGH" | "MEDIUM";
   routePrefixes: string[];
   parentKey?: string;
+  externalId?: string;
 };
 
 export type DeclaredTopologyRelationship = {
@@ -123,6 +125,16 @@ const readOptionalCategory = (value: unknown): string | undefined => {
   return normalized;
 };
 
+const readOptionalExternalId = (value: unknown, label: string): string | undefined => {
+  if (value == null || value === "") return undefined;
+  if (typeof value !== "string") throw new Error(`${label} must be a UUID`);
+  const id = value.trim().toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id)) {
+    throw new Error(`${label} must be a UUID`);
+  }
+  return id;
+};
+
 const readRoutePrefixes = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return [...new Set(
@@ -178,7 +190,10 @@ const readModule = (
     ...(readOptionalCategory(raw.category) ? { category: readOptionalCategory(raw.category) } : {}),
     description: typeof raw.description === "string" ? raw.description.trim().slice(0, 500) : "",
     criticality: readCriticality(raw.criticality, `modules[${index}].criticality`),
-    routePrefixes: readRoutePrefixes(raw.routePrefixes)
+    routePrefixes: readRoutePrefixes(raw.routePrefixes),
+    ...(readOptionalExternalId(raw.externalId, `modules[${index}].externalId`)
+      ? { externalId: readOptionalExternalId(raw.externalId, `modules[${index}].externalId`) }
+      : {})
   };
 };
 
@@ -207,7 +222,10 @@ const readComponent = (
     description: typeof raw.description === "string" ? raw.description.trim().slice(0, 500) : "",
     criticality: readCriticality(raw.criticality, `components[${index}].criticality`),
     routePrefixes: readRoutePrefixes(raw.routePrefixes),
-    ...(parentKey ? { parentKey } : {})
+    ...(parentKey ? { parentKey } : {}),
+    ...(readOptionalExternalId(raw.externalId, `components[${index}].externalId`)
+      ? { externalId: readOptionalExternalId(raw.externalId, `components[${index}].externalId`) }
+      : {})
   };
 };
 
@@ -345,6 +363,24 @@ export const parseConnectionTopologyManifest = (
   };
 };
 
+const topologyMetaJson = (input: {
+  declaredKind: string;
+  category?: string;
+  externalId?: string;
+  healthBinding?: DeclaredHealthBinding | null;
+}) => ({
+  declaredKind: input.declaredKind,
+  category: input.category ?? null,
+  externalId: input.externalId ?? null,
+  healthBinding: input.healthBinding
+    ? {
+        signal: input.healthBinding.signal,
+        lane: input.healthBinding.lane ?? null,
+        checkName: input.healthBinding.checkName ?? null
+      }
+    : null
+});
+
 const stableId = (prefix: string, ...parts: string[]): string => {
   const digest = createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 28);
   return `${prefix}-${digest}`;
@@ -431,6 +467,7 @@ export const reconcileConnectionTopologyManifest = async (
             name: manifest.application.name,
             criticality: "HIGH",
             isCritical: true,
+            topologyMetaJson: topologyMetaJson({ declaredKind: "application" }),
             updatedAt: now
           }
         })
@@ -444,6 +481,7 @@ export const reconcileConnectionTopologyManifest = async (
             criticality: "HIGH",
             isCritical: true,
             ownerTeam: "Platform Operations",
+            topologyMetaJson: topologyMetaJson({ declaredKind: "application" }),
             updatedAt: now
           }
         });
@@ -474,8 +512,11 @@ export const reconcileConnectionTopologyManifest = async (
       : [];
     const discoveredById = new Map(existingDiscoveredModules.map((service) => [service.id, service]));
     const discoveredByName = new Map(existingDiscoveredModules.map((service) => [service.name, service]));
-    const retainedModuleIds = new Set<string>();
+    const bindingByKey = new Map(
+      (manifest.healthBindings ?? []).map((binding) => [binding.componentKey, binding])
+    );
     const serviceIdByKey = new Map<string, string>([[manifest.application.key, app.id]]);
+    const retainedModuleIds = new Set<string>();
 
     for (const module of manifest.modules) {
       const deterministicModuleId = stableId("svc-mod", connection.id, module.key);
@@ -497,6 +538,12 @@ export const reconcileConnectionTopologyManifest = async (
               criticality: module.criticality,
               isCritical: module.criticality === "HIGH",
               ownerTeam: "Platform Operations",
+              topologyMetaJson: topologyMetaJson({
+                declaredKind: "module",
+                category: module.category,
+                externalId: module.externalId,
+                healthBinding: bindingByKey.get(module.key) ?? null
+              }),
               updatedAt: now
             }
           })
@@ -510,6 +557,12 @@ export const reconcileConnectionTopologyManifest = async (
               criticality: module.criticality,
               isCritical: module.criticality === "HIGH",
               ownerTeam: "Platform Operations",
+              topologyMetaJson: topologyMetaJson({
+                declaredKind: "module",
+                category: module.category,
+                externalId: module.externalId,
+                healthBinding: bindingByKey.get(module.key) ?? null
+              }),
               updatedAt: now
             }
           });
@@ -622,6 +675,12 @@ export const reconcileConnectionTopologyManifest = async (
         ?? await tx.service.findFirst({
           where: { projectId: project.id, type: serviceType, name: component.name }
         });
+      const meta = topologyMetaJson({
+        declaredKind: component.kind,
+        category: component.category,
+        externalId: component.externalId,
+        healthBinding: bindingByKey.get(component.key) ?? null
+      });
       const row = existing
         ? await tx.service.update({
             where: { id: existing.id },
@@ -631,6 +690,7 @@ export const reconcileConnectionTopologyManifest = async (
               criticality: component.criticality,
               isCritical: component.criticality === "HIGH",
               ownerTeam: "Platform Operations",
+              topologyMetaJson: meta,
               updatedAt: now
             }
           })
@@ -644,6 +704,7 @@ export const reconcileConnectionTopologyManifest = async (
               criticality: component.criticality,
               isCritical: component.criticality === "HIGH",
               ownerTeam: "Platform Operations",
+              topologyMetaJson: meta,
               updatedAt: now
             }
           });

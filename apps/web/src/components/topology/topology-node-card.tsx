@@ -14,6 +14,7 @@ type Props = {
   collapsed?: boolean;
   alertCount?: number;
   isolationLabel?: string | null;
+  groupCollapsed?: boolean;
   onToggleCollapse?: () => void;
 };
 
@@ -42,6 +43,7 @@ export function TopologyNodeCard({
   collapsed = true,
   alertCount = 0,
   isolationLabel = null,
+  groupCollapsed = false,
   onToggleCollapse
 }: Props) {
   const metrics = deriveNodeLiveMetrics(node);
@@ -71,6 +73,20 @@ export function TopologyNodeCard({
           <span className={`topology-node-card-dot topology-node-card-dot--${statusTone}`} aria-hidden="true" />
         </div>
         <div className="topology-node-card-compact-meta">
+          {childCount > 0 ? (
+            <button
+              type="button"
+              className="topology-node-card-expand"
+              aria-expanded={!groupCollapsed}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleCollapse?.();
+              }}
+              data-action="local-ui"
+            >
+              {groupCollapsed ? `Show ${childCount}` : `Hide ${childCount}`}
+            </button>
+          ) : null}
           {alertCount > 0 ? <span className="topology-node-alert-count">{alertCount} alert{alertCount === 1 ? "" : "s"}</span> : null}
           {isolationLabel ? (
             <span className="topology-node-isolation-badge" data-testid={`topology-isolation-${node.id}`}>
@@ -87,19 +103,6 @@ export function TopologyNodeCard({
               </span>
             </div>
             <p className="dashboard-subtle topology-node-card-status">{healthLabel(displayStatus)}</p>
-            {childCount > 0 ? (
-              <button
-                type="button"
-                className="topology-node-card-expand"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onToggleCollapse?.();
-                }}
-                data-action="local-ui"
-              >
-                ▾ {childCount} beneath
-              </button>
-            ) : null}
           </>
         ) : null}
       </div>

@@ -43,6 +43,7 @@ type MockService = {
   updatedAt: Date;
   ownerTeam?: string | null;
   status?: string;
+  topologyMetaJson?: unknown;
 };
 
 type MockDependency = {
@@ -146,7 +147,8 @@ describe("reconcileConnectionTopologyManifest", () => {
             createdAt: data.createdAt ?? new Date(),
             updatedAt: data.updatedAt ?? new Date(),
             ownerTeam: data.ownerTeam ?? null,
-            status: data.status ?? "UNKNOWN"
+            status: data.status ?? "UNKNOWN",
+            topologyMetaJson: data.topologyMetaJson ?? null
           };
           services.push(row);
           return row;
@@ -325,5 +327,114 @@ describe("reconcileConnectionTopologyManifest", () => {
     });
     expect(audit.healthBindings).toHaveLength(3);
     expect(JSON.stringify(audit)).not.toMatch(/niinai|kanewu|guest/i);
+  });
+
+  it("imports the approved application manifest and keeps unbound modules grey when a sync lane fails", async () => {
+    const { readFileSync } = await import("node:fs");
+    const document = JSON.parse(
+      readFileSync(new URL("./fixtures/niinai-topology-v11.json", import.meta.url), "utf8")
+    );
+    const result = await reconcileConnectionTopologyManifest(connection, document);
+
+    expect(result.moduleCount).toBe(14);
+    expect(result.componentCount).toBe(19);
+    expect(result.relationshipCount).toBe(25);
+    expect(services.filter((service) => service.type !== "APP" && service.id !== "manual-student-portal")).toHaveLength(33);
+
+    const metaOf = (name: string) =>
+      services.find((service) => service.name === name)?.topologyMetaJson as {
+        declaredKind?: string;
+        externalId?: string | null;
+        healthBinding?: { signal?: string; lane?: string | null } | null;
+      } | null;
+
+    expect(metaOf("Kanewu")).toMatchObject({
+      declaredKind: "property",
+      externalId: "10000000-0000-4000-8000-000000000001"
+    });
+    expect(metaOf("Community 25")?.declaredKind).toBe("property");
+    expect(metaOf("Community 25")?.externalId ?? null).toBeNull();
+    expect(metaOf("Lifecycle synchronisation")?.healthBinding).toMatchObject({
+      signal: "heartbeat_lane",
+      lane: "lifecycle"
+    });
+    expect(metaOf("Payments")?.healthBinding?.signal).toBe("unbound");
+    expect(metaOf("Supabase authentication")?.declaredKind).toBe("component");
+    expect(dependencies.filter((dependency) => dependency.isActive && dependency.dependencyType === "DEPENDS_ON")).toHaveLength(18);
+    expect(dependencies.filter((dependency) => dependency.isActive && dependency.dependencyType === "SYNCS")).toHaveLength(6);
+    expect(dependencies.filter((dependency) => dependency.isActive && dependency.dependencyType === "RUNS_ON")).toHaveLength(1);
+
+    const { buildProjectTopologyResponse } = await import("../topology.service");
+    const { presentMonitoredDevices, DEVICE_OFFLINE_AFTER_SECONDS } = await import("../device-heartbeat");
+    const { projectDeviceTelemetry } = await import("../topology-telemetry-projection");
+    const { applyDeclaredHealth } = await import("../topology-health-bindings");
+
+    const built = buildProjectTopologyResponse({
+      project: { id: "project-1", name: "NiiNai", status: "UNKNOWN" },
+      services: services.map((service) => ({
+        id: service.id,
+        name: service.name,
+        type: service.type as "APP" | "MODULE" | "WORKFLOW" | "COMPONENT",
+        status: service.status ?? "UNKNOWN",
+        meta: service.topologyMetaJson as {
+          declaredKind?: string | null;
+          category?: string | null;
+          externalId?: string | null;
+          healthBinding?: { signal?: string | null; lane?: string | null; checkName?: string | null } | null;
+        } | null,
+        Check: []
+      })),
+      dependencies: dependencies.filter((dependency) => dependency.isActive),
+      alerts: [],
+      incidents: [],
+      slos: []
+    });
+
+    const now = new Date("2026-10-18T09:00:00.000Z");
+    const [matched, unmatched] = presentMonitoredDevices(
+      [
+        {
+          id: "desk-1",
+          deviceId: "11111111-1111-4111-8111-111111111111",
+          label: "Front desk",
+          propertyId: "10000000-0000-4000-8000-000000000001",
+          appVersion: "1.3.2",
+          lifecycleSync: "HEALTHY",
+          financialSync: "FAILED",
+          lastSeenAt: now,
+          offlineAfterSeconds: DEVICE_OFFLINE_AFTER_SECONDS
+        },
+        {
+          id: "desk-2",
+          deviceId: "22222222-2222-4222-8222-222222222222",
+          label: "Unassigned desk",
+          propertyId: "33333333-3333-4333-8333-333333333333",
+          appVersion: "1.3.2",
+          lifecycleSync: "DELAYED",
+          financialSync: "HEALTHY",
+          lastSeenAt: now,
+          offlineAfterSeconds: DEVICE_OFFLINE_AFTER_SECONDS
+        }
+      ],
+      now
+    );
+    const placed = projectDeviceTelemetry(built, [matched!, unmatched!]);
+    const painted = applyDeclaredHealth(placed, [matched!, unmatched!]);
+    const byName = new Map(painted.nodes.map((node) => [node.name, node]));
+    const appId = byName.get("NiiNai")?.id;
+
+    expect(byName.get("Front desk")?.parentId).toBe(byName.get("Kanewu")?.id);
+    expect(byName.get("Front desk")?.status).toBe("HEALTHY");
+    expect(byName.get("Unassigned desk")?.parentId).toBe(appId);
+    expect(byName.get("Unassigned desk")?.parentId).not.toBe(byName.get("Community 25")?.id);
+    expect(byName.get("Financial synchronisation")?.status).toBe("CRITICAL");
+    expect(byName.get("Lifecycle synchronisation")?.status).toBe("DEGRADED");
+    for (const name of ["Payments", "Refund processing", "End of Day", "Cash reconciliation", "Room synchronisation", "Supabase authentication"]) {
+      expect(byName.get(name)?.status).toBe("UNKNOWN");
+    }
+    expect(painted.nodeContext[byName.get("Payments")!.id]?.manifest?.potentialImpact.map((item) => item.name)).toContain(
+      "Financial synchronisation"
+    );
+    expect(painted.summary.openIncidents).toBe(0);
   });
 });

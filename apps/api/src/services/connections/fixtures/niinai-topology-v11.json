@@ -1,0 +1,572 @@
+{
+  "schemaVersion": "1.1",
+  "source": "niinai",
+  "application": {
+    "key": "niinai",
+    "name": "NiiNai"
+  },
+  "modules": [
+    {
+      "key": "cloud-services",
+      "name": "Cloud services",
+      "category": "cloud",
+      "description": "Hosted Supabase authentication and data services used by the desktop.",
+      "criticality": "HIGH",
+      "routePrefixes": []
+    },
+    {
+      "key": "properties",
+      "name": "Properties",
+      "category": "property",
+      "description": "Properties operated by NiiNai. Bookings, rooms, and phone transactions are scoped to one property.",
+      "criticality": "HIGH",
+      "routePrefixes": [
+        "/isaac/properties"
+      ]
+    },
+    {
+      "key": "access-control",
+      "name": "Access control",
+      "category": "access",
+      "description": "Owner, Admin, Manager, and Receptionist roles. Individual accounts and feature grants are omitted.",
+      "criticality": "HIGH",
+      "routePrefixes": [
+        "/isaac/users"
+      ]
+    },
+    {
+      "key": "rooms",
+      "name": "Rooms",
+      "category": "operations",
+      "description": "Room inventory and status, including available, occupied, reserved, cleaning, maintenance, and blocked.",
+      "criticality": "HIGH",
+      "routePrefixes": [
+        "/worker",
+        "/isaac/rooms",
+        "/isaac/reception",
+        "/worker/rooms-admin"
+      ]
+    },
+    {
+      "key": "bookings",
+      "name": "Bookings",
+      "category": "operations",
+      "description": "Stay and reservation bookings, scoped to a property and a room.",
+      "criticality": "HIGH",
+      "routePrefixes": [
+        "/isaac",
+        "/worker/bookings"
+      ]
+    },
+    {
+      "key": "front-desk",
+      "name": "Front desk",
+      "category": "operations",
+      "description": "Check-in and check-out for an existing booking.",
+      "criticality": "HIGH",
+      "routePrefixes": [
+        "/worker/book",
+        "/worker/booking",
+        "/isaac/book",
+        "/isaac/booking"
+      ]
+    },
+    {
+      "key": "payments",
+      "name": "Payments",
+      "category": "finance",
+      "description": "Cash and phone booking payments, and refund processing after cancellation.",
+      "criticality": "HIGH",
+      "routePrefixes": [
+        "/worker/booking",
+        "/isaac/booking"
+      ]
+    },
+    {
+      "key": "phone-transactions",
+      "name": "Phone transactions",
+      "category": "finance",
+      "description": "Property-scoped phone transactions: cash in, cash out, airtime, barbering, pay to phone, and pay to cash.",
+      "criticality": "HIGH",
+      "routePrefixes": [
+        "/worker/money-book",
+        "/isaac/money-book"
+      ]
+    },
+    {
+      "key": "pricing",
+      "name": "Pricing",
+      "category": "operations",
+      "description": "Room rate packages, stay supplements, and discount codes.",
+      "criticality": "HIGH",
+      "routePrefixes": [
+        "/isaac/pricing",
+        "/worker/pricing",
+        "/isaac/discounts",
+        "/worker/discounts"
+      ]
+    },
+    {
+      "key": "end-of-day",
+      "name": "End of Day",
+      "category": "finance",
+      "description": "Per-property operating-day close, handover, and cash count.",
+      "criticality": "HIGH",
+      "routePrefixes": [
+        "/worker/end-of-day",
+        "/isaac/end-of-day"
+      ]
+    },
+    {
+      "key": "reports",
+      "name": "Reports",
+      "category": "reporting",
+      "description": "Operational reports assembled from bookings, payments, closes, and refunds.",
+      "criticality": "MEDIUM",
+      "routePrefixes": [
+        "/isaac/reports",
+        "/isaac/revenue",
+        "/worker/revenue"
+      ]
+    },
+    {
+      "key": "audit",
+      "name": "Audit",
+      "category": "reporting",
+      "description": "Local audit trail of operational actions.",
+      "criticality": "MEDIUM",
+      "routePrefixes": [
+        "/isaac/audit"
+      ]
+    },
+    {
+      "key": "synchronisation",
+      "name": "Synchronisation",
+      "category": "sync",
+      "description": "Desktop outbox that uploads local changes to hosted data.",
+      "criticality": "HIGH",
+      "routePrefixes": [
+        "/isaac/device-health",
+        "/worker/device-health"
+      ]
+    },
+    {
+      "key": "desktop",
+      "name": "Desktop",
+      "category": "installation",
+      "description": "Windows desktop client and its local database. Individual computers are reported by the existing heartbeat.",
+      "criticality": "HIGH",
+      "routePrefixes": [
+        "/isaac/backup"
+      ]
+    }
+  ],
+  "components": [
+    {
+      "key": "supabase-auth",
+      "name": "Supabase authentication",
+      "kind": "component",
+      "category": "cloud",
+      "description": "Hosted sign-in used by the desktop.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "cloud-services"
+    },
+    {
+      "key": "supabase-data",
+      "name": "Supabase data",
+      "kind": "component",
+      "category": "cloud",
+      "description": "Hosted tables and row security that receive the desktop outbox.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "cloud-services"
+    },
+    {
+      "key": "kanewu",
+      "name": "Kanewu",
+      "kind": "property",
+      "category": "property",
+      "description": "Kanewu property.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "properties",
+      "externalId": "10000000-0000-4000-8000-000000000001"
+    },
+    {
+      "key": "community-25",
+      "name": "Community 25",
+      "kind": "property",
+      "category": "property",
+      "description": "Community 25 property.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "properties"
+    },
+    {
+      "key": "owner",
+      "name": "Owner",
+      "kind": "component",
+      "category": "access",
+      "description": "Owner role. Unrestricted access-control role, not a staff account.",
+      "criticality": "MEDIUM",
+      "routePrefixes": [],
+      "parentKey": "access-control"
+    },
+    {
+      "key": "admin",
+      "name": "Admin",
+      "kind": "component",
+      "category": "access",
+      "description": "Admin role. Access-control role, not a staff account.",
+      "criticality": "MEDIUM",
+      "routePrefixes": [],
+      "parentKey": "access-control"
+    },
+    {
+      "key": "manager",
+      "name": "Manager",
+      "kind": "component",
+      "category": "access",
+      "description": "Manager role. Access-control role, not a staff account.",
+      "criticality": "MEDIUM",
+      "routePrefixes": [],
+      "parentKey": "access-control"
+    },
+    {
+      "key": "receptionist",
+      "name": "Receptionist",
+      "kind": "component",
+      "category": "access",
+      "description": "Receptionist role. Cloud name for the local reception role, not a staff account.",
+      "criticality": "MEDIUM",
+      "routePrefixes": [],
+      "parentKey": "access-control"
+    },
+    {
+      "key": "reservation",
+      "name": "Reservation",
+      "kind": "workflow",
+      "category": "operations",
+      "description": "Reservation booking kind.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "bookings"
+    },
+    {
+      "key": "stay",
+      "name": "Stay booking",
+      "kind": "workflow",
+      "category": "operations",
+      "description": "Stay booking kind.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "bookings"
+    },
+    {
+      "key": "check-in",
+      "name": "Check-in",
+      "kind": "workflow",
+      "category": "operations",
+      "description": "Checks a booking in. Maintenance and blocked rooms are refused.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "front-desk"
+    },
+    {
+      "key": "check-out",
+      "name": "Check-out",
+      "kind": "workflow",
+      "category": "operations",
+      "description": "Checks a booking out.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "front-desk"
+    },
+    {
+      "key": "refund",
+      "name": "Refund processing",
+      "kind": "workflow",
+      "category": "finance",
+      "description": "Refund request, approval, and execution after a booking is cancelled.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "payments"
+    },
+    {
+      "key": "supplements",
+      "name": "Stay supplements",
+      "kind": "component",
+      "category": "operations",
+      "description": "Configured stay supplements added to a room price.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "pricing"
+    },
+    {
+      "key": "cash-reconciliation",
+      "name": "Cash reconciliation",
+      "kind": "workflow",
+      "category": "finance",
+      "description": "Counted cash compared with expected cash during End of Day.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "end-of-day"
+    },
+    {
+      "key": "lifecycle-sync",
+      "name": "Lifecycle synchronisation",
+      "kind": "workflow",
+      "category": "sync",
+      "description": "Outbox lane for booking, check-in, amendment, and cancellation rows.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "synchronisation"
+    },
+    {
+      "key": "financial-sync",
+      "name": "Financial synchronisation",
+      "kind": "workflow",
+      "category": "sync",
+      "description": "Outbox lane for payment, refund, phone-transaction, and cash-period rows.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "synchronisation"
+    },
+    {
+      "key": "room-sync",
+      "name": "Room synchronisation",
+      "kind": "workflow",
+      "category": "sync",
+      "description": "Outbox bucket for room rows. The desktop heartbeat has no lane for this bucket.",
+      "criticality": "HIGH",
+      "routePrefixes": [],
+      "parentKey": "synchronisation"
+    },
+    {
+      "key": "local-network",
+      "name": "Local network",
+      "kind": "component",
+      "category": "installation",
+      "description": "Desktop LAN host used between computers on the property network.",
+      "criticality": "MEDIUM",
+      "routePrefixes": [
+        "/isaac/network"
+      ],
+      "parentKey": "desktop"
+    }
+  ],
+  "relationships": [
+    {
+      "from": "bookings",
+      "to": "rooms",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "bookings",
+      "to": "pricing",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "bookings",
+      "to": "properties",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "check-in",
+      "to": "bookings",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "check-in",
+      "to": "rooms",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "check-out",
+      "to": "bookings",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "payments",
+      "to": "bookings",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "refund",
+      "to": "payments",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "phone-transactions",
+      "to": "properties",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "end-of-day",
+      "to": "payments",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "end-of-day",
+      "to": "phone-transactions",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "cash-reconciliation",
+      "to": "end-of-day",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "reports",
+      "to": "bookings",
+      "type": "depends_on",
+      "criticality": "MEDIUM",
+      "provenance": "verified"
+    },
+    {
+      "from": "reports",
+      "to": "payments",
+      "type": "depends_on",
+      "criticality": "MEDIUM",
+      "provenance": "verified"
+    },
+    {
+      "from": "reports",
+      "to": "end-of-day",
+      "type": "depends_on",
+      "criticality": "MEDIUM",
+      "provenance": "verified"
+    },
+    {
+      "from": "access-control",
+      "to": "supabase-auth",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "synchronisation",
+      "to": "supabase-data",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "desktop",
+      "to": "synchronisation",
+      "type": "depends_on",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "lifecycle-sync",
+      "to": "bookings",
+      "type": "syncs",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "lifecycle-sync",
+      "to": "front-desk",
+      "type": "syncs",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "financial-sync",
+      "to": "payments",
+      "type": "syncs",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "financial-sync",
+      "to": "phone-transactions",
+      "type": "syncs",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "financial-sync",
+      "to": "end-of-day",
+      "type": "syncs",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "room-sync",
+      "to": "rooms",
+      "type": "syncs",
+      "criticality": "HIGH",
+      "provenance": "verified"
+    },
+    {
+      "from": "local-network",
+      "to": "desktop",
+      "type": "runs_on",
+      "criticality": "MEDIUM",
+      "provenance": "verified"
+    }
+  ],
+  "healthBindings": [
+    {
+      "componentKey": "lifecycle-sync",
+      "signal": "heartbeat_lane",
+      "lane": "lifecycle"
+    },
+    {
+      "componentKey": "financial-sync",
+      "signal": "heartbeat_lane",
+      "lane": "financial"
+    },
+    {
+      "componentKey": "room-sync",
+      "signal": "unbound"
+    },
+    {
+      "componentKey": "payments",
+      "signal": "unbound"
+    },
+    {
+      "componentKey": "refund",
+      "signal": "unbound"
+    },
+    {
+      "componentKey": "phone-transactions",
+      "signal": "unbound"
+    },
+    {
+      "componentKey": "end-of-day",
+      "signal": "unbound"
+    },
+    {
+      "componentKey": "cash-reconciliation",
+      "signal": "unbound"
+    }
+  ]
+}
