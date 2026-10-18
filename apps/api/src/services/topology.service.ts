@@ -439,12 +439,12 @@ export const buildProjectTopologyResponse = (input: TopologyBuildInput): Project
       const hasTargetEvidence =
         targetChecks.hasEvidence ||
         (targetSignals != null && resolveMonitoringState(targetSignals) === "MONITORED") ||
-        (targetHealth !== "UNKNOWN" && (nodeContext[row.toServiceId]?.monitoringState === "MONITORED"));
+        nodeContext[row.toServiceId]?.monitoringState === "MONITORED";
       const hasAnyEndpointEvidence =
         hasTargetEvidence ||
         sourceChecks.hasEvidence ||
         (sourceSignals != null && resolveMonitoringState(sourceSignals) === "MONITORED") ||
-        sourceHealth !== "UNKNOWN";
+        nodeContext[row.fromServiceId]?.monitoringState === "MONITORED";
 
       if (isHierarchy) {
         // Hierarchy is containment — status still reflects rolled-up parent evidence for drawers/tooltips.

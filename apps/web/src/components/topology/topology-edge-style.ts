@@ -22,28 +22,28 @@ export const TOPOLOGY_KEY_ENTRIES: TopologyKeyEntry[] = [
     kind: "color",
     sampleClass: "topology-key-sample topology-key-sample--healthy",
     label: "Green solid",
-    meaning: "Healthy active dependency or traffic relationship"
+    meaning: "Verified healthy dependency — recent monitoring evidence on the dependency target"
   },
   {
     id: "degraded",
     kind: "color",
     sampleClass: "topology-key-sample topology-key-sample--degraded",
     label: "Amber solid",
-    meaning: "Degraded or slow dependency / traffic"
+    meaning: "Degraded or slow dependency with monitoring evidence"
   },
   {
     id: "critical",
     kind: "color",
     sampleClass: "topology-key-sample topology-key-sample--critical",
     label: "Red solid",
-    meaning: "Failing dependency or critical traffic failure"
+    meaning: "Failed dependency — failed check or critical/high alert on the relationship"
   },
   {
     id: "unknown",
     kind: "color",
     sampleClass: "topology-key-sample topology-key-sample--unknown",
     label: "Grey solid",
-    meaning: "Unknown health or insufficient recent evidence"
+    meaning: "Health unknown — declared relationship without enough monitoring evidence (not a confirmed failure)"
   },
   {
     id: "remediating",
@@ -57,16 +57,19 @@ export const TOPOLOGY_KEY_ENTRIES: TopologyKeyEntry[] = [
     kind: "style",
     sampleClass: "topology-key-sample topology-key-sample--hierarchy",
     label: "Grey dashed",
-    meaning: "Hierarchy or containment (module → workflow → component)"
+    meaning: "Hierarchy or containment (structure only — not traffic health)"
   },
   {
     id: "dependency",
     kind: "style",
     sampleClass: "topology-key-sample topology-key-sample--dependency",
     label: "Solid (health-coloured)",
-    meaning: "Dependency or traffic relationship (colour = health)"
+    meaning: "Dependency or traffic relationship (colour = verified relationship health)"
   }
 ];
+
+/** Written health for declared dependencies that lack relationship evidence. */
+export const DEPENDENCY_UNKNOWN_WRITTEN_HEALTH = "Health unknown";
 
 /** Hierarchy edges always use documented grey — never parent-layer purple. */
 export const HIERARCHY_EDGE_COLOR = "#94a3b8";
@@ -91,10 +94,12 @@ export const colourMeaningForEdge = (
   if (kind === "hierarchy") {
     return "Grey dashed — hierarchy or containment relationship (not traffic health).";
   }
-  if (status === "HEALTHY") return "Green solid — healthy active dependency.";
+  if (status === "HEALTHY") {
+    return "Green solid — verified healthy dependency with recent target monitoring evidence.";
+  }
   if (status === "DEGRADED") return "Amber solid — degraded or slow dependency.";
   if (status === "CRITICAL") return "Red solid — failing dependency.";
-  return "Grey solid — unknown health or insufficient evidence.";
+  return "Grey solid — health unknown; insufficient monitoring evidence for this relationship.";
 };
 
 export type SelectedTopologyEdge = {
@@ -137,7 +142,7 @@ export const colourReasonForEdge = (
     return "Hierarchy/containment edges always render grey dashed — colour is not traffic health.";
   }
   if (status === "HEALTHY") {
-    return "Selected because dependency target (or both endpoints) have healthy monitoring evidence and no linked failures.";
+    return "Selected because the dependency target has recent healthy monitoring evidence and no linked failures.";
   }
   if (status === "DEGRADED") {
     return "Selected because an endpoint is degraded, a warn check exists, or a non-critical alert is linked.";
@@ -145,7 +150,7 @@ export const colourReasonForEdge = (
   if (status === "CRITICAL") {
     return "Selected because a failed check or critical/high alert is linked to an endpoint of this relationship.";
   }
-  return "Selected because there is no conclusive recent evidence for this dependency.";
+  return "Selected because this declared relationship has no conclusive recent checks, heartbeats, or linked alerts. Healthy modules alone do not prove the connection is healthy.";
 };
 
 export const resolveEndpointDisplayName = (
@@ -192,6 +197,18 @@ export const describeSelectedEdge = (
 ): SelectedTopologyEdge => {
   const sourceName = resolveEndpointDisplayName(edge.sourceId, nodesById, options?.moreNodes);
   const targetName = resolveEndpointDisplayName(edge.targetId, nodesById, options?.moreNodes);
+  const writtenHealth =
+    kind === "hierarchy"
+      ? HIERARCHY_WRITTEN_HEALTH
+      : edge.status === "UNKNOWN"
+        ? DEPENDENCY_UNKNOWN_WRITTEN_HEALTH
+        : healthLabel(edge.status);
+
+  const endpointEvidence = [
+    endpointEvidenceLine("Source", edge.sourceId, nodesById, options),
+    endpointEvidenceLine("Target", edge.targetId, nodesById, options)
+  ].filter((row): row is string => Boolean(row));
+
   const base: SelectedTopologyEdge = {
     id: edge.id,
     kind,
@@ -202,22 +219,17 @@ export const describeSelectedEdge = (
     status: edge.status,
     critical: edge.critical,
     colourMeaning: colourMeaningForEdge(kind, edge.status),
-    writtenHealth: kind === "hierarchy" ? HIERARCHY_WRITTEN_HEALTH : healthLabel(edge.status),
+    writtenHealth,
     colourReason: colourReasonForEdge(kind, edge.status),
+    ...(endpointEvidence.length > 0 ? { endpointEvidence } : {}),
     ...(edge.otel ? { otel: edge.otel } : {})
   };
 
   if (kind !== "hierarchy") return base;
 
-  const endpointEvidence = [
-    endpointEvidenceLine("Source", edge.sourceId, nodesById, options),
-    endpointEvidenceLine("Target", edge.targetId, nodesById, options)
-  ].filter((row): row is string => Boolean(row));
-
   return {
     ...base,
-    structureNote: HIERARCHY_STRUCTURE_NOTE,
-    endpointEvidence: endpointEvidence.length > 0 ? endpointEvidence : undefined
+    structureNote: HIERARCHY_STRUCTURE_NOTE
   };
 };
 
@@ -231,11 +243,14 @@ export const edgeTooltipLines = (edge: SelectedTopologyEdge): string => {
 
   if (edge.kind === "hierarchy") {
     if (edge.structureNote) lines.push(edge.structureNote);
-    for (const row of edge.endpointEvidence ?? []) {
-      lines.push(row);
-    }
+  } else if (edge.status === "UNKNOWN") {
+    lines.push("Evidence: insufficient — declared relationship without recent relationship checks");
   } else {
-    lines.push("Discovery: declared", "Confidence: confirmed");
+    lines.push("Evidence: relationship monitoring signals present");
+  }
+
+  for (const row of edge.endpointEvidence ?? []) {
+    lines.push(row);
   }
 
   return lines.join("\n");

@@ -119,6 +119,21 @@ describe("resolveRelationshipEdgeHealth", () => {
     ).toBe("UNKNOWN");
   });
 
+  it("does not invent HEALTHY from two healthy endpoints without target evidence", () => {
+    expect(
+      resolveRelationshipEdgeHealth({
+        sourceHealth: "HEALTHY",
+        targetHealth: "HEALTHY",
+        relatedOpenAlerts: 0,
+        relatedCriticalAlerts: 0,
+        relatedFailedChecks: 0,
+        relatedWarnChecks: 0,
+        hasTargetEvidence: false,
+        hasAnyEndpointEvidence: true
+      }).status
+    ).toBe("UNKNOWN");
+  });
+
   it("returns DEGRADED for warn checks or degraded endpoints", () => {
     expect(
       resolveRelationshipEdgeHealth({

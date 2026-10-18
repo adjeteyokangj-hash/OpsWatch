@@ -255,7 +255,7 @@ describe("TopologyCanvas", () => {
         kind: "dependency",
         sourceId: "app",
         targetId: "redis",
-        writtenHealth: "Unknown"
+        writtenHealth: "Health unknown"
       })
     );
   });

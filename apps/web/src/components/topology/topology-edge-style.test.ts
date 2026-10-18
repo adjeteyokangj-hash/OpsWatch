@@ -3,6 +3,7 @@ import {
   TOPOLOGY_KEY_ENTRIES,
   HIERARCHY_EDGE_COLOR,
   HIERARCHY_WRITTEN_HEALTH,
+  DEPENDENCY_UNKNOWN_WRITTEN_HEALTH,
   colourMeaningForEdge,
   dependencyEdgeColorClass,
   describeSelectedEdge,
@@ -53,6 +54,32 @@ describe("topology edge style / Topology key", () => {
     expect(dependencyEdgeColorClass("DEGRADED")).toBe("topology-health-degraded");
     expect(dependencyEdgeColorClass("CRITICAL")).toBe("topology-health-critical");
     expect(dependencyEdgeColorClass("UNKNOWN")).toBe("topology-health-unknown");
+  });
+
+  it("keeps unknown dependencies grey and explains Health unknown without inventing confirmation", () => {
+    const edge: TopologyEdge = {
+      id: "e-unknown",
+      sourceId: "bookings",
+      targetId: "rooms",
+      type: "DEPENDENCY",
+      critical: false,
+      status: "UNKNOWN"
+    };
+    const nodes = new Map<string, TopologyNode>([
+      ["bookings", node("bookings", "Bookings", "HEALTHY")],
+      ["rooms", node("rooms", "Rooms", "HEALTHY")]
+    ]);
+    const selected = describeSelectedEdge(edge, nodes, "dependency");
+    expect(selected.writtenHealth).toBe(DEPENDENCY_UNKNOWN_WRITTEN_HEALTH);
+    expect(selected.colourMeaning).toMatch(/health unknown/i);
+    expect(selected.colourReason).toMatch(/Healthy modules alone do not prove/i);
+    const tooltip = edgeTooltipLines(selected);
+    expect(tooltip).toContain("Health: Health unknown");
+    expect(tooltip).toMatch(/insufficient/i);
+    expect(tooltip).not.toMatch(/Confidence: confirmed/i);
+    expect(TOPOLOGY_KEY_ENTRIES.find((entry) => entry.id === "unknown")?.meaning).toMatch(
+      /not a confirmed failure/i
+    );
   });
 
   it("explains hierarchy as grey dashed, not layer purple", () => {

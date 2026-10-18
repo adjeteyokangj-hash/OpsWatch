@@ -110,17 +110,6 @@ export const resolveRelationshipEdgeHealth = (
     };
   }
 
-  if (
-    input.hasAnyEndpointEvidence &&
-    input.targetHealth === "HEALTHY" &&
-    input.sourceHealth === "HEALTHY"
-  ) {
-    return {
-      status: "HEALTHY",
-      reason: "Both relationship endpoints are healthy with monitoring evidence"
-    };
-  }
-
   if (input.sourceHealth === "CRITICAL" && input.hasAnyEndpointEvidence) {
     return {
       status: "CRITICAL",
