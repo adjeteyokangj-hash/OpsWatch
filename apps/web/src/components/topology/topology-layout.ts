@@ -59,8 +59,27 @@ export type LayeredLayout = {
   visibleNodeIds: Set<string>;
 };
 
-const rowWidth = (count: number): number =>
-  count * LAYOUT.nodeWidth + Math.max(0, count - 1) * LAYOUT.gapX;
+const rowWidth = (count: number, gapX: number = LAYOUT.gapX): number =>
+  count * LAYOUT.nodeWidth + Math.max(0, count - 1) * gapX;
+
+const usableBandWidth = (canvasWidth: number): number =>
+  Math.max(LAYOUT.nodeWidth, canvasWidth - LAYOUT.paddingX * 2);
+
+/** Prefer at least four cards per row; use more when the canvas is wide enough. */
+export const nodesPerRowForWidth = (canvasWidth: number): number => {
+  const usable = usableBandWidth(canvasWidth);
+  const fit = Math.floor((usable + LAYOUT.gapX) / (LAYOUT.nodeWidth + LAYOUT.gapX));
+  return Math.max(LAYOUT.nodesPerRow, fit);
+};
+
+/** Spread cards across the band when there is spare horizontal space. */
+export const rowGapForWidth = (slotCount: number, canvasWidth: number): number => {
+  if (slotCount <= 1) return LAYOUT.gapX;
+  const usable = usableBandWidth(canvasWidth);
+  const packed = rowWidth(slotCount, LAYOUT.gapX);
+  if (packed >= usable) return LAYOUT.gapX;
+  return (usable - slotCount * LAYOUT.nodeWidth) / (slotCount - 1);
+};
 
 export const layerExpansionKey = (layer: VisualLayer): string => `layer:${layer}`;
 
@@ -109,6 +128,7 @@ export const computeLayeredLayout = (
     .filter((entry) => entry.nodes.length > 0);
 
   let maxCanvasWidth: number = Math.max(LAYOUT.minCanvasWidth, minWidth);
+  const perRow = nodesPerRowForWidth(maxCanvasWidth);
   const layerBands: LayerBand[] = [];
   let currentY = LAYOUT.paddingY + (appNodes.length > 0 ? LAYOUT.appHeaderHeight : 0);
 
@@ -117,8 +137,8 @@ export const computeLayeredLayout = (
     const collapsed = !expanded && layerNodes.length > LAYOUT.previewCount;
     const rows = collapsed
       ? [layerNodes.slice(0, LAYOUT.previewCount)]
-      : Array.from({ length: Math.ceil(layerNodes.length / LAYOUT.nodesPerRow) }, (_, row) =>
-          layerNodes.slice(row * LAYOUT.nodesPerRow, row * LAYOUT.nodesPerRow + LAYOUT.nodesPerRow)
+      : Array.from({ length: Math.ceil(layerNodes.length / perRow) }, (_, row) =>
+          layerNodes.slice(row * perRow, row * perRow + perRow)
         );
 
     for (const rowNodes of rows) {
@@ -138,13 +158,14 @@ export const computeLayeredLayout = (
     rows.forEach((rowNodes, rowIndex) => {
       const collapsedRow = collapsed && rowIndex === 0;
       const slotCount = collapsedRow ? rowNodes.length + 1 : rowNodes.length;
-      const currentRowWidth = rowWidth(slotCount);
-      const startX = LAYOUT.paddingX + (maxCanvasWidth - LAYOUT.paddingX * 2 - currentRowWidth) / 2;
+      const gapX = rowGapForWidth(slotCount, maxCanvasWidth);
+      const currentRowWidth = rowWidth(slotCount, gapX);
+      const startX = LAYOUT.paddingX + (usableBandWidth(maxCanvasWidth) - currentRowWidth) / 2;
 
       rowNodes.forEach((node, col) => {
         visibleNodeIds.add(node.id);
         positions.set(node.id, {
-          x: startX + col * (LAYOUT.nodeWidth + LAYOUT.gapX) + LAYOUT.nodeWidth / 2,
+          x: startX + col * (LAYOUT.nodeWidth + gapX) + LAYOUT.nodeWidth / 2,
           y: currentY + rowIndex * LAYOUT.rowHeight + LAYOUT.nodeHeight / 2
         });
       });
@@ -159,7 +180,7 @@ export const computeLayeredLayout = (
           hiddenIds
         });
         positions.set(moreId, {
-          x: startX + rowNodes.length * (LAYOUT.nodeWidth + LAYOUT.gapX) + LAYOUT.nodeWidth / 2,
+          x: startX + rowNodes.length * (LAYOUT.nodeWidth + gapX) + LAYOUT.nodeWidth / 2,
           y: currentY + rowIndex * LAYOUT.rowHeight + LAYOUT.nodeHeight / 2
         });
       }
