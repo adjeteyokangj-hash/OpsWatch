@@ -96,7 +96,9 @@ export async function middleware(request: NextRequest) {
     isAuthRoute ||
     isMarketingRoute ||
     pathname.startsWith("/status") ||
-    pathname.startsWith("/status-page");
+    pathname.startsWith("/status-page") ||
+    // Local topology presentation preview (stubbed in production builds).
+    pathname.startsWith("/dev/");
   const sessionCheck = await checkSession(request);
   const sessionValid = sessionCheck === "valid";
 

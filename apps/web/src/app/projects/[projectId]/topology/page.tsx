@@ -53,6 +53,10 @@ import { describeSelectedEdge, type SelectedTopologyEdge } from "../../../../com
 import { resolveDependencyDisplayLinks, resolveHierarchyDisplayLinks } from "../../../../components/topology/topology-edge-resolve";
 import { computeLayeredLayout } from "../../../../components/topology/topology-layout";
 import { classifyVisualLayer } from "../../../../components/topology/topology-visual-layers";
+import {
+  readTopologyViewPrefs,
+  writeTopologyViewPrefs
+} from "../../../../components/topology/topology-view-prefs";
 
 const REFRESH_MS = 15_000;
 const SIDE_STACK_COLLAPSED_KEY = "opswatch.topology-side-collapsed";
@@ -108,6 +112,8 @@ export default function ProjectTopologyPage() {
     useState<TopologyFreshnessFilter>("ALL");
   const [selectedEdge, setSelectedEdge] = useState<SelectedTopologyEdge | null>(null);
   const [cardsExpanded, setCardsExpanded] = useState<"none" | "selected" | "all">("selected");
+  const [propertyFocusId, setPropertyFocusId] = useState<string | null>(null);
+  const [initialZoomPercent, setInitialZoomPercent] = useState<number | null>(null);
   const [fixActing, setFixActing] = useState(false);
   const [restoredEdgeId, setRestoredEdgeId] = useState<string | null>(null);
   const [incidentMemorySignals, setIncidentMemorySignals] = useState<RelationshipIncidentMemorySignals | null>(null);
@@ -118,7 +124,11 @@ export default function ProjectTopologyPage() {
 
   useEffect(() => {
     setSideStackCollapsed(readSideStackCollapsed());
-  }, []);
+    const prefs = readTopologyViewPrefs(projectId);
+    setCardsExpanded(prefs.cardsExpanded);
+    setPropertyFocusId(prefs.propertyFocusId);
+    setInitialZoomPercent(prefs.zoomPercent);
+  }, [projectId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -775,10 +785,23 @@ export default function ProjectTopologyPage() {
                   searchQuery={searchQuery}
                   fitToken={fitToken}
                   cardsExpanded={cardsExpanded}
-                  onExpandAll={() => setCardsExpanded("all")}
+                  onExpandAll={() => {
+                    setCardsExpanded("all");
+                    writeTopologyViewPrefs(projectId, { cardsExpanded: "all" });
+                  }}
                   onCollapseAll={() => {
                     setCardsExpanded("none");
+                    writeTopologyViewPrefs(projectId, { cardsExpanded: "none" });
                     setSelectedNodeId(null);
+                  }}
+                  propertyFocusId={propertyFocusId}
+                  onPropertyFocusChange={(next) => {
+                    setPropertyFocusId(next);
+                    writeTopologyViewPrefs(projectId, { propertyFocusId: next });
+                  }}
+                  initialZoomPercent={initialZoomPercent}
+                  onZoomPercentChange={(percent) => {
+                    writeTopologyViewPrefs(projectId, { zoomPercent: percent });
                   }}
                   traceFocus
                   onInteractingChange={setPaused}

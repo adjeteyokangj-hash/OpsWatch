@@ -1,9 +1,14 @@
 import Link from "next/link";
+import { useMemo } from "react";
 import type { ProjectTopologyResponse } from "./topology-types";
 import { healthClassName, healthLabel } from "./topology-types";
 import { TopologySparkline } from "./topology-sparkline";
 import { deriveNodeLiveMetrics } from "./topology-metrics";
 import { PageSection } from "../ui/page-section";
+import {
+  buildTopologyPresentationGroups,
+  installationsForProperty
+} from "./topology-presentation-groups";
 
 type Props = {
   topology: ProjectTopologyResponse;
@@ -20,6 +25,37 @@ export function TopologyApplicationPanel({ topology, projectId, project }: Props
   const appNode = topology.nodes.find((row) => row.type === "APP") ?? topology.nodes[0];
   const metrics = appNode ? deriveNodeLiveMetrics(appNode) : null;
   const availability = appNode?.metrics.availabilityPercent ?? metrics?.availabilityPercent ?? null;
+
+  const presentationGroups = useMemo(
+    () => buildTopologyPresentationGroups(topology),
+    [topology]
+  );
+
+  const propertyHealth = useMemo(() => {
+    if (!presentationGroups) return [];
+    return presentationGroups.propertyOptions.map((property) => {
+      const propertyNode = topology.nodes.find((row) => row.id === property.id);
+      const installations = propertyNode
+        ? installationsForProperty(propertyNode, topology)
+        : [];
+      const scoped = [propertyNode, ...installations].filter(Boolean);
+      const counts = { healthy: 0, degraded: 0, critical: 0, unknown: 0 };
+      for (const node of scoped) {
+        if (!node) continue;
+        if (node.status === "HEALTHY") counts.healthy += 1;
+        else if (node.status === "DEGRADED") counts.degraded += 1;
+        else if (node.status === "CRITICAL") counts.critical += 1;
+        else counts.unknown += 1;
+      }
+      return {
+        id: property.id,
+        name: property.name,
+        status: propertyNode?.status ?? ("UNKNOWN" as const),
+        ...counts,
+        installationCount: installations.length
+      };
+    });
+  }, [presentationGroups, topology]);
 
   const healthy = topology.summary.healthy;
   const warning = topology.summary.degraded;
@@ -134,6 +170,48 @@ export function TopologyApplicationPanel({ topology, projectId, project }: Props
           </ul>
         </div>
       </section>
+
+      {propertyHealth.length > 0 ? (
+        <section className="topology-detail-section" data-testid="topology-property-health">
+          <h3>Guest houses</h3>
+          <p className="dashboard-subtle">
+            Live OpsWatch status for each property and its installations. Shared modules are listed once on
+            the map and are not duplicated here.
+          </p>
+          <ul className="topology-property-health-list">
+            {propertyHealth.map((row) => (
+              <li key={row.id}>
+                <div className="topology-property-health-head">
+                  <strong>{row.name}</strong>
+                  <span className={`topology-detail-badge ${healthClassName(row.status)}`}>
+                    {healthLabel(row.status)}
+                  </span>
+                </div>
+                <dl className="topology-detail-grid">
+                  <div>
+                    <dt>Installations</dt>
+                    <dd>{row.installationCount}</dd>
+                  </div>
+                  <div>
+                    <dt>Healthy</dt>
+                    <dd>{row.healthy}</dd>
+                  </div>
+                  <div>
+                    <dt>Degraded</dt>
+                    <dd>{row.degraded}</dd>
+                  </div>
+                  <div>
+                    <dt>Unknown / critical</dt>
+                    <dd>
+                      {row.unknown} / {row.critical}
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="topology-detail-section">
         <div className="topology-detail-subheading">

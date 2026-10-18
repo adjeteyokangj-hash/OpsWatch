@@ -9,7 +9,16 @@ import type {
   TopologyOverlays
 } from "./topology-types";
 import { healthClassName, healthLabel } from "./topology-types";
-import { computeLayeredLayout, edgePath, edgeStrokeWidth, layerExpansionKey, LAYOUT, nodeAnchor } from "./topology-layout";
+import {
+  computeLayeredLayout,
+  computePresentationLayout,
+  edgeLaneOffset,
+  edgePath,
+  edgeStrokeWidth,
+  layerExpansionKey,
+  LAYOUT,
+  nodeAnchor
+} from "./topology-layout";
 import { TopologyMoreCard, TopologyNodeCard } from "./topology-node-card";
 import {
   buildTraceFocusIds,
@@ -40,6 +49,10 @@ import {
   resolveEndpointDisplayName,
   type SelectedTopologyEdge
 } from "./topology-edge-style";
+import {
+  buildTopologyPresentationGroups,
+  focusIdsForProperty
+} from "./topology-presentation-groups";
 
 type Props = {
   topology: ProjectTopologyResponse;
@@ -67,6 +80,12 @@ type Props = {
   cardsExpanded?: "none" | "selected" | "all";
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
+  /** Guest-house property focus (null = all properties). */
+  propertyFocusId?: string | null;
+  onPropertyFocusChange?: (propertyId: string | null) => void;
+  /** Restored zoom percent (relative to Fit) from user preferences. */
+  initialZoomPercent?: number | null;
+  onZoomPercentChange?: (percent: number) => void;
 };
 
 const NODE_WIDTH = LAYOUT.nodeWidth;
@@ -146,7 +165,11 @@ export const TopologyCanvas = ({
   freshnessFilter = "ALL",
   cardsExpanded = "selected",
   onExpandAll,
-  onCollapseAll
+  onCollapseAll,
+  propertyFocusId = null,
+  onPropertyFocusChange,
+  initialZoomPercent = null,
+  onZoomPercentChange
 }: Props) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
@@ -154,12 +177,20 @@ export const TopologyCanvas = ({
   const [dragging, setDragging] = useState(false);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
   const seededGroups = useRef(false);
-  /** Once the operator zooms or pans, skip auto-fit until Fit or a layout change. */
+  /** Once the operator zooms or pans, skip auto-fit until Fit is clicked. */
   const userAdjustedViewport = useRef(false);
+  const restoredZoomPref = useRef(false);
+  const onZoomPercentChangeRef = useRef(onZoomPercentChange);
+  onZoomPercentChangeRef.current = onZoomPercentChange;
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const dragOrigin = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
+
+  const presentationGroups = useMemo(
+    () => buildTopologyPresentationGroups(topology),
+    [topology]
+  );
 
   const overlayFocusIds = useMemo(() => {
     const ids = new Set<string>(overlays?.affectedNodeIds ?? []);
@@ -177,8 +208,22 @@ export const TopologyCanvas = ({
     [traceFocus, selectedNodeId, topology]
   );
 
-  const focusNodeIds = overlayFocusIds.size > 0 ? overlayFocusIds : traceFocusIds;
-  const shouldDim = dimUnrelated || (traceFocus && selectedNodeId != null && overlayFocusIds.size === 0);
+  const propertyFocusIds = useMemo(() => {
+    if (!propertyFocusId || !presentationGroups) return new Set<string>();
+    const appIds = topology.nodes.filter((node) => node.type === "APP").map((node) => node.id);
+    return focusIdsForProperty(propertyFocusId, presentationGroups, appIds);
+  }, [propertyFocusId, presentationGroups, topology.nodes]);
+
+  const focusNodeIds =
+    overlayFocusIds.size > 0
+      ? overlayFocusIds
+      : propertyFocusIds.size > 0
+        ? propertyFocusIds
+        : traceFocusIds;
+  const shouldDim =
+    dimUnrelated ||
+    propertyFocusIds.size > 0 ||
+    (traceFocus && selectedNodeId != null && overlayFocusIds.size === 0 && propertyFocusIds.size === 0);
 
   const hiddenDescendants = useMemo(
     () => getCollapsedDescendantIds(collapsedNodeIds, topology.edges),
@@ -187,11 +232,16 @@ export const TopologyCanvas = ({
 
   useEffect(() => {
     if (seededGroups.current) return;
+    // Property presentation already organises the map — do not auto-collapse groups.
+    if (presentationGroups) {
+      seededGroups.current = true;
+      return;
+    }
     const groups = collapsedGroupIdsForLargeTopology(topology.nodes.length, topology.edges);
     if (groups.length === 0) return;
     seededGroups.current = true;
     setCollapsedNodeIds(new Set(groups));
-  }, [topology.nodes.length, topology.edges]);
+  }, [topology.nodes.length, topology.edges, presentationGroups]);
 
   const baseNodes = useMemo(() => {
     let rows = topology.nodes.filter((node) => !hiddenDescendants.has(node.id));
@@ -207,11 +257,20 @@ export const TopologyCanvas = ({
     return [...apps, ...nonApp];
   }, [baseNodes, topology.nodes]);
 
-  const layoutKey = `${layoutNodes.map((row) => row.id).sort().join("|")}|${[...collapsedNodeIds].sort().join(",")}|${[...expandedLayers].sort().join(",")}|${containerWidth}x${containerHeight}`;
+  const topologyIdentityKey = layoutNodes
+    .map((row) => row.id)
+    .sort()
+    .join("|");
+  const layoutKey = `${topologyIdentityKey}|${[...collapsedNodeIds].sort().join(",")}|${[...expandedLayers].sort().join(",")}|${presentationGroups ? "presentation" : "layers"}|${containerWidth}x${containerHeight}`;
 
   const graphLayout = useMemo(() => {
+    const layoutFor = (minWidth: number) =>
+      presentationGroups
+        ? computePresentationLayout(layoutNodes, presentationGroups, minWidth)
+        : computeLayeredLayout(layoutNodes, expandedLayers, minWidth);
+
     // Height-limited fit shrinks the map; widen the layout so lanes still fill the canvas.
-    const natural = computeLayeredLayout(layoutNodes, expandedLayers, LAYOUT.minCanvasWidth);
+    const natural = layoutFor(LAYOUT.minCanvasWidth);
     let layoutMinWidth: number = LAYOUT.minCanvasWidth;
     if (containerWidth > 0) {
       const availableWidth = Math.max(
@@ -227,7 +286,7 @@ export const TopologyCanvas = ({
       layoutMinWidth = Math.max(LAYOUT.minCanvasWidth, Math.ceil(widthToFill));
     }
 
-    const base = computeLayeredLayout(layoutNodes, expandedLayers, layoutMinWidth);
+    const base = layoutFor(layoutMinWidth);
     const positions = new Map(base.positions);
 
     if (showCorrelatedIncidents && overlays?.correlatedIncidents?.length) {
@@ -248,6 +307,7 @@ export const TopologyCanvas = ({
     return { ...base, positions };
   }, [
     layoutNodes,
+    presentationGroups,
     overlays,
     showChangeEvents,
     showCorrelatedIncidents,
@@ -264,6 +324,43 @@ export const TopologyCanvas = ({
     25,
     Math.min(200, Math.round((viewport.scale / Math.max(referenceScale, 0.0001)) * 100))
   );
+
+  useEffect(() => {
+    if (!userAdjustedViewport.current) return;
+    onZoomPercentChangeRef.current?.(zoomPercent);
+  }, [zoomPercent]);
+
+  // Apply persisted zoom once after the first Fit establishes referenceScale.
+  useEffect(() => {
+    if (restoredZoomPref.current) return;
+    if (initialZoomPercent == null || initialZoomPercent === 100) {
+      restoredZoomPref.current = true;
+      return;
+    }
+    if (referenceScale <= 0 || viewport.scale <= 0) return;
+    // Wait until an auto-fit has moved us off the default identity scale pair.
+    if (referenceScale === 1 && viewport.scale === 1) return;
+
+    restoredZoomPref.current = true;
+    const container = containerRef.current;
+    if (!container) return;
+    const targetScale = Math.max(
+      referenceScale * 0.25,
+      Math.min(referenceScale * 2, referenceScale * (initialZoomPercent / 100))
+    );
+    userAdjustedViewport.current = true;
+    setViewport((current) => {
+      const centerX = container.clientWidth / 2;
+      const centerY = container.clientHeight / 2;
+      const worldX = (centerX - current.x) / current.scale;
+      const worldY = (centerY - current.y) / current.scale;
+      return {
+        scale: targetScale,
+        x: centerX - worldX * targetScale,
+        y: centerY - worldY * targetScale
+      };
+    });
+  }, [initialZoomPercent, referenceScale, viewport.scale]);
 
   const displayStatusFor = useCallback(
     (nodeId: string, status: TopologyHealthStatus): TopologyHealthStatus => {
@@ -426,10 +523,19 @@ export const TopologyCanvas = ({
   const fitToScreenRef = useRef(fitToScreen);
   fitToScreenRef.current = fitToScreen;
 
+  // Auto-fit only when the operator has not adjusted zoom/pan.
+  // Property focus and node selection must not reset the viewport.
   useEffect(() => {
+    if (userAdjustedViewport.current) return;
+    fitToScreenRef.current();
+  }, [layoutKey, subgraphOnly]);
+
+  // Fit button / explicit fitToken always recalculates.
+  useEffect(() => {
+    if (fitToken === 0) return;
     userAdjustedViewport.current = false;
     fitToScreenRef.current();
-  }, [layoutKey, subgraphOnly, fitToken]);
+  }, [fitToken]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -609,7 +715,7 @@ export const TopologyCanvas = ({
   return (
     <div
       ref={containerRef}
-      className={`topology-canvas-wrap${dragging ? " is-dragging" : ""}${shouldDim && focusNodeIds.size > 0 ? " topology-canvas-wrap--focus" : ""}`}
+      className={`topology-canvas-wrap${dragging ? " is-dragging" : ""}${shouldDim && focusNodeIds.size > 0 ? " topology-canvas-wrap--focus" : ""}${presentationGroups ? " topology-canvas-wrap--presentation" : ""}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
@@ -617,6 +723,7 @@ export const TopologyCanvas = ({
       onWheel={onWheel}
       title="Ctrl + scroll to zoom the map"
       data-testid="topology-canvas"
+      data-presentation={presentationGroups ? "property" : "layers"}
     >
       <div className="topology-canvas-overlay" data-testid="topology-canvas-overlay" aria-hidden="true" />
 
@@ -643,35 +750,57 @@ export const TopologyCanvas = ({
 
         <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`} data-testid="topology-graph-transform">
           <g className="topology-layer-bands" data-testid="topology-layer-bands">
-          {graphLayout.layerBands.map((band) => (
-            <rect
-              key={`band-${band.layer}`}
-              className={`topology-layer-band layer-${band.layer.toLowerCase()}`}
-              x={LAYOUT.bandStartX}
-              y={band.y}
-              width={graphLayout.width - LAYOUT.bandStartX - 12}
-              height={band.height}
-              rx={14}
-            />
-          ))}
+          {graphLayout.layerBands.map((band) => {
+            const tone = band.toneClass ?? band.layer.toLowerCase();
+            const bandX = band.bandX ?? LAYOUT.bandStartX;
+            const bandWidth =
+              band.bandWidth ?? graphLayout.width - LAYOUT.bandStartX - 12;
+            return (
+              <rect
+                key={`band-${band.bandKey}`}
+                className={`topology-layer-band layer-${tone}`}
+                x={bandX}
+                y={band.y}
+                width={bandWidth}
+                height={band.height}
+                rx={14}
+                data-band-key={band.bandKey}
+              />
+            );
+          })}
           </g>
 
           <g className="topology-layer-labels">
-          {graphLayout.layerBands.map((band) => (
-            <foreignObject
-              key={`label-${band.layer}`}
-              x={8}
-              y={band.y}
-              width={LAYOUT.labelGutter - 16}
-              height={band.height}
-              className="topology-layer-label-wrap"
-            >
-              <div className="topology-layer-label-box">
-                <span className="topology-layer-label-title">{visualLayerTitle(band.layer)}</span>
-                <span className="topology-layer-label-meta">{visualLayerCountLabel(band.layer, band.count)}</span>
-              </div>
-            </foreignObject>
-          ))}
+          {graphLayout.layerBands.map((band) => {
+            const tone = band.toneClass ?? band.layer.toLowerCase();
+            const isPresentation = Boolean(presentationGroups);
+            const labelX =
+              isPresentation && band.bandX != null ? band.bandX + 12 : 8;
+            const labelWidth = isPresentation && band.bandWidth != null
+              ? Math.min(band.bandWidth - 24, 220)
+              : LAYOUT.labelGutter - 16;
+            const title = isPresentation
+              ? band.label
+              : visualLayerTitle(band.layer);
+            const meta = isPresentation
+              ? `${band.count} node${band.count === 1 ? "" : "s"}`
+              : visualLayerCountLabel(band.layer, band.count);
+            return (
+              <foreignObject
+                key={`label-${band.bandKey}`}
+                x={labelX}
+                y={band.y + 6}
+                width={labelWidth}
+                height={Math.min(band.height - 8, 56)}
+                className={`topology-layer-label-wrap tone-${tone}`}
+              >
+                <div className="topology-layer-label-box">
+                  <span className="topology-layer-label-title">{title}</span>
+                  <span className="topology-layer-label-meta">{meta}</span>
+                </div>
+              </foreignObject>
+            );
+          })}
           </g>
 
           <g className="topology-edges" data-testid="topology-edges">
@@ -682,7 +811,7 @@ export const TopologyCanvas = ({
 
             const start = nodeAnchor(parentPos, "bottom", NODE_HEIGHT_COLLAPSED);
             const end = nodeAnchor(childPos, "top", NODE_HEIGHT_COLLAPSED);
-            const pathD = edgePath(start, end, true);
+            const pathD = edgePath(start, end, true, edgeLaneOffset(link.key));
             const edgeDimmed =
               shouldDim &&
               focusNodeIds.size > 0 &&
@@ -769,7 +898,8 @@ export const TopologyCanvas = ({
             const pathD = edgePath(
               nodeAnchor(source, "bottom", NODE_HEIGHT_COLLAPSED),
               nodeAnchor(target, "top", NODE_HEIGHT_COLLAPSED),
-              true
+              true,
+              edgeLaneOffset(link.key)
             );
             const weight = edgeTrafficWeight(link.edge, topology.nodes);
             const edgeDimmed =
@@ -1008,6 +1138,26 @@ export const TopologyCanvas = ({
           <span><i className="line indirect" /> Hierarchy</span>
         </div>
         <div className="topology-canvas-footer-actions">
+          {presentationGroups && onPropertyFocusChange ? (
+            <label className="topology-property-focus" data-testid="topology-property-focus">
+              <span>Property</span>
+              <select
+                value={propertyFocusId ?? ""}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  onPropertyFocusChange(value ? value : null);
+                }}
+                aria-label="Focus guest house property"
+              >
+                <option value="">All properties</option>
+                {presentationGroups.propertyOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           {onExpandAll ? (
             <button type="button" className="secondary-button" onClick={onExpandAll} data-testid="topology-expand-all">
               Expand all
@@ -1028,7 +1178,15 @@ export const TopologyCanvas = ({
             <button type="button" className="secondary-button" onClick={() => zoomBy(1.1)} aria-label="Zoom in">
               +
             </button>
-            <button type="button" className="secondary-button" onClick={fitToScreen}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                userAdjustedViewport.current = false;
+                fitToScreen();
+              }}
+              data-testid="topology-fit"
+            >
               Fit
             </button>
           </div>
