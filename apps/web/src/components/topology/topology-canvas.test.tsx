@@ -157,6 +157,37 @@ describe("TopologyCanvas", () => {
     expect(after).not.toBe(before);
   });
 
+  it("keeps the zoom level after + instead of resetting to fit", () => {
+    const { rerender } = render(
+      <TopologyCanvas
+        topology={topology}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+        typeFilter="ALL"
+        healthFilter="ALL"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    const zoomed = document.querySelector("[data-testid='topology-graph-transform']")?.getAttribute("transform");
+    const percentAfterZoom = screen.getByTestId("topology-zoom-level").textContent;
+    expect(percentAfterZoom).toBe("110%");
+
+    rerender(
+      <TopologyCanvas
+        topology={topology}
+        selectedNodeId={null}
+        onSelectNode={vi.fn()}
+        typeFilter="ALL"
+        healthFilter="ALL"
+      />
+    );
+
+    expect(document.querySelector("[data-testid='topology-graph-transform']")?.getAttribute("transform")).toBe(zoomed);
+    expect(screen.getByTestId("topology-zoom-level").textContent).toBe("110%");
+  });
+
+
   it("does not render floating Group by / Layout controls inside the canvas", () => {
     render(
       <TopologyCanvas

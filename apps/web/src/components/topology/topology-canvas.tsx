@@ -154,6 +154,8 @@ export const TopologyCanvas = ({
   const [dragging, setDragging] = useState(false);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
   const seededGroups = useRef(false);
+  /** Once the operator zooms or pans, skip auto-fit until Fit or a layout change. */
+  const userAdjustedViewport = useRef(false);
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -258,7 +260,10 @@ export const TopologyCanvas = ({
 
   const layoutVisibleIds = graphLayout.visibleNodeIds;
 
-  const zoomPercent = Math.max(25, Math.min(300, Math.round((viewport.scale / referenceScale) * 100)));
+  const zoomPercent = Math.max(
+    25,
+    Math.min(200, Math.round((viewport.scale / Math.max(referenceScale, 0.0001)) * 100))
+  );
 
   const displayStatusFor = useCallback(
     (nodeId: string, status: TopologyHealthStatus): TopologyHealthStatus => {
@@ -403,6 +408,7 @@ export const TopologyCanvas = ({
     );
     const scale = Math.min(availableWidth / width, availableHeight / height, 1.25);
     const nextScale = Math.max(scale, 0.35);
+    userAdjustedViewport.current = false;
     setReferenceScale(nextScale);
     setViewport({
       scale: nextScale,
@@ -417,9 +423,13 @@ export const TopologyCanvas = ({
     graphLayout.height
   ]);
 
+  const fitToScreenRef = useRef(fitToScreen);
+  fitToScreenRef.current = fitToScreen;
+
   useEffect(() => {
-    fitToScreen();
-  }, [layoutKey, subgraphOnly, fitToken, fitToScreen]);
+    userAdjustedViewport.current = false;
+    fitToScreenRef.current();
+  }, [layoutKey, subgraphOnly, fitToken]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -442,7 +452,10 @@ export const TopologyCanvas = ({
       syncSize(width, height);
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        fitToScreen();
+        // Keep a manual zoom/pan; only re-fit when the operator has not adjusted the view.
+        if (!userAdjustedViewport.current) {
+          fitToScreenRef.current();
+        }
       });
     });
 
@@ -451,15 +464,16 @@ export const TopologyCanvas = ({
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [fitToScreen]);
+  }, []);
 
   const zoomBy = (factor: number) => {
     const container = containerRef.current;
     if (!container) return;
 
+    userAdjustedViewport.current = true;
     setViewport((current) => {
-      const minScale = Math.max(0.25, referenceScale * 0.25);
-      const maxScale = Math.max(minScale, referenceScale * 3);
+      const minScale = Math.max(0.05, referenceScale * 0.25);
+      const maxScale = Math.max(minScale, referenceScale * 2);
       const nextScale = Math.max(minScale, Math.min(maxScale, current.scale * factor));
       const centerX = container.clientWidth / 2;
       const centerY = container.clientHeight / 2;
@@ -522,6 +536,7 @@ export const TopologyCanvas = ({
     const dy = event.clientY - origin.y;
     if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
       dragMoved.current = true;
+      userAdjustedViewport.current = true;
     }
     setViewport((current) => ({
       ...current,
@@ -561,9 +576,12 @@ export const TopologyCanvas = ({
     const container = containerRef.current;
     if (!container) return;
 
-    const delta = event.deltaY > 0 ? 0.92 : 1.08;
+    const delta = event.deltaY > 0 ? 1 / 1.1 : 1.1;
+    userAdjustedViewport.current = true;
     setViewport((current) => {
-      const nextScale = Math.max(0.45, Math.min(2.5, current.scale * delta));
+      const minScale = Math.max(0.05, referenceScale * 0.25);
+      const maxScale = Math.max(minScale, referenceScale * 2);
+      const nextScale = Math.max(minScale, Math.min(maxScale, current.scale * delta));
       const centerX = container.clientWidth / 2;
       const centerY = container.clientHeight / 2;
       const worldX = (centerX - current.x) / current.scale;
@@ -1001,11 +1019,13 @@ export const TopologyCanvas = ({
             </button>
           ) : null}
           <div className="topology-zoom-controls">
-            <button type="button" className="secondary-button" onClick={() => zoomBy(0.88)} aria-label="Zoom out">
+            <button type="button" className="secondary-button" onClick={() => zoomBy(1 / 1.1)} aria-label="Zoom out">
               −
             </button>
-            <span className="topology-zoom-level">{zoomPercent}%</span>
-            <button type="button" className="secondary-button" onClick={() => zoomBy(1.12)} aria-label="Zoom in">
+            <span className="topology-zoom-level" data-testid="topology-zoom-level">
+              {zoomPercent}%
+            </span>
+            <button type="button" className="secondary-button" onClick={() => zoomBy(1.1)} aria-label="Zoom in">
               +
             </button>
             <button type="button" className="secondary-button" onClick={fitToScreen}>
