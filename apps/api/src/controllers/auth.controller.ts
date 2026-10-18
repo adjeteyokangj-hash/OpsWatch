@@ -1,5 +1,5 @@
 import { Response } from "express";
-import type { AuthRequest } from "../middleware/auth";
+import { tryAttachSession, validateSessionCsrfRequest, type AuthRequest } from "../middleware/auth";
 import {
   AuthError,
   changePassword,
@@ -35,6 +35,12 @@ export const loginController = async (req: AuthRequest, res: Response) => {
 };
 
 export const logoutController = async (req: AuthRequest, res: Response) => {
+  const attached = await tryAttachSession(req);
+  if (attached && !validateSessionCsrfRequest(req)) {
+    res.status(403).json({ error: "Invalid CSRF token", code: "CSRF_INVALID" });
+    return;
+  }
+
   const sessionToken = readSessionToken(req.headers.cookie);
   try {
     if (sessionToken) {

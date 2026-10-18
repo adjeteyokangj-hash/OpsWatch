@@ -33,6 +33,7 @@ vi.mock("../../lib/prisma", () => ({
       update: mockRepairUpdate
     },
     checkResult: { findFirst: mockCheckResultFindFirst },
+    check: { findFirst: vi.fn().mockResolvedValue(null) },
     operationsTimelineEvent: { create: mockTimelineCreate }
   }
 }));

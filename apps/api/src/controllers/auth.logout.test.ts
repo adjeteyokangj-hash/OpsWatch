@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { readSessionToken, clearSessionCookies, revokeSessionToken, loggerWarn } = vi.hoisted(() => ({
+const { readSessionToken, clearSessionCookies, revokeSessionToken, loggerWarn, tryAttachSession, validateSessionCsrfRequest } = vi.hoisted(() => ({
   readSessionToken: vi.fn(),
   clearSessionCookies: vi.fn(),
   revokeSessionToken: vi.fn(),
-  loggerWarn: vi.fn()
+  loggerWarn: vi.fn(),
+  tryAttachSession: vi.fn(async () => false),
+  validateSessionCsrfRequest: vi.fn(() => true)
 }));
 
 vi.mock("../services/auth.service", () => ({
@@ -25,13 +27,18 @@ vi.mock("../services/session.service", () => ({
   rotateUserSession: vi.fn()
 }));
 vi.mock("../config/logger", () => ({ logger: { warn: loggerWarn } }));
+vi.mock("../middleware/auth", () => ({
+  tryAttachSession,
+  validateSessionCsrfRequest
+}));
 
 import { logoutController } from "./auth.controller";
 
 const makeResponse = () => {
   const send = vi.fn();
-  const status = vi.fn(() => ({ send }));
-  return { status, send };
+  const json = vi.fn();
+  const status = vi.fn(() => ({ send, json }));
+  return { status, send, json };
 };
 
 describe("logoutController", () => {
@@ -71,5 +78,20 @@ describe("logoutController", () => {
       "Session revocation failed during logout",
       expect.objectContaining({ reason: "session store unavailable" })
     );
+  });
+
+  it("does not revoke a live session when the CSRF header is missing", async () => {
+    tryAttachSession.mockResolvedValue(true);
+    validateSessionCsrfRequest.mockReturnValue(false);
+    const response = makeResponse();
+
+    await logoutController(
+      { headers: { cookie: "opswatch_session=session-token" } } as never,
+      response as never
+    );
+
+    expect(revokeSessionToken).not.toHaveBeenCalled();
+    expect(clearSessionCookies).not.toHaveBeenCalled();
+    expect(response.status).toHaveBeenCalledWith(403);
   });
 });

@@ -10,11 +10,13 @@ import {
 describe("controlled-automation.service (phase 7)", () => {
   const originalTest = process.env.OPSWATCH_AUTOMATION_TEST_MODE;
   const originalRepair = process.env.OPSWATCH_AUTO_REPAIR_ENABLED;
+  const originalProfile = process.env.OPSWATCH_AI_OPERATING_PROFILE;
 
   const clearGateEnv = () => {
     // Local/API .env may set these true; isolate every case from process env pollution.
     delete process.env.OPSWATCH_AUTOMATION_TEST_MODE;
     delete process.env.OPSWATCH_AUTO_REPAIR_ENABLED;
+    delete process.env.OPSWATCH_AI_OPERATING_PROFILE;
   };
 
   afterEach(() => {
@@ -22,6 +24,8 @@ describe("controlled-automation.service (phase 7)", () => {
     else process.env.OPSWATCH_AUTOMATION_TEST_MODE = originalTest;
     if (originalRepair === undefined) delete process.env.OPSWATCH_AUTO_REPAIR_ENABLED;
     else process.env.OPSWATCH_AUTO_REPAIR_ENABLED = originalRepair;
+    if (originalProfile === undefined) delete process.env.OPSWATCH_AI_OPERATING_PROFILE;
+    else process.env.OPSWATCH_AI_OPERATING_PROFILE = originalProfile;
   });
 
   it("keeps automation test mode and auto-repair OFF by default", () => {

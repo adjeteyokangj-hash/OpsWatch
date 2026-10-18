@@ -100,7 +100,23 @@ describe("incident fingerprint", () => {
 });
 
 describe("learning stage flags", () => {
+  const profile = process.env.OPSWATCH_AI_OPERATING_PROFILE;
+  const baselines = process.env.OPSWATCH_LEARNING_BASELINES_ENABLED;
+  const predictions = process.env.OPSWATCH_PREDICTIONS_ENABLED;
+
+  afterEach(() => {
+    if (profile === undefined) delete process.env.OPSWATCH_AI_OPERATING_PROFILE;
+    else process.env.OPSWATCH_AI_OPERATING_PROFILE = profile;
+    if (baselines === undefined) delete process.env.OPSWATCH_LEARNING_BASELINES_ENABLED;
+    else process.env.OPSWATCH_LEARNING_BASELINES_ENABLED = baselines;
+    if (predictions === undefined) delete process.env.OPSWATCH_PREDICTIONS_ENABLED;
+    else process.env.OPSWATCH_PREDICTIONS_ENABLED = predictions;
+  });
+
   it("defaults all stages off including predictions", () => {
+    delete process.env.OPSWATCH_AI_OPERATING_PROFILE;
+    delete process.env.OPSWATCH_LEARNING_BASELINES_ENABLED;
+    delete process.env.OPSWATCH_PREDICTIONS_ENABLED;
     const stages = listLearningStages();
     expect(stages.every((stage) => stage.defaultEnabled === false)).toBe(true);
     expect(stages.every((stage) => stage.enabled === false)).toBe(true);

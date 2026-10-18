@@ -139,7 +139,7 @@
     "expect": {
       "category": "AVAILABILITY",
       "failureClass": "CONNECTION_REFUSED",
-      "actionsInclude": ["RESTART_SERVICE"]
+      "actionsInclude": ["RERUN_HTTP_CHECK", "TEST_CONNECTION"]
     }
   },
   {

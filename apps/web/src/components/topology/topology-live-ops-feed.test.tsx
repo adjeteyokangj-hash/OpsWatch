@@ -125,7 +125,7 @@ describe("TopologyLiveOpsFeed", () => {
         projectId="proj-1"
         topology={topology}
         project={{
-          createdAt: "2026-07-12T00:00:00.000Z",
+          createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
           alerts: [
             {
               id: "a1",

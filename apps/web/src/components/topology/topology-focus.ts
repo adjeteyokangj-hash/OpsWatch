@@ -54,6 +54,22 @@ export const buildTraceFocusIds = (
   return ids;
 };
 
+export const collapsedGroupIdsForLargeTopology = (
+  nodeCount: number,
+  edges: TopologyEdge[],
+  minimumNodes = 16
+): string[] => {
+  if (nodeCount < minimumNodes) return [];
+  const nested = new Set<string>();
+  const parents = new Set<string>();
+  for (const edge of edges) {
+    if (edge.type !== "HIERARCHY") continue;
+    parents.add(edge.targetId);
+    nested.add(edge.sourceId);
+  }
+  return [...parents].filter((id) => nested.has(id));
+};
+
 export const getCollapsedDescendantIds = (
   collapsedNodeIds: Set<string>,
   edges: TopologyEdge[]

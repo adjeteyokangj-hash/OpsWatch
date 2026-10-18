@@ -18,7 +18,8 @@ describe("phase 8 feature gates + learning/prediction framework", () => {
     "OPSWATCH_OTEL_INGESTION_ENABLED",
     "OPSWATCH_AUTO_REPAIR_ENABLED",
     "OPSWATCH_ADVANCED_RCA_ENABLED",
-    "OPSWATCH_AUTOMATION_TEST_MODE"
+    "OPSWATCH_AUTOMATION_TEST_MODE",
+    "OPSWATCH_AI_OPERATING_PROFILE"
   ] as const;
 
   const snapshots = new Map<string, string | undefined>();

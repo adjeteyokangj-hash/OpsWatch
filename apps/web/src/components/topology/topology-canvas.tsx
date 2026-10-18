@@ -13,6 +13,7 @@ import { computeLayeredLayout, edgePath, edgeStrokeWidth, layerExpansionKey, LAY
 import { TopologyMoreCard, TopologyNodeCard } from "./topology-node-card";
 import {
   buildTraceFocusIds,
+  collapsedGroupIdsForLargeTopology,
   countHierarchyChildren,
   getCollapsedDescendantIds
 } from "./topology-focus";
@@ -183,15 +184,8 @@ export const TopologyCanvas = ({
   );
 
   useEffect(() => {
-    if (seededGroups.current || topology.nodes.length < 16) return;
-    const childOf = new Map<string, string>();
-    const parents = new Set<string>();
-    for (const edge of topology.edges) {
-      if (edge.type !== "HIERARCHY") continue;
-      parents.add(edge.targetId);
-      childOf.set(edge.sourceId, edge.targetId);
-    }
-    const groups = [...parents].filter((id) => childOf.has(id));
+    if (seededGroups.current) return;
+    const groups = collapsedGroupIdsForLargeTopology(topology.nodes.length, topology.edges);
     if (groups.length === 0) return;
     seededGroups.current = true;
     setCollapsedNodeIds(new Set(groups));
