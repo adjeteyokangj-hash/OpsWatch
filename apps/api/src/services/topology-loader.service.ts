@@ -4,6 +4,9 @@ import type { ProjectTopologyResponse } from "../types/dto";
 import { loadRecentCheckResultsByCheckIds } from "./check-result-batch.service";
 import { buildProjectTopologyResponse, type TopologyServiceRecord } from "./topology.service";
 import { loadCanonicalProjectTopology } from "./canonical-topology-loader.service";
+import { presentMonitoredDevices } from "./device-heartbeat";
+import { preserveUnmappedLegacyServices } from "./topology-reader-safety";
+import { projectDeviceTelemetry } from "./topology-telemetry-projection";
 
 const unresolvedIncidentStatuses = ["OPEN", "INVESTIGATING", "MONITORING"] as const;
 const openAlertStatuses = [
@@ -35,6 +38,40 @@ type LatestSloWindowRow = {
 
 export const clearTopologyLoaderCache = (): void => {
   topologyCache.clear();
+};
+
+const attachDeviceTelemetry = async (
+  projectId: string,
+  topology: ProjectTopologyResponse
+): Promise<ProjectTopologyResponse> => {
+  try {
+    const rows = await prisma.monitoredDevice.findMany({
+      where: { projectId },
+      select: {
+        id: true,
+        deviceId: true,
+        label: true,
+        reportedName: true,
+        propertyId: true,
+        appVersion: true,
+        reportedStatus: true,
+        message: true,
+        lifecycleSync: true,
+        financialSync: true,
+        pendingCount: true,
+        failedCount: true,
+        lastSeenAt: true,
+        offlineAfterSeconds: true
+      }
+    });
+    return projectDeviceTelemetry(topology, presentMonitoredDevices(rows));
+  } catch (error) {
+    console.warn("TOPOLOGY_DEVICE_PROJECTION_FAILED", {
+      projectId,
+      message: error instanceof Error ? error.message : String(error)
+    });
+    return topology;
+  }
 };
 
 const loadLatestSloWindowsByDefinitionIds = async (
@@ -106,10 +143,13 @@ export const loadProjectTopology = async (
   if (!project) return null;
   if (canonicalReadEnabled) {
     try {
-      const topology = await loadCanonicalProjectTopology({
+      const canonical = await loadCanonicalProjectTopology({
         organizationId,
         project
       });
+      const legacy = await buildLegacyProjectTopology(organizationId, projectId, project);
+      const preserved = preserveUnmappedLegacyServices(canonical, legacy);
+      const topology = await attachDeviceTelemetry(projectId, preserved);
       topologyCache.set(cacheKey, {
         expiresAt: Date.now() + TOPOLOGY_CACHE_TTL_MS,
         value: topology
@@ -122,10 +162,9 @@ export const loadProjectTopology = async (
         `[topology] canonical read failed for project ${projectId}; falling back to legacy`,
         error
       );
-      const fallback = await buildLegacyProjectTopology(
-        organizationId,
+      const fallback = await attachDeviceTelemetry(
         projectId,
-        project
+        await buildLegacyProjectTopology(organizationId, projectId, project)
       );
       if (process.env.NODE_ENV !== "production") {
         fallback.readerDiagnostic = {
@@ -147,10 +186,9 @@ export const loadProjectTopology = async (
     }
   }
 
-  const topology = await buildLegacyProjectTopology(
-    organizationId,
+  const topology = await attachDeviceTelemetry(
     projectId,
-    project
+    await buildLegacyProjectTopology(organizationId, projectId, project)
   );
   if (process.env.NODE_ENV !== "production") {
     topology.readerDiagnostic = {

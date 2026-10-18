@@ -36,7 +36,7 @@ type MockService = {
   id: string;
   projectId: string;
   name: string;
-  type: "APP" | "MODULE";
+  type: string;
   criticality: string;
   isCritical: boolean;
   createdAt: Date;
@@ -110,16 +110,19 @@ describe("reconcileConnectionTopologyManifest", () => {
     backfillCanonicalTopology.mockResolvedValue({ entitiesMapped: 2, relationshipsMapped: 2 });
     transaction.mockImplementation(async (callback: (tx: any) => Promise<unknown>) => callback({
       service: {
-        findFirst: vi.fn(async ({ where, orderBy }: any) => {
+        findFirst: vi.fn(async ({ where }: any) => {
+          if (typeof where?.id === "string") {
+            return services.find((service) => service.id === where.id) ?? null;
+          }
           if (where?.type === "APP") {
             return services
               .filter((service) => service.projectId === where.projectId && service.type === "APP")
               .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0] ?? null;
           }
-          if (where?.type === "MODULE" && typeof where?.name === "string") {
+          if (where?.type && typeof where?.name === "string") {
             return services.find((service) =>
               service.projectId === where.projectId
-              && service.type === "MODULE"
+              && service.type === where.type
               && service.name === where.name
             ) ?? null;
           }
@@ -233,5 +236,94 @@ describe("reconcileConnectionTopologyManifest", () => {
       dependencies.find((dependency) => dependency.fromServiceId === paymentsService?.id)?.isActive
     ).toBe(false);
     expect(services.find((service) => service.id === "manual-student-portal")).toBeTruthy();
+  });
+
+  it("imports a version 1.1 fixture that is not NiiNai and keeps configured links", async () => {
+    const harbor = {
+      schemaVersion: "1.1" as const,
+      source: "harbor-ledger",
+      application: { key: "harbor-ledger", name: "Harbor Ledger" },
+      modules: [
+        {
+          key: "invoices",
+          name: "Invoices",
+          description: "Customer invoices",
+          criticality: "HIGH" as const,
+          routePrefixes: ["/invoices"]
+        }
+      ],
+      components: [
+        {
+          key: "warehouse",
+          name: "North Warehouse",
+          kind: "property" as const,
+          description: "",
+          criticality: "MEDIUM" as const,
+          routePrefixes: []
+        },
+        {
+          key: "desk",
+          name: "Counter desk",
+          kind: "installation" as const,
+          description: "",
+          criticality: "MEDIUM" as const,
+          routePrefixes: [],
+          parentKey: "warehouse"
+        },
+        {
+          key: "month-end",
+          name: "Month end",
+          kind: "workflow" as const,
+          description: "",
+          criticality: "HIGH" as const,
+          routePrefixes: [],
+          parentKey: "invoices"
+        }
+      ],
+      relationships: [
+        {
+          from: "month-end",
+          to: "invoices",
+          type: "depends_on" as const,
+          criticality: "HIGH" as const,
+          provenance: "verified" as const
+        },
+        {
+          from: "desk",
+          to: "warehouse",
+          type: "runs_on" as const,
+          criticality: "MEDIUM" as const,
+          provenance: "configured" as const
+        }
+      ],
+      healthBindings: [
+        { componentKey: "invoices", signal: "http_check" as const, checkName: "Ledger health" },
+        { componentKey: "month-end", signal: "heartbeat_lane" as const, lane: "financial" as const },
+        { componentKey: "warehouse", signal: "unbound" as const }
+      ]
+    };
+
+    const result = await reconcileConnectionTopologyManifest(connection, harbor);
+
+    expect(result.moduleCount).toBe(1);
+    expect(result.componentCount).toBe(3);
+    expect(services.map((service) => service.name)).toEqual(
+      expect.arrayContaining(["Harbor Ledger", "Invoices", "North Warehouse", "Counter desk", "Month end"])
+    );
+    expect(services.find((service) => service.name === "Month end")?.type).toBe("WORKFLOW");
+    expect(services.find((service) => service.name === "North Warehouse")?.type).toBe("MODULE");
+    expect(services.find((service) => service.name === "Counter desk")?.type).toBe("COMPONENT");
+    expect(dependencies.find((dependency) => dependency.dependencyType === "DEPENDS_ON")?.source).toBe(
+      "CONNECTION_DISCOVERY"
+    );
+    expect(dependencies.find((dependency) => dependency.dependencyType === "RUNS_ON")?.source).toBe("MANUAL");
+    const audit = auditCreate.mock.calls.at(-1)?.[0]?.data?.metadataJson;
+    expect(audit.componentKinds).toMatchObject({
+      warehouse: "property",
+      desk: "installation",
+      "month-end": "workflow"
+    });
+    expect(audit.healthBindings).toHaveLength(3);
+    expect(JSON.stringify(audit)).not.toMatch(/niinai|kanewu|guest/i);
   });
 });

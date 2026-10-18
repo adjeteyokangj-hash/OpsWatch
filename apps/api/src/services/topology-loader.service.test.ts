@@ -12,6 +12,9 @@ vi.mock("../lib/prisma", () => ({
     operationalEntity: { findMany: vi.fn() },
     operationalRelationship: { count: vi.fn(), findMany: vi.fn() },
     normalizedOperationalSignal: { count: vi.fn() },
+    legacyServiceEntityMapping: { findMany: vi.fn() },
+    incidentTopologyReference: { findMany: vi.fn() },
+    monitoredDevice: { findMany: vi.fn() },
     $queryRaw: vi.fn()
   }
 }));
@@ -98,5 +101,43 @@ describe("topology-loader.service", () => {
     vi.mocked(prisma.project.findFirst).mockResolvedValue(null);
     expect(await loadProjectTopology("org-1", "proj-missing")).toBeNull();
     expect(prisma.service.findMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps a legacy service when canonical read is on and the canonical graph is empty", async () => {
+    process.env.OPSWATCH_CANONICAL_TOPOLOGY_READ_ENABLED = "true";
+    vi.mocked(prisma.project.findFirst).mockResolvedValue({
+      id: "proj-1",
+      name: "Harbor Ledger",
+      status: "UNKNOWN"
+    } as any);
+    vi.mocked(prisma.service.findMany).mockResolvedValue([
+      {
+        id: "svc-cloud",
+        name: "Cloud reachability",
+        type: "API",
+        status: "UNKNOWN",
+        Check: []
+      }
+    ] as any);
+    vi.mocked(prisma.serviceDependency.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.alert.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.incident.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.sLODefinition.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.heartbeat.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.operationalEntity.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.operationalRelationship.count).mockResolvedValue(0);
+    vi.mocked(prisma.operationalRelationship.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.legacyServiceEntityMapping.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.normalizedOperationalSignal.count).mockResolvedValue(0);
+    vi.mocked(prisma.monitoredDevice.findMany).mockResolvedValue([]);
+    vi.mocked(loadRecentCheckResultsByCheckIds).mockResolvedValue(new Map());
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([] as any);
+
+    const topology = await loadProjectTopology("org-1", "proj-1");
+
+    expect(topology?.nodes.map((node) => node.name)).toEqual(["Cloud reachability"]);
+    expect(topology?.readerDiagnostic?.reader).toBe("CANONICAL");
+    expect(topology?.readerDiagnostic?.fallbackUsed).toBe(true);
+    expect(prisma.service.delete).toBeUndefined();
   });
 });

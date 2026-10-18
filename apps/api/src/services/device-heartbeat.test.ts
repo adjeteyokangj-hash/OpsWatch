@@ -108,6 +108,28 @@ describe("independent computer presence", () => {
     expect(presented[0]?.versionNote).toBe("Different from another computer");
     expect(devicePresence(new Date(now.getTime() - 9 * 60_000), 600, now)).toBe("ONLINE");
   });
+
+  it("treats a heartbeat older than 10 minutes as offline even when the stored flag still says online", () => {
+    const now = new Date("2026-10-18T09:00:00.000Z");
+    const [device] = presentMonitoredDevices(
+      [
+        {
+          id: "row-stale",
+          deviceId: DEVICE_A,
+          label: "Front desk",
+          appVersion: "1.3.2",
+          lifecycleSync: "HEALTHY",
+          financialSync: "HEALTHY",
+          lastSeenAt: new Date(now.getTime() - 22 * 60 * 60_000),
+          offlineAfterSeconds: DEVICE_OFFLINE_AFTER_SECONDS
+        }
+      ],
+      now
+    );
+
+    expect(device?.presence).toBe("OFFLINE");
+    expect(device?.lifecycleSync).toBe("HEALTHY");
+  });
 });
 
 describe("per-computer credentials", () => {

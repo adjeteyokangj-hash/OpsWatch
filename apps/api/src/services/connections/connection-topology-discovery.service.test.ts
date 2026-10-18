@@ -86,4 +86,66 @@ describe("parseConnectionTopologyManifest", () => {
       "/dashboard/sales"
     ]);
   });
+
+  it("keeps a version 1.0 manifest free of the extended fields' requirements", () => {
+    const manifest = parseConnectionTopologyManifest(payload);
+    expect(manifest?.schemaVersion).toBe("1.0");
+    expect(manifest?.components).toEqual([]);
+    expect(manifest?.relationships).toEqual([]);
+    expect(manifest?.healthBindings).toEqual([]);
+  });
+
+  it("reads components, relationships and health bindings from a version 1.1 fixture", () => {
+    const manifest = parseConnectionTopologyManifest({
+      opswatchTopology: {
+        schemaVersion: "1.1",
+        source: "harbor-ledger",
+        application: { key: "harbor-ledger", name: "Harbor Ledger" },
+        modules: [{ key: "invoices", name: "Invoices", criticality: "HIGH" }],
+        components: [
+          { key: "warehouse", name: "North Warehouse", kind: "property" },
+          { key: "desk", name: "Counter desk", kind: "installation", parentKey: "warehouse" },
+          { key: "month-end", name: "Month end", kind: "workflow", parentKey: "invoices" }
+        ],
+        relationships: [
+          { from: "month-end", to: "invoices", type: "depends_on", provenance: "verified" },
+          { from: "desk", to: "warehouse", type: "runs_on", provenance: "configured" }
+        ],
+        healthBindings: [
+          { componentKey: "month-end", signal: "heartbeat_lane", lane: "financial" },
+          { componentKey: "warehouse", signal: "unbound" }
+        ]
+      }
+    });
+
+    expect(manifest?.components?.map((component) => component.kind)).toEqual([
+      "property",
+      "installation",
+      "workflow"
+    ]);
+    expect(manifest?.relationships?.[1]?.provenance).toBe("configured");
+    expect(manifest?.healthBindings?.[0]?.lane).toBe("financial");
+  });
+
+  it("rejects inferred relationships and version 1.0 documents that carry components", () => {
+    expect(() => parseConnectionTopologyManifest({
+      opswatchTopology: {
+        schemaVersion: "1.1",
+        source: "harbor-ledger",
+        application: { key: "harbor-ledger", name: "Harbor Ledger" },
+        modules: [{ key: "invoices", name: "Invoices" }],
+        relationships: [{ from: "invoices", to: "harbor-ledger", type: "depends_on", provenance: "inferred" }]
+      }
+    })).toThrow(/provenance/);
+
+    expect(() => parseConnectionTopologyManifest({
+      opswatchTopology: {
+        schemaVersion: "1.0",
+        source: "harbor-ledger",
+        application: { key: "harbor-ledger", name: "Harbor Ledger" },
+        modules: [{ key: "invoices", name: "Invoices" }],
+        components: [{ key: "desk", name: "Counter desk", kind: "installation" }]
+      }
+    })).toThrow(/schema version 1.1/);
+  });
 });

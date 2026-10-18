@@ -20,20 +20,56 @@ export type DeclaredModuleManifest = {
   routePrefixes: string[];
 };
 
+export type TopologyComponentKind = "module" | "workflow" | "component" | "property" | "installation";
+export type TopologyRelationshipKind = "hierarchy" | "depends_on" | "runs_on" | "syncs";
+export type TopologyEvidenceProvenance = "verified" | "configured";
+export type TopologyHealthSignal = "http_check" | "heartbeat_lane" | "unbound";
+
+export type DeclaredTopologyComponent = {
+  key: string;
+  name: string;
+  kind: TopologyComponentKind;
+  category?: string;
+  description: string;
+  criticality: "HIGH" | "MEDIUM";
+  routePrefixes: string[];
+  parentKey?: string;
+};
+
+export type DeclaredTopologyRelationship = {
+  from: string;
+  to: string;
+  type: TopologyRelationshipKind;
+  criticality: "HIGH" | "MEDIUM";
+  provenance: TopologyEvidenceProvenance;
+};
+
+export type DeclaredHealthBinding = {
+  componentKey: string;
+  signal: TopologyHealthSignal;
+  lane?: "lifecycle" | "financial";
+  checkName?: string;
+};
+
 export type ConnectionTopologyManifest = {
-  schemaVersion: "1.0";
+  schemaVersion: "1.0" | "1.1";
   source: string;
   application: {
     key: string;
     name: string;
   };
   modules: DeclaredModuleManifest[];
+  components?: DeclaredTopologyComponent[];
+  relationships?: DeclaredTopologyRelationship[];
+  healthBindings?: DeclaredHealthBinding[];
 };
 
 export type ConnectionTopologySyncResult = {
   status: "SUCCEEDED" | "SKIPPED";
   applicationId: string;
   moduleCount: number;
+  componentCount: number;
+  relationshipCount: number;
   hierarchyCount: number;
   canonicalEntitiesMapped: number;
   canonicalRelationshipsMapped: number;
@@ -105,54 +141,207 @@ const manifestCandidate = (payload: unknown): unknown => {
   return payload.opswatchTopology ?? null;
 };
 
+const COMPONENT_KINDS = new Set<TopologyComponentKind>([
+  "module",
+  "workflow",
+  "component",
+  "property",
+  "installation"
+]);
+const RELATIONSHIP_KINDS = new Set<TopologyRelationshipKind>([
+  "hierarchy",
+  "depends_on",
+  "runs_on",
+  "syncs"
+]);
+
+const readCriticality = (value: unknown, label: string): "HIGH" | "MEDIUM" => {
+  const criticality = String(value ?? "MEDIUM").toUpperCase();
+  if (criticality !== "HIGH" && criticality !== "MEDIUM") {
+    throw new Error(`${label} must be HIGH or MEDIUM`);
+  }
+  return criticality;
+};
+
+const readModule = (
+  raw: unknown,
+  index: number,
+  seenKeys: Set<string>
+): DeclaredModuleManifest => {
+  if (!isRecord(raw)) throw new Error(`modules[${index}] must be an object`);
+  const key = readKey(raw.key, `modules[${index}].key`);
+  if (seenKeys.has(key)) throw new Error(`Duplicate module key: ${key}`);
+  seenKeys.add(key);
+  return {
+    key,
+    name: readRequiredString(raw.name, `modules[${index}].name`, 120),
+    ...(readOptionalCategory(raw.category) ? { category: readOptionalCategory(raw.category) } : {}),
+    description: typeof raw.description === "string" ? raw.description.trim().slice(0, 500) : "",
+    criticality: readCriticality(raw.criticality, `modules[${index}].criticality`),
+    routePrefixes: readRoutePrefixes(raw.routePrefixes)
+  };
+};
+
+const readComponent = (
+  raw: unknown,
+  index: number,
+  seenKeys: Set<string>
+): DeclaredTopologyComponent => {
+  if (!isRecord(raw)) throw new Error(`components[${index}] must be an object`);
+  const key = readKey(raw.key, `components[${index}].key`);
+  if (seenKeys.has(key)) throw new Error(`Duplicate component key: ${key}`);
+  seenKeys.add(key);
+  const kind = typeof raw.kind === "string" ? raw.kind.trim().toLowerCase() : "";
+  if (!COMPONENT_KINDS.has(kind as TopologyComponentKind)) {
+    throw new Error(`components[${index}].kind is not supported`);
+  }
+  const parentKey = raw.parentKey == null || raw.parentKey === ""
+    ? undefined
+    : readKey(raw.parentKey, `components[${index}].parentKey`);
+  if (parentKey === key) throw new Error(`components[${index}] cannot parent itself`);
+  return {
+    key,
+    name: readRequiredString(raw.name, `components[${index}].name`, 120),
+    kind: kind as TopologyComponentKind,
+    ...(readOptionalCategory(raw.category) ? { category: readOptionalCategory(raw.category) } : {}),
+    description: typeof raw.description === "string" ? raw.description.trim().slice(0, 500) : "",
+    criticality: readCriticality(raw.criticality, `components[${index}].criticality`),
+    routePrefixes: readRoutePrefixes(raw.routePrefixes),
+    ...(parentKey ? { parentKey } : {})
+  };
+};
+
+const readRelationship = (
+  raw: unknown,
+  index: number,
+  knownKeys: Set<string>
+): DeclaredTopologyRelationship => {
+  if (!isRecord(raw)) throw new Error(`relationships[${index}] must be an object`);
+  const from = readKey(raw.from, `relationships[${index}].from`);
+  const to = readKey(raw.to, `relationships[${index}].to`);
+  if (from === to) throw new Error(`relationships[${index}] cannot link a component to itself`);
+  if (!knownKeys.has(from) || !knownKeys.has(to)) {
+    throw new Error(`relationships[${index}] references an unknown component`);
+  }
+  const type = typeof raw.type === "string" ? raw.type.trim().toLowerCase() : "";
+  if (!RELATIONSHIP_KINDS.has(type as TopologyRelationshipKind)) {
+    throw new Error(`relationships[${index}].type is not supported`);
+  }
+  const provenance = typeof raw.provenance === "string" ? raw.provenance.trim().toLowerCase() : "verified";
+  if (provenance !== "verified" && provenance !== "configured") {
+    throw new Error(`relationships[${index}].provenance must be verified or configured`);
+  }
+  return {
+    from,
+    to,
+    type: type as TopologyRelationshipKind,
+    criticality: readCriticality(raw.criticality, `relationships[${index}].criticality`),
+    provenance
+  };
+};
+
+const readHealthBinding = (
+  raw: unknown,
+  index: number,
+  knownKeys: Set<string>
+): DeclaredHealthBinding => {
+  if (!isRecord(raw)) throw new Error(`healthBindings[${index}] must be an object`);
+  const componentKey = readKey(raw.componentKey, `healthBindings[${index}].componentKey`);
+  if (!knownKeys.has(componentKey)) {
+    throw new Error(`healthBindings[${index}] references an unknown component`);
+  }
+  const signal = typeof raw.signal === "string" ? raw.signal.trim().toLowerCase() : "";
+  if (signal !== "http_check" && signal !== "heartbeat_lane" && signal !== "unbound") {
+    throw new Error(`healthBindings[${index}].signal is not supported`);
+  }
+  const lane = raw.lane == null || raw.lane === ""
+    ? undefined
+    : String(raw.lane).trim().toLowerCase();
+  if (signal === "heartbeat_lane" && lane !== "lifecycle" && lane !== "financial") {
+    throw new Error(`healthBindings[${index}].lane must be lifecycle or financial`);
+  }
+  if (signal !== "heartbeat_lane" && lane) {
+    throw new Error(`healthBindings[${index}].lane is only valid for a heartbeat lane`);
+  }
+  const checkName = typeof raw.checkName === "string" && raw.checkName.trim()
+    ? raw.checkName.trim().slice(0, 120)
+    : undefined;
+  return {
+    componentKey,
+    signal,
+    ...(lane === "lifecycle" || lane === "financial" ? { lane } : {}),
+    ...(checkName ? { checkName } : {})
+  };
+};
+
 export const parseConnectionTopologyManifest = (
   payload: unknown
 ): ConnectionTopologyManifest | null => {
   const candidate = manifestCandidate(payload);
   if (candidate == null) return null;
   if (!isRecord(candidate)) throw new Error("opswatchTopology must be an object");
-  if (candidate.schemaVersion !== "1.0") {
+  if (candidate.schemaVersion !== "1.0" && candidate.schemaVersion !== "1.1") {
     throw new Error("Unsupported OpsWatch topology schema version");
   }
   if (!isRecord(candidate.application)) {
     throw new Error("opswatchTopology.application must be an object");
   }
-  if (!Array.isArray(candidate.modules)) {
+  const schemaVersion = candidate.schemaVersion;
+  if (schemaVersion === "1.0" && !Array.isArray(candidate.modules)) {
     throw new Error("opswatchTopology.modules must be an array");
   }
-  if (candidate.modules.length > 100) {
-    throw new Error("opswatchTopology.modules exceeds the 100 module safety limit");
+  if (candidate.modules != null && !Array.isArray(candidate.modules)) {
+    throw new Error("opswatchTopology.modules must be an array");
+  }
+  if (candidate.components != null && !Array.isArray(candidate.components)) {
+    throw new Error("opswatchTopology.components must be an array");
+  }
+  if (candidate.relationships != null && !Array.isArray(candidate.relationships)) {
+    throw new Error("opswatchTopology.relationships must be an array");
+  }
+  if (candidate.healthBindings != null && !Array.isArray(candidate.healthBindings)) {
+    throw new Error("opswatchTopology.healthBindings must be an array");
+  }
+
+  const moduleRows = Array.isArray(candidate.modules) ? candidate.modules : [];
+  const componentRows = Array.isArray(candidate.components) ? candidate.components : [];
+  if (schemaVersion === "1.0" && componentRows.length > 0) {
+    throw new Error("components require opswatchTopology schema version 1.1");
+  }
+  if (moduleRows.length + componentRows.length > 100) {
+    throw new Error("opswatchTopology exceeds the 100 component safety limit");
   }
 
   const seenKeys = new Set<string>();
-  const modules = candidate.modules.map((raw, index) => {
-    if (!isRecord(raw)) throw new Error(`modules[${index}] must be an object`);
-    const key = readKey(raw.key, `modules[${index}].key`);
-    if (seenKeys.has(key)) throw new Error(`Duplicate module key: ${key}`);
-    seenKeys.add(key);
-    const criticality = String(raw.criticality ?? "MEDIUM").toUpperCase();
-    if (criticality !== "HIGH" && criticality !== "MEDIUM") {
-      throw new Error(`modules[${index}].criticality must be HIGH or MEDIUM`);
+  const modules = moduleRows.map((raw, index) => readModule(raw, index, seenKeys));
+  const components = componentRows.map((raw, index) => readComponent(raw, index, seenKeys));
+  const applicationKey = readKey(candidate.application.key, "opswatchTopology.application.key");
+  const knownKeys = new Set<string>([applicationKey, ...seenKeys]);
+  for (const component of components) {
+    if (component.parentKey && !knownKeys.has(component.parentKey)) {
+      throw new Error(`Unknown parent key: ${component.parentKey}`);
     }
-    return {
-      key,
-      name: readRequiredString(raw.name, `modules[${index}].name`, 120),
-      ...(readOptionalCategory(raw.category) ? { category: readOptionalCategory(raw.category) } : {}),
-      description:
-        typeof raw.description === "string" ? raw.description.trim().slice(0, 500) : "",
-      criticality,
-      routePrefixes: readRoutePrefixes(raw.routePrefixes)
-    } as DeclaredModuleManifest;
-  });
+  }
+  const relationships = (Array.isArray(candidate.relationships) ? candidate.relationships : [])
+    .slice(0, 200)
+    .map((raw, index) => readRelationship(raw, index, knownKeys));
+  if (Array.isArray(candidate.relationships) && candidate.relationships.length > 200) {
+    throw new Error("opswatchTopology.relationships exceeds the 200 relationship safety limit");
+  }
+  const healthBindings = (Array.isArray(candidate.healthBindings) ? candidate.healthBindings : [])
+    .map((raw, index) => readHealthBinding(raw, index, knownKeys));
 
   return {
-    schemaVersion: "1.0",
+    schemaVersion,
     source: readRequiredString(candidate.source, "opswatchTopology.source", 80),
     application: {
-      key: readKey(candidate.application.key, "opswatchTopology.application.key"),
+      key: applicationKey,
       name: readRequiredString(candidate.application.name, "opswatchTopology.application.name", 120)
     },
-    modules
+    modules,
+    components,
+    relationships,
+    healthBindings
   };
 };
 
@@ -223,6 +412,8 @@ export const reconcileConnectionTopologyManifest = async (
   let applicationId = "";
   let hierarchyCount = 0;
   let deactivatedCount = 0;
+  let componentCount = 0;
+  let relationshipCount = 0;
 
   await prisma.$transaction(async (tx) => {
     const existingApp = await tx.service.findFirst({
@@ -284,6 +475,7 @@ export const reconcileConnectionTopologyManifest = async (
     const discoveredById = new Map(existingDiscoveredModules.map((service) => [service.id, service]));
     const discoveredByName = new Map(existingDiscoveredModules.map((service) => [service.name, service]));
     const retainedModuleIds = new Set<string>();
+    const serviceIdByKey = new Map<string, string>([[manifest.application.key, app.id]]);
 
     for (const module of manifest.modules) {
       const deterministicModuleId = stableId("svc-mod", connection.id, module.key);
@@ -322,6 +514,7 @@ export const reconcileConnectionTopologyManifest = async (
             }
           });
       retainedModuleIds.add(moduleRow.id);
+      serviceIdByKey.set(module.key, moduleRow.id);
 
       await tx.serviceDependency.upsert({
         where: {
@@ -365,7 +558,152 @@ export const reconcileConnectionTopologyManifest = async (
       deactivatedCount += 1;
     }
 
-    const summary = `Imported ${manifest.modules.length} declared modules from ${manifest.source}${deactivatedCount ? ` and deactivated ${deactivatedCount} removed module links` : ""}.`;
+    const components = manifest.components ?? [];
+    const relationships = manifest.relationships ?? [];
+    const healthBindings = manifest.healthBindings ?? [];
+    const componentServiceIds = new Set<string>();
+    const retainedDependencyIds = new Set<string>();
+    const serviceTypeForKind = (kind: TopologyComponentKind): "MODULE" | "WORKFLOW" | "COMPONENT" => {
+      if (kind === "workflow") return "WORKFLOW";
+      if (kind === "module" || kind === "property") return "MODULE";
+      return "COMPONENT";
+    };
+    const dependencyTypeFor = (type: TopologyRelationshipKind): string => {
+      if (type === "hierarchy") return "HIERARCHY";
+      if (type === "depends_on") return "DEPENDS_ON";
+      if (type === "runs_on") return "RUNS_ON";
+      return "SYNCS";
+    };
+    const upsertLink = async (input: {
+      id: string;
+      fromServiceId: string;
+      toServiceId: string;
+      dependencyType: string;
+      criticality: "HIGH" | "MEDIUM";
+      source: "CONNECTION_DISCOVERY" | "MANUAL";
+    }) => {
+      const row = await tx.serviceDependency.upsert({
+        where: {
+          fromServiceId_toServiceId_dependencyType: {
+            fromServiceId: input.fromServiceId,
+            toServiceId: input.toServiceId,
+            dependencyType: input.dependencyType
+          }
+        },
+        update: {
+          projectId: project.id,
+          isActive: true,
+          criticality: input.criticality,
+          source: input.source,
+          updatedAt: now
+        },
+        create: {
+          id: input.id,
+          projectId: project.id,
+          fromServiceId: input.fromServiceId,
+          toServiceId: input.toServiceId,
+          dependencyType: input.dependencyType,
+          criticality: input.criticality,
+          isActive: true,
+          source: input.source,
+          updatedAt: now
+        }
+      });
+      if (input.source === "CONNECTION_DISCOVERY") retainedDependencyIds.add(row.id);
+      if (input.dependencyType === "HIERARCHY") hierarchyCount += 1;
+      else relationshipCount += 1;
+    };
+
+    for (const component of components) {
+      const deterministicId = stableId("svc-cmp", connection.id, component.key);
+      const serviceType = serviceTypeForKind(component.kind);
+      const existing =
+        await tx.service.findFirst({ where: { id: deterministicId } })
+        ?? await tx.service.findFirst({
+          where: { projectId: project.id, type: serviceType, name: component.name }
+        });
+      const row = existing
+        ? await tx.service.update({
+            where: { id: existing.id },
+            data: {
+              name: component.name,
+              type: serviceType,
+              criticality: component.criticality,
+              isCritical: component.criticality === "HIGH",
+              ownerTeam: "Platform Operations",
+              updatedAt: now
+            }
+          })
+        : await tx.service.create({
+            data: {
+              id: deterministicId,
+              projectId: project.id,
+              name: component.name,
+              type: serviceType,
+              status: "UNKNOWN",
+              criticality: component.criticality,
+              isCritical: component.criticality === "HIGH",
+              ownerTeam: "Platform Operations",
+              updatedAt: now
+            }
+          });
+      serviceIdByKey.set(component.key, row.id);
+      componentServiceIds.add(row.id);
+      componentCount += 1;
+    }
+
+    for (const component of components) {
+      if (!component.parentKey) continue;
+      const childId = serviceIdByKey.get(component.key);
+      const parentId = serviceIdByKey.get(component.parentKey);
+      if (!childId || !parentId) continue;
+      await upsertLink({
+        id: stableId("dep-parent", connection.id, component.key, component.parentKey),
+        fromServiceId: childId,
+        toServiceId: parentId,
+        dependencyType: "HIERARCHY",
+        criticality: component.criticality,
+        source: "CONNECTION_DISCOVERY"
+      });
+    }
+
+    for (const relationship of relationships) {
+      const fromServiceId = serviceIdByKey.get(relationship.from);
+      const toServiceId = serviceIdByKey.get(relationship.to);
+      if (!fromServiceId || !toServiceId) continue;
+      await upsertLink({
+        id: stableId("dep-rel", connection.id, relationship.from, relationship.to, relationship.type),
+        fromServiceId,
+        toServiceId,
+        dependencyType: dependencyTypeFor(relationship.type),
+        criticality: relationship.criticality,
+        source: relationship.provenance === "configured" ? "MANUAL" : "CONNECTION_DISCOVERY"
+      });
+    }
+
+    if (componentServiceIds.size > 0) {
+      const managed = await tx.serviceDependency.findMany({
+        where: {
+          projectId: project.id,
+          source: "CONNECTION_DISCOVERY",
+          OR: [
+            { fromServiceId: { in: [...componentServiceIds] } },
+            { toServiceId: { in: [...componentServiceIds] } }
+          ]
+        }
+      });
+      for (const dependency of managed) {
+        if (retainedDependencyIds.has(dependency.id)) continue;
+        if (dependency.dependencyType === "HIERARCHY" && retainedModuleIds.has(dependency.fromServiceId)) continue;
+        await tx.serviceDependency.update({
+          where: { id: dependency.id },
+          data: { isActive: false, updatedAt: now }
+        });
+        deactivatedCount += 1;
+      }
+    }
+
+    const summary = `Imported ${manifest.modules.length} declared modules and ${componentCount} components from ${manifest.source}${deactivatedCount ? ` and deactivated ${deactivatedCount} removed links` : ""}.`;
     await tx.connection.update({
       where: { id: connection.id },
       data: {
@@ -391,6 +729,20 @@ export const reconcileConnectionTopologyManifest = async (
           source: manifest.source,
           schemaVersion: manifest.schemaVersion,
           moduleKeys: manifest.modules.map((module) => module.key),
+          componentKeys: components.map((component) => component.key),
+          componentKinds: Object.fromEntries(components.map((component) => [component.key, component.kind])),
+          relationships: relationships.map((relationship) => ({
+            from: relationship.from,
+            to: relationship.to,
+            type: relationship.type,
+            provenance: relationship.provenance
+          })),
+          healthBindings: healthBindings.map((binding) => ({
+            componentKey: binding.componentKey,
+            signal: binding.signal,
+            lane: binding.lane ?? null,
+            checkName: binding.checkName ?? null
+          })),
           categories: Object.fromEntries(
             manifest.modules.map((module) => [module.key, module.category ?? null])
           ),
@@ -404,11 +756,13 @@ export const reconcileConnectionTopologyManifest = async (
   });
 
   const canonical = await backfillCanonicalTopology({ projectId: project.id });
-  const summary = `Imported ${manifest.modules.length} declared modules and ${hierarchyCount} hierarchy links from ${manifest.source}.`;
+  const summary = `Imported ${manifest.modules.length} declared modules, ${componentCount} components and ${hierarchyCount} hierarchy links from ${manifest.source}.`;
   return {
     status: "SUCCEEDED",
     applicationId,
     moduleCount: manifest.modules.length,
+    componentCount,
+    relationshipCount,
     hierarchyCount,
     canonicalEntitiesMapped: canonical.entitiesMapped,
     canonicalRelationshipsMapped: canonical.relationshipsMapped,
