@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const { billingFindUnique } = vi.hoisted(() => ({ billingFindUnique: vi.fn() }));
+vi.mock("../lib/prisma", () => ({
+  prisma: { projectBilling: { findUnique: billingFindUnique } }
+}));
 import { PLAN_DEFAULTS, getProjectBilling, normalizeAllowanceLimit, resolvePricingLabel } from "./project-billing.service";
 
 describe("project-billing production gate", () => {
@@ -31,8 +36,12 @@ describe("project-billing production gate", () => {
     expect(label).toBe("CUSTOM");
   });
 
-  it("getProjectBilling omits internalNotes by default", async () => {
+  it("getProjectBilling returns null for a missing project", async () => {
+    billingFindUnique.mockResolvedValueOnce(null);
     const billing = await getProjectBilling("missing-project-id");
     expect(billing).toBeNull();
+    expect(billingFindUnique).toHaveBeenCalledWith(expect.objectContaining({
+      where: { projectId: "missing-project-id" }
+    }));
   });
 });

@@ -6,6 +6,9 @@ const {
   resultFindMany,
   alertFindFirst,
   alertFindMany,
+  alertCount,
+  incidentAlertFindFirst,
+  propagateRecovery,
   alertCreate,
   alertUpdate,
   connectionFind,
@@ -20,6 +23,9 @@ const {
   resultFindMany: vi.fn(),
   alertFindFirst: vi.fn(),
   alertFindMany: vi.fn(),
+  alertCount: vi.fn(),
+  incidentAlertFindFirst: vi.fn(),
+  propagateRecovery: vi.fn(),
   alertCreate: vi.fn(),
   alertUpdate: vi.fn(),
   connectionFind: vi.fn(),
@@ -37,9 +43,11 @@ vi.mock("../lib/prisma", () => ({
     alert: {
       findFirst: alertFindFirst,
       findMany: alertFindMany,
+      count: alertCount,
       create: alertCreate,
       update: alertUpdate
     },
+    incidentAlert: { findFirst: incidentAlertFindFirst },
     connection: { findFirst: connectionFind, updateMany: connectionUpdateMany },
     service: { update: serviceUpdate },
     project: { findUnique: projectFindUnique },
@@ -56,6 +64,10 @@ vi.mock("../lib/outbound-url-safety", () => ({
 
 vi.mock("../services/notifications/notification.service", () => ({
   dispatchAlertNotifications: notify
+}));
+
+vi.mock("@opswatch/api/recovery-propagation", () => ({
+  propagateCheckRecovery: propagateRecovery
 }));
 
 import { runHttpChecksJob } from "./run-http-checks.job";
@@ -94,6 +106,9 @@ describe("generated URL HTTP checks", () => {
     resultCreate.mockResolvedValue({});
     alertFindFirst.mockResolvedValue(null);
     alertFindMany.mockResolvedValue([]);
+    alertCount.mockResolvedValue(0);
+    incidentAlertFindFirst.mockResolvedValue(null);
+    propagateRecovery.mockResolvedValue({ alertResolvedIds: [], verification: { met: true } });
     alertCreate.mockResolvedValue({ id: "alert-1" });
     alertUpdate.mockResolvedValue({});
     connectionFind.mockResolvedValue({
@@ -197,5 +212,11 @@ describe("generated URL HTTP checks", () => {
       data: expect.objectContaining({ status: "RESOLVED" })
     }));
     expect(notify).toHaveBeenCalledWith("alert-open", "resolved");
+    expect(propagateRecovery).toHaveBeenCalledWith(expect.objectContaining({
+      checkId: generatedCheck.id,
+      serviceId: generatedCheck.serviceId,
+      incidentId: null,
+      checkFailed: false
+    }));
   });
 });

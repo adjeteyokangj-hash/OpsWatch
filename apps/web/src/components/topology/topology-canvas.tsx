@@ -14,9 +14,11 @@ import {
   computePresentationLayout,
   edgeLaneOffset,
   edgePath,
+  presentationEdgePath,
   edgeStrokeWidth,
   layerExpansionKey,
   LAYOUT,
+  PRESENTATION_LAYOUT,
   nodeAnchor
 } from "./topology-layout";
 import { TopologyMoreCard, TopologyNodeCard } from "./topology-node-card";
@@ -88,9 +90,9 @@ type Props = {
   onZoomPercentChange?: (percent: number) => void;
 };
 
-const NODE_WIDTH = LAYOUT.nodeWidth;
-const NODE_HEIGHT = LAYOUT.nodeHeight;
-const NODE_HEIGHT_COLLAPSED: number = 64;
+const NODE_WIDTH_DEFAULT = LAYOUT.nodeWidth;
+const NODE_HEIGHT_DEFAULT = LAYOUT.nodeHeight;
+const NODE_HEIGHT_COLLAPSED_DEFAULT = 64;
 
 const trafficTone = (status: TopologyHealthStatus): string => {
   if (status === "HEALTHY") return "healthy";
@@ -127,8 +129,10 @@ const TrafficPackets = ({
           key={`${edgeKey}-packet-${index}`}
           r={critical ? 3.5 : 2.8}
           fill={fill}
+          visibility="hidden"
           className={`topology-traffic-packet topology-traffic-packet--${tone}`}
         >
+          <set attributeName="visibility" to="visible" begin={`${delay}s`} />
           <animateMotion
             dur={`${2.2 + index * 0.35}s`}
             repeatCount="indefinite"
@@ -173,6 +177,11 @@ export const TopologyCanvas = ({
 }: Props) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
+  const [connectionsMode, setConnectionsMode] = useState("relevant");
+  const [mobileSection, setMobileSection] = useState("");
+  const [mobilePage, setMobilePage] = useState(0);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinchOrigin = useRef<{ distance: number; x: number; y: number; vx: number; vy: number; scale: number } | null>(null);
   const [referenceScale, setReferenceScale] = useState(1);
   const [dragging, setDragging] = useState(false);
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
@@ -191,6 +200,18 @@ export const TopologyCanvas = ({
     () => buildTopologyPresentationGroups(topology),
     [topology]
   );
+  const presentationToneById = useMemo(() => new Map(
+    presentationGroups?.sections.flatMap(section => section.nodeIds.map(id => [id, section.tone] as const)) ?? []
+  ), [presentationGroups]);
+  const NODE_WIDTH = presentationGroups
+    ? PRESENTATION_LAYOUT.nodeWidth
+    : NODE_WIDTH_DEFAULT;
+  const NODE_HEIGHT = presentationGroups
+    ? PRESENTATION_LAYOUT.nodeHeight + 40
+    : NODE_HEIGHT_DEFAULT;
+  const NODE_HEIGHT_COLLAPSED = presentationGroups
+    ? PRESENTATION_LAYOUT.nodeHeight
+    : NODE_HEIGHT_COLLAPSED_DEFAULT;
 
   const overlayFocusIds = useMemo(() => {
     const ids = new Set<string>(overlays?.affectedNodeIds ?? []);
@@ -251,6 +272,10 @@ export const TopologyCanvas = ({
     return rows;
   }, [topology.nodes, hiddenDescendants, subgraphOnly, focusNodeIds]);
 
+  const mobile = containerWidth > 0 && containerWidth < 960 && Boolean(presentationGroups);
+  const activeMobileSection = presentationGroups?.sections.find(section => section.id === mobileSection)
+    ?? presentationGroups?.sections[0];
+
   const layoutNodes = useMemo(() => {
     const nonApp = baseNodes.filter((node) => classifyVisualLayer(node) !== "APP");
     const apps = topology.nodes.filter((node) => classifyVisualLayer(node) === "APP");
@@ -261,7 +286,7 @@ export const TopologyCanvas = ({
     .map((row) => row.id)
     .sort()
     .join("|");
-  const layoutKey = `${topologyIdentityKey}|${[...collapsedNodeIds].sort().join(",")}|${[...expandedLayers].sort().join(",")}|${presentationGroups ? "presentation" : "layers"}|${containerWidth}x${containerHeight}`;
+  const layoutKey = `${topologyIdentityKey}|${[...collapsedNodeIds].sort().join(",")}|${[...expandedLayers].sort().join(",")}|${presentationGroups ? "presentation" : "layers"}|${containerWidth}x${containerHeight}|${mobileSection}|${mobilePage}`;
 
   const graphLayout = useMemo(() => {
     const layoutFor = (minWidth: number) =>
@@ -270,6 +295,21 @@ export const TopologyCanvas = ({
         : computeLayeredLayout(layoutNodes, expandedLayers, minWidth);
 
     // Height-limited fit shrinks the map; widen the layout so lanes still fill the canvas.
+    // Presentation bands already wrap their cards; widening to fill a height-limited
+    // viewport makes the cards unnecessarily small. Keep legacy auto-width unchanged.
+    if (mobile && activeMobileSection) {
+      const ids = activeMobileSection.nodeIds.slice(mobilePage * 4, mobilePage * 4 + 4);
+      const positions = new Map(ids.map((id, index) => [id, { x: 160, y: 112 + index * 112 }]));
+      return {
+        positions, width: 320, height: 70 + ids.length * 112,
+        visibleNodeIds: new Set(ids), moreNodes: [],
+        layerBands: [{ bandKey: activeMobileSection.id, layer: "MODULE" as const,
+          label: activeMobileSection.title, headerSubtitle: activeMobileSection.nodeIds.length + " components",
+          y: 12, height: 50 + ids.length * 112, count: ids.length,
+          bandX: 8, bandWidth: 304, toneClass: activeMobileSection.tone }]
+      };
+    }
+    if (presentationGroups) return layoutFor(Math.max(PRESENTATION_LAYOUT.minCanvasWidth, containerWidth));
     const natural = layoutFor(LAYOUT.minCanvasWidth);
     let layoutMinWidth: number = LAYOUT.minCanvasWidth;
     if (containerWidth > 0) {
@@ -307,6 +347,7 @@ export const TopologyCanvas = ({
     return { ...base, positions };
   }, [
     layoutNodes,
+    mobile, activeMobileSection, mobilePage,
     presentationGroups,
     overlays,
     showChangeEvents,
@@ -459,10 +500,34 @@ export const TopologyCanvas = ({
     ]
   );
 
-  const hierarchyLinks = useMemo(
-    () => resolveHierarchyDisplayLinks(topology.edges, topology.nodes, graphLayout),
-    [topology.edges, topology.nodes, graphLayout]
-  );
+  const hierarchyLinks = useMemo(() => {
+    const links = resolveHierarchyDisplayLinks(topology.edges, topology.nodes, graphLayout);
+    if (!presentationGroups) return links;
+
+    // Presentation maps already encode containment via bands — keep only
+    // app→property and property→installation hierarchy lines to avoid fans.
+    const propertyIds = new Set(
+      presentationGroups.propertyOptions.map((row) => row.id)
+    );
+    const installationIds = new Set(
+      presentationGroups.sections
+        .filter((section) => section.propertyNodeId)
+        .flatMap((section) =>
+          section.nodeIds.filter((id) => id !== section.propertyNodeId)
+        )
+    );
+    const appIds = new Set(
+      topology.nodes.filter((row) => row.type === "APP").map((row) => row.id)
+    );
+
+    return links.filter((link) => {
+      if (appIds.has(link.parentId) && propertyIds.has(link.childId)) return true;
+      if (propertyIds.has(link.parentId) && installationIds.has(link.childId)) {
+        return true;
+      }
+      return false;
+    });
+  }, [topology.edges, topology.nodes, graphLayout, presentationGroups]);
 
   const dependencyLinks = useMemo(
     () => resolveDependencyDisplayLinks(topology.edges, graphLayout),
@@ -482,6 +547,8 @@ export const TopologyCanvas = ({
       .filter(([id]) => graphLayout.visibleNodeIds.has(id) || id.startsWith("more:"))
       .map(([, position]) => position);
     if (bounds.length === 0) return;
+    const footerHeight = container.querySelector(".topology-canvas-footer")?.getBoundingClientRect().height ?? LAYOUT.chromeBottom;
+    const topChrome = mobile ? 100 : 12;
     // Fit the full lane canvas (not just the node cluster) so bands fill the wrap.
     const minX = 0;
     const maxX = Math.max(
@@ -501,19 +568,22 @@ export const TopologyCanvas = ({
     );
     const availableHeight = Math.max(
       120,
-      container.clientHeight - LAYOUT.chromeTop - LAYOUT.chromeBottom - LAYOUT.fitPadding
+      container.clientHeight - topChrome - footerHeight - 36 - LAYOUT.fitPadding
     );
     const scale = Math.min(availableWidth / width, availableHeight / height, 1.25);
-    const nextScale = Math.max(scale, 0.35);
+    const nextScale = Math.max(scale, 0.01);
     userAdjustedViewport.current = false;
     setReferenceScale(nextScale);
     setViewport({
       scale: nextScale,
       x: (availableWidth - width * nextScale) / 2 - minX * nextScale + LAYOUT.chromeSide + LAYOUT.fitPadding / 2,
-      y: (availableHeight - height * nextScale) / 2 - minY * nextScale + LAYOUT.chromeTop + LAYOUT.fitPadding / 2
+      y: (mobile ? 0 : (availableHeight - height * nextScale) / 2) - minY * nextScale + topChrome + LAYOUT.fitPadding / 2
     });
   }, [
     layoutNodes.length,
+    mobile,
+    NODE_HEIGHT,
+    NODE_WIDTH,
     graphLayout.positions,
     graphLayout.visibleNodeIds,
     graphLayout.width,
@@ -529,6 +599,11 @@ export const TopologyCanvas = ({
     if (userAdjustedViewport.current) return;
     fitToScreenRef.current();
   }, [layoutKey, subgraphOnly]);
+
+  useEffect(() => {
+    userAdjustedViewport.current = false;
+    fitToScreenRef.current();
+  }, [mobile, mobileSection, mobilePage]);
 
   // Fit button / explicit fitToken always recalculates.
   useEffect(() => {
@@ -619,6 +694,20 @@ export const TopologyCanvas = ({
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
+    if (event.pointerType === "touch" && !target.closest(".topology-canvas-footer, .topology-mobile-section, button, select")) {
+      pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.current.size === 2) {
+        const [a, b] = [...pointers.current.values()];
+        if (!a || !b) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        pinchOrigin.current = { distance: Math.hypot(a.x - b.x, a.y - b.y),
+          x: (a.x + b.x) / 2 - rect.left, y: (a.y + b.y) / 2 - rect.top,
+          vx: viewport.x, vy: viewport.y, scale: viewport.scale };
+      }
+      dragOrigin.current = { x: event.clientX, y: event.clientY, vx: viewport.x, vy: viewport.y };
+      setDragging(true);
+      return;
+    }
     // Nodes and edges own their own click selection — do not steal pointer capture for pan.
     if (
       target.closest(
@@ -636,6 +725,23 @@ export const TopologyCanvas = ({
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pointers.current.has(event.pointerId)) {
+      pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const pinch = pinchOrigin.current;
+      if (pinch && pointers.current.size === 2) {
+        const [a, b] = [...pointers.current.values()];
+        if (!a || !b) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const scale = Math.max(referenceScale * 0.25, Math.min(referenceScale * 2,
+          pinch.scale * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, pinch.distance)));
+        userAdjustedViewport.current = true;
+        dragMoved.current = true;
+        setViewport({ scale,
+          x: (a.x + b.x) / 2 - rect.left - (pinch.x - pinch.vx) / pinch.scale * scale,
+          y: (a.y + b.y) / 2 - rect.top - (pinch.y - pinch.vy) / pinch.scale * scale });
+        return;
+      }
+    }
     const origin = dragOrigin.current;
     if (!origin) return;
     const dx = event.clientX - origin.x;
@@ -652,12 +758,19 @@ export const TopologyCanvas = ({
   };
 
   const endDrag = (event?: React.PointerEvent<HTMLDivElement>) => {
+    if (event) pointers.current.delete(event.pointerId);
+    pinchOrigin.current = null;
+    if (pointers.current.size > 0) {
+      const point = [...pointers.current.values()][0]!;
+      dragOrigin.current = { ...point, vx: viewport.x, vy: viewport.y };
+      return;
+    }
     if (event?.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     const wasDrag = dragMoved.current;
     dragOrigin.current = null;
-    dragMoved.current = false;
+    if (wasDrag) window.setTimeout(() => { dragMoved.current = false; }, 0);
     setDragging(false);
     onInteractingChange?.(false);
 
@@ -719,14 +832,29 @@ export const TopologyCanvas = ({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
-      onPointerLeave={endDrag}
+      onPointerCancel={endDrag}
+      onPointerLeave={(event) => { if (event.pointerType !== "touch" && !event.currentTarget.hasPointerCapture(event.pointerId)) endDrag(event); }}
+      onClickCapture={(event) => { if (dragMoved.current) { event.stopPropagation(); dragMoved.current = false; } }}
       onWheel={onWheel}
       title="Ctrl + scroll to zoom the map"
       data-testid="topology-canvas"
       data-presentation={presentationGroups ? "property" : "layers"}
+      data-connections={connectionsMode}
+      style={mobile ? { height: 540 + Math.min(4, activeMobileSection?.nodeIds.length ?? 0) * 72, minHeight: 540 + Math.min(4, activeMobileSection?.nodeIds.length ?? 0) * 72 } : undefined}
     >
       <div className="topology-canvas-overlay" data-testid="topology-canvas-overlay" aria-hidden="true" />
 
+      {mobile && presentationGroups ? <div className="topology-mobile-section" onPointerDown={event => event.stopPropagation()}>
+        <label>Section <select aria-label="Topology section" value={activeMobileSection?.id}
+          onChange={event => { setMobileSection(event.target.value); setMobilePage(0); }}>
+          {presentationGroups.sections.map(section => <option key={section.id} value={section.id}>{section.title}</option>)}
+        </select></label>
+        <div className="topology-section-pages">
+          <button type="button" disabled={mobilePage === 0} onClick={() => setMobilePage(p => p - 1)}>Previous</button>
+          <span aria-live="polite">{mobilePage + 1} / {Math.max(1, Math.ceil((activeMobileSection?.nodeIds.length ?? 0) / 4))}</span>
+          <button type="button" disabled={(mobilePage + 1) * 4 >= (activeMobileSection?.nodeIds.length ?? 0)} onClick={() => setMobilePage(p => p + 1)}>Next</button>
+        </div>
+      </div> : null}
       <svg
         className="topology-canvas"
         role="img"
@@ -756,16 +884,30 @@ export const TopologyCanvas = ({
             const bandWidth =
               band.bandWidth ?? graphLayout.width - LAYOUT.bandStartX - 12;
             return (
-              <rect
-                key={`band-${band.bandKey}`}
-                className={`topology-layer-band layer-${tone}`}
-                x={bandX}
-                y={band.y}
-                width={bandWidth}
-                height={band.height}
-                rx={14}
-                data-band-key={band.bandKey}
-              />
+              <g key={`band-${band.bandKey}`} data-band-key={band.bandKey}>
+                <rect
+                  className={`topology-layer-band layer-${tone}${band.isProperty ? " is-property" : ""}`}
+                  x={bandX}
+                  y={band.y}
+                  width={bandWidth}
+                  height={band.height}
+                  rx={16}
+                />
+                {presentationGroups ? (
+                  <rect
+                    className={`topology-layer-band-header layer-${tone}`}
+                    x={bandX}
+                    y={band.y}
+                    width={bandWidth}
+                    height={
+                      band.isProperty
+                        ? PRESENTATION_LAYOUT.propertyHeaderHeight
+                        : PRESENTATION_LAYOUT.sectionHeaderHeight
+                    }
+                    rx={16}
+                  />
+                ) : null}
+              </g>
             );
           })}
           </g>
@@ -774,29 +916,55 @@ export const TopologyCanvas = ({
           {graphLayout.layerBands.map((band) => {
             const tone = band.toneClass ?? band.layer.toLowerCase();
             const isPresentation = Boolean(presentationGroups);
-            const labelX =
-              isPresentation && band.bandX != null ? band.bandX + 12 : 8;
-            const labelWidth = isPresentation && band.bandWidth != null
-              ? Math.min(band.bandWidth - 24, 220)
-              : LAYOUT.labelGutter - 16;
-            const title = isPresentation
-              ? band.label
-              : visualLayerTitle(band.layer);
-            const meta = isPresentation
-              ? `${band.count} node${band.count === 1 ? "" : "s"}`
-              : visualLayerCountLabel(band.layer, band.count);
+            if (!isPresentation) {
+              return (
+                <foreignObject
+                  key={`label-${band.bandKey}`}
+                  x={8}
+                  y={band.y}
+                  width={LAYOUT.labelGutter - 16}
+                  height={band.height}
+                  className="topology-layer-label-wrap"
+                >
+                  <div className="topology-layer-label-box">
+                    <span className="topology-layer-label-title">
+                      {visualLayerTitle(band.layer)}
+                    </span>
+                    <span className="topology-layer-label-meta">
+                      {visualLayerCountLabel(band.layer, band.count)}
+                    </span>
+                  </div>
+                </foreignObject>
+              );
+            }
+            const labelX = (band.bandX ?? PRESENTATION_LAYOUT.bandStartX) + 14;
+            const labelWidth = Math.max(160, (band.bandWidth ?? 280) - 28);
+            const headerH = band.isProperty
+              ? PRESENTATION_LAYOUT.propertyHeaderHeight
+              : PRESENTATION_LAYOUT.sectionHeaderHeight;
             return (
               <foreignObject
                 key={`label-${band.bandKey}`}
                 x={labelX}
-                y={band.y + 6}
+                y={band.y}
                 width={labelWidth}
-                height={Math.min(band.height - 8, 56)}
-                className={`topology-layer-label-wrap tone-${tone}`}
+                height={headerH}
+                className={`topology-layer-label-wrap tone-${tone} is-presentation-header${band.isProperty ? " is-property" : ""}`}
               >
-                <div className="topology-layer-label-box">
-                  <span className="topology-layer-label-title">{title}</span>
-                  <span className="topology-layer-label-meta">{meta}</span>
+                <div className="topology-presentation-header">
+                  <div className="topology-presentation-header-text">
+                    <strong className="topology-presentation-header-title">{band.label}</strong>
+                    {band.headerSubtitle ? (
+                      <span className="topology-presentation-header-sub">{band.headerSubtitle}</span>
+                    ) : null}
+                  </div>
+                  {band.statusLabel ? (
+                    <span
+                      className={`topology-presentation-status topology-presentation-status--${band.statusTone ?? "unknown"}`}
+                    >
+                      {band.statusLabel}
+                    </span>
+                  ) : null}
                 </div>
               </foreignObject>
             );
@@ -811,11 +979,12 @@ export const TopologyCanvas = ({
 
             const start = nodeAnchor(parentPos, "bottom", NODE_HEIGHT_COLLAPSED);
             const end = nodeAnchor(childPos, "top", NODE_HEIGHT_COLLAPSED);
-            const pathD = edgePath(start, end, true, edgeLaneOffset(link.key));
-            const edgeDimmed =
-              shouldDim &&
-              focusNodeIds.size > 0 &&
-              (!focusNodeIds.has(link.childId) || !focusNodeIds.has(link.parentId));
+            const pathD = presentationGroups
+              ? presentationEdgePath(parentPos, childPos, edgeLaneOffset(link.key), mobile ? [] : graphLayout.layerBands)
+              : edgePath(start, end, true, edgeLaneOffset(link.key));
+            const edgeDimmed = connectionsMode === "relevant" && (selectedNodeId
+              ? selectedNodeId !== link.childId && selectedNodeId !== link.parentId
+              : shouldDim && focusNodeIds.size > 0 && (!focusNodeIds.has(link.childId) || !focusNodeIds.has(link.parentId)));
             const apiEdge =
               topology.edges.find(
                 (row) =>
@@ -856,7 +1025,7 @@ export const TopologyCanvas = ({
             return (
               <g
                 key={link.key}
-                className={`topology-edge topology-edge-hierarchy${edgeDimmed ? " dimmed" : ""}${selected ? " selected" : ""}`}
+                className={`topology-edge topology-edge-hierarchy${edgeDimmed && !selected ? " dimmed" : ""}${selected ? " selected" : ""}`}
                 style={{ color: HIERARCHY_EDGE_COLOR }}
                 data-testid={`topology-edge-${link.key}`}
                 data-edge-kind="hierarchy"
@@ -888,24 +1057,25 @@ export const TopologyCanvas = ({
             );
           })}
 
-          {dependencyLinks.map((link) => {
+          {(connectionsMode === "structure" ? [] : dependencyLinks).map((link, laneIndex) => {
             const source = graphLayout.positions.get(link.sourceId);
             const target = graphLayout.positions.get(link.targetId);
             if (!source || !target) return null;
 
             // Paint from evidence-based edge.status (API), not source/target node colour alone.
             const edgeHealth = link.edge.status;
-            const pathD = edgePath(
+            const pathD = presentationGroups
+              ? presentationEdgePath(source, target, laneIndex, mobile ? [] : graphLayout.layerBands)
+              : edgePath(
               nodeAnchor(source, "bottom", NODE_HEIGHT_COLLAPSED),
               nodeAnchor(target, "top", NODE_HEIGHT_COLLAPSED),
               true,
               edgeLaneOffset(link.key)
             );
             const weight = edgeTrafficWeight(link.edge, topology.nodes);
-            const edgeDimmed =
-              shouldDim &&
-              focusNodeIds.size > 0 &&
-              (!focusNodeIds.has(link.sourceId) || !focusNodeIds.has(link.targetId));
+            const edgeDimmed = connectionsMode === "relevant" && (selectedNodeId
+              ? selectedNodeId !== link.sourceId && selectedNodeId !== link.targetId
+              : shouldDim && focusNodeIds.size > 0 && (!focusNodeIds.has(link.sourceId) || !focusNodeIds.has(link.targetId)));
             const selected = selectedEdgeId === link.edge.id || selectedEdgeId === link.key;
             const remediating = remediatingEdgeIds?.has(link.edge.id) ?? false;
             const selectedDesc = describeSelectedEdge(link.edge, nodeById, "dependency", edgeDescribeOptions);
@@ -919,7 +1089,7 @@ export const TopologyCanvas = ({
             return (
               <g
                 key={link.key}
-                className={`topology-edge topology-edge-dependency${edgeDimmed ? " dimmed" : ""}${selected ? " selected" : ""}${remediating ? " remediating" : ""}`}
+                className={`topology-edge topology-edge-dependency${edgeDimmed && !selected ? " dimmed" : ""}${selected ? " selected" : ""}${remediating ? " remediating" : ""}`}
                 data-testid={`topology-edge-${link.edge.id}`}
                 data-edge-kind="dependency"
                 data-edge-health={edgeHealth}
@@ -957,7 +1127,7 @@ export const TopologyCanvas = ({
             );
           })}
 
-          {(overlays?.propagationEdges ?? []).map((edge) => {
+          {(connectionsMode === "structure" ? [] : overlays?.propagationEdges ?? []).map((edge) => {
             if (
               dependencyLinks.some(
                 (row) =>
@@ -990,7 +1160,9 @@ export const TopologyCanvas = ({
             const rootCause = rootCauseByNode.get(node.id);
             const displayStatus = displayStatusFor(node.id, node.status);
             const dimmed = shouldDim && focusNodeIds.size > 0 && !focusNodeIds.has(node.id);
-            const childCount = countHierarchyChildren(node.id, topology.edges, topology.nodes);
+            const childCount = presentationGroups
+              ? 0
+              : countHierarchyChildren(node.id, topology.edges, topology.nodes);
             const relationship = relationshipByNode.get(node.id);
             const isolationLabel = relationship
               ? isolationBadgeLabel(relationship.connectionState)
@@ -1004,7 +1176,7 @@ export const TopologyCanvas = ({
             return (
               <g
                 key={node.id}
-                className={`topology-node ${healthClassName(displayStatus)}${classifyVisualLayer(node) === "APP" ? " topology-node--app" : ""}${selected ? " selected" : ""}${overlays?.affectedNodeIds?.includes(node.id) ? " affected" : ""}${overlays?.incidentNodeIds?.includes(node.id) ? " incident-linked" : ""}${rootCause ? " root-cause" : ""}${dimmed ? " dimmed" : ""}${selected && traceFocus ? " trace-focus" : ""}${isolationLabel ? " topology-node--isolated" : ""}${expanded ? " is-expanded" : " is-collapsed"}`}
+                className={`topology-node ${healthClassName(displayStatus)}${presentationToneById.has(node.id) ? ` topology-tone-${presentationToneById.get(node.id)}` : ""}${presentationGroups?.propertyOptions.some(property => property.id === node.id) ? " topology-node--property" : ""}${classifyVisualLayer(node) === "APP" ? " topology-node--app" : ""}${selected ? " selected" : ""}${overlays?.affectedNodeIds?.includes(node.id) ? " affected" : ""}${overlays?.incidentNodeIds?.includes(node.id) ? " incident-linked" : ""}${rootCause ? " root-cause" : ""}${dimmed ? " dimmed" : ""}${selected && traceFocus ? " trace-focus" : ""}${isolationLabel ? " topology-node--isolated" : ""}${expanded ? " is-expanded" : " is-collapsed"}`}
                 transform={`translate(${position.x - NODE_WIDTH / 2} ${position.y - cardHeight / 2})`}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -1012,6 +1184,12 @@ export const TopologyCanvas = ({
                   onSelectNode(selected ? null : node.id);
                 }}
                 data-testid={`topology-node-${node.id}`}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  onSelectEdge?.(null);
+                  onSelectNode(selected ? null : node.id);
+                }}
                 data-connection-state={relationship?.connectionState ?? "connected"}
                 data-expanded={expanded ? "true" : "false"}
                 data-root-cause-rank={rootCause?.rank}
@@ -1035,6 +1213,7 @@ export const TopologyCanvas = ({
                     node={node}
                     displayStatus={displayStatus}
                     compact
+                    showStatus={Boolean(presentationGroups)}
                     collapsed={!expanded}
                     alertCount={openAlerts}
                     isolationLabel={isolationLabel}
@@ -1044,8 +1223,7 @@ export const TopologyCanvas = ({
                   />
                 </foreignObject>
                 <title>
-                  {node.name} · {healthLabel(displayStatus)}
-                  {relationship?.isolatedStateReason ? ` · ${relationship.isolatedStateReason}` : ""}
+                  {`${node.name} · ${healthLabel(displayStatus)}${relationship?.isolatedStateReason ? ` · ${relationship.isolatedStateReason}` : ""}`}
                 </title>
               </g>
             );
@@ -1138,6 +1316,13 @@ export const TopologyCanvas = ({
           <span><i className="line indirect" /> Hierarchy</span>
         </div>
         <div className="topology-canvas-footer-actions">
+          <label className="topology-property-focus"><span>Connections</span>
+            <select aria-label="Connections" value={connectionsMode} onChange={event => setConnectionsMode(event.target.value)}>
+              <option value="all">All Connections</option>
+              <option value="relevant">Relevant Connections</option>
+              <option value="structure">Structure Only</option>
+            </select>
+          </label>
           {presentationGroups && onPropertyFocusChange ? (
             <label className="topology-property-focus" data-testid="topology-property-focus">
               <span>Property</span>

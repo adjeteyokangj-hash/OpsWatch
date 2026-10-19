@@ -9,6 +9,7 @@ type Props = {
   node: TopologyNode;
   displayStatus?: TopologyNode["status"];
   compact?: boolean;
+  showStatus?: boolean;
   childCount?: number;
   /** When true, show icon/name/health/alerts only (default topology card). */
   collapsed?: boolean;
@@ -39,6 +40,7 @@ export function TopologyNodeCard({
   node,
   displayStatus = node.status,
   compact = true,
+  showStatus = false,
   childCount = 0,
   collapsed = true,
   alertCount = 0,
@@ -72,10 +74,11 @@ export function TopologyNodeCard({
           <strong className="topology-node-card-name">{node.name}</strong>
           <span className={`topology-node-card-dot topology-node-card-dot--${statusTone}`} aria-hidden="true" />
         </div>
+        {showStatus && collapsed ? <span className="topology-node-card-evidence">{healthLabel(displayStatus)}</span> : null}
         <div className="topology-node-card-compact-meta">
           {childCount > 0 ? (
-            <button
-              type="button"
+            // Plain control — avoid nested <button>/role=button inside the SVG node control.
+            <span
               className="topology-node-card-expand"
               aria-expanded={!groupCollapsed}
               onClick={(event) => {
@@ -85,7 +88,7 @@ export function TopologyNodeCard({
               data-action="local-ui"
             >
               {groupCollapsed ? `Show ${childCount}` : `Hide ${childCount}`}
-            </button>
+            </span>
           ) : null}
           {alertCount > 0 ? <span className="topology-node-alert-count">{alertCount} alert{alertCount === 1 ? "" : "s"}</span> : null}
           {isolationLabel ? (

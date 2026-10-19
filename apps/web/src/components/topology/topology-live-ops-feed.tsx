@@ -26,6 +26,8 @@ type Props = {
   project?: ProjectSignalSource | null;
   selectedNode: TopologyNode | null;
   paused?: boolean;
+  /** Fixture preview renders supplied evidence without polling live project endpoints. */
+  signalsEnabled?: boolean;
 };
 
 const POLL_MS = 15_000;
@@ -58,7 +60,7 @@ type IncidentRow = NonNullable<ProjectSignalSource["incidents"]>[number];
 type AlertApiRow = AlertRow & { service?: { id: string; name: string } | null };
 type IncidentApiRow = IncidentRow & { serviceIds?: string[] };
 
-export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode, paused = false }: Props) {
+export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode, paused = false, signalsEnabled = true }: Props) {
   const [logs, setLogs] = useState<RemediationLogRow[]>([]);
   const [checks, setChecks] = useState<CheckListResponse | null>(null);
   const [alerts, setAlerts] = useState<AlertRow[]>([]);
@@ -71,6 +73,7 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const loadSignals = useCallback(async () => {
+    if (!signalsEnabled) { setLoading(false); return; }
     try {
       const [remediationRows, checkRows, alertRows, incidentRows, changeRows, dependencyRows] =
         await Promise.all([
@@ -109,22 +112,22 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, signalsEnabled]);
 
   useEffect(() => {
     void loadSignals();
   }, [loadSignals]);
 
   useEffect(() => {
-    if (paused) return;
+    if (paused || !signalsEnabled) return;
     const timer = window.setInterval(() => {
       void loadSignals();
     }, POLL_MS);
     return () => window.clearInterval(timer);
-  }, [loadSignals, paused]);
+  }, [loadSignals, paused, signalsEnabled]);
 
   useEffect(() => {
-    if (!selectedNode) {
+    if (!selectedNode || !signalsEnabled) {
       setIncidentRootCauses({});
       return;
     }
@@ -156,7 +159,7 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
     return () => {
       cancelled = true;
     };
-  }, [selectedNode, topology.nodeContext]);
+  }, [selectedNode, topology.nodeContext, signalsEnabled]);
 
   const liveProject = useMemo<ProjectSignalSource>(
     () => ({
@@ -241,11 +244,11 @@ export function TopologyLiveOpsFeed({ projectId, topology, project, selectedNode
       persistKey={`project:${projectId}:topology:live-ops`}
       aria-label="Operations timeline"
       data-testid="topology-live-ops-feed"
-      actions={<span className="topology-live-ops-pulse" aria-hidden="true" />}
+      actions={signalsEnabled ? <span className="topology-live-ops-pulse" aria-hidden="true" /> : null}
     >
       <p className="dashboard-subtle" data-testid="topology-timeline-truth-label">
-        <strong>Live event history.</strong>{" "}
-        {paused ? "Refresh is paused while you interact with the map." : "New operational facts refresh every 15 seconds."}
+        <strong>{signalsEnabled ? "Live event history." : "Preview evidence."}</strong>{" "}
+        {!signalsEnabled ? "Local fixture only; live monitoring is not connected." : paused ? "Refresh is paused while you interact with the map." : "New operational facts refresh every 15 seconds."}
       </p>
       {opsInsights.length > 0 ? (
         <section className="topology-ops-insights" aria-label="Ops insights" data-testid="topology-ops-insights">

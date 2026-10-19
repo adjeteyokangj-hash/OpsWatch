@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 import type { Alert, NotificationChannel, Project, Service } from "@prisma/client";
 import { env } from "../../config/env";
 import { logger } from "../../config/logger";
@@ -8,9 +8,9 @@ type AlertWithRelations = Alert & {
 	Service: Service | null;
 };
 
-let transporter: nodemailer.Transporter | null | undefined;
+let transporter: Transporter | null | undefined;
 
-const getTransporter = (): nodemailer.Transporter | null => {
+const getTransporter = (): Transporter | null => {
 	if (transporter !== undefined) {
 		return transporter;
 	}

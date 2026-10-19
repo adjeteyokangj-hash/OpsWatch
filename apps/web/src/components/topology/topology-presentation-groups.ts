@@ -62,8 +62,9 @@ const nodeKind = (node: TopologyNode, topology: ProjectTopologyResponse): string
 const nodeCategory = (node: TopologyNode, topology: ProjectTopologyResponse): string =>
   (topology.nodeContext[node.id]?.manifest?.category ?? "").toLowerCase();
 
+/** Guest-house properties are kind=property — not the Properties catalogue module. */
 const isPropertyNode = (node: TopologyNode, topology: ProjectTopologyResponse): boolean =>
-  nodeKind(node, topology) === "property" || nodeCategory(node, topology) === "property";
+  nodeKind(node, topology) === "property";
 
 const isInstallation = (node: TopologyNode, topology: ProjectTopologyResponse): boolean =>
   nodeKind(node, topology) === "installation" ||
@@ -95,6 +96,9 @@ const classifySharedOrProcess = (
   if (category === "access" || ACCESS_HINT.test(name) || ACCESS_HINT.test(kind)) {
     return "access";
   }
+  if (/supplement/i.test(name) || /local network/i.test(name)) return "infrastructure";
+  // Shared modules keep their identity even when their category describes a process.
+  if (node.type === "MODULE" && SHARED_OPS_NAMES.has(name)) return "shared";
   if (
     kind === "workflow" ||
     category === "sync" ||
@@ -107,11 +111,9 @@ const classifySharedOrProcess = (
     category === "cloud" ||
     INFRA_HINT.test(name) ||
     INFRA_HINT.test(category) ||
-    node.type === "COMPONENT" && (category === "cloud" || /supabase|network|cloud/i.test(name))
+    (node.type === "COMPONENT" && (category === "cloud" || /supabase|network|cloud/i.test(name)))
   ) {
-    // Operational components like Stay supplements stay with shared/processes via name checks first.
-    if (/supplement/i.test(name)) return "infrastructure";
-    if (category === "cloud" || /supabase|cloud|network|desktop/i.test(name)) {
+    if (category === "cloud" || /supabase|cloud|network|desktop|installation/i.test(name)) {
       return "infrastructure";
     }
   }
@@ -136,9 +138,17 @@ const classifySharedOrProcess = (
 export const buildTopologyPresentationGroups = (
   topology: ProjectTopologyResponse
 ): TopologyPresentationGroups | null => {
+  const propertyRank = (name: string): number => {
+    if (/kanewu/i.test(name)) return 0;
+    if (/community\s*25/i.test(name)) return 1;
+    return 2;
+  };
   const properties = topology.nodes
     .filter((node) => isPropertyNode(node, topology))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      const rankDelta = propertyRank(a.name) - propertyRank(b.name);
+      return rankDelta !== 0 ? rankDelta : a.name.localeCompare(b.name);
+    });
   if (properties.length === 0) return null;
 
   const claimed = new Set<string>();
@@ -151,10 +161,17 @@ export const buildTopologyPresentationGroups = (
     const installations = installationsForProperty(property, topology);
     const nodeIds = [property.id, ...installations.map((row) => row.id)];
     for (const id of nodeIds) claimed.add(id);
+    const tone: PresentationSectionTone = /kanewu/i.test(property.name)
+      ? "property-a"
+      : /community/i.test(property.name)
+        ? "property-b"
+        : index % 2 === 0
+          ? "property-a"
+          : "property-b";
     sections.push({
       id: `property:${property.id}`,
       title: `${property.name} Guest House`,
-      tone: index % 2 === 0 ? "property-a" : "property-b",
+      tone,
       nodeIds,
       propertyNodeId: property.id
     });
@@ -199,7 +216,7 @@ export const buildTopologyPresentationGroups = (
 
   pushBucket("shared", "Shared Services", "shared", buckets.shared);
   pushBucket("processes", "Business Processes", "processes", buckets.processes);
-  pushBucket("access", "Users & Roles", "access", buckets.access);
+  pushBucket("access", "Access Control", "access", buckets.access);
   pushBucket("infrastructure", "Infrastructure & Data", "infra", buckets.infrastructure);
 
   const propertyAssociatedIds = new Set<string>();

@@ -38,6 +38,26 @@ export const LAYOUT = {
   propertyGap: 24
 } as const;
 
+/** Denser, larger-card metrics for property-aware presentation maps. */
+export const PRESENTATION_LAYOUT = {
+  nodeWidth: 210,
+  nodeHeight: 76,
+  gapX: 16,
+  rowHeight: 112,
+  sectionHeaderHeight: 40,
+  propertyHeaderHeight: 56,
+  bandPadX: 18,
+  bandPadBottom: 18,
+  propertyGap: 20,
+  layerGap: 18,
+  appHeaderHeight: 100,
+  paddingY: 28,
+  bandStartX: 104,
+  nodesPerRowMin: 3,
+  nodesPerRowMax: 6,
+  minCanvasWidth: 1560
+} as const;
+
 export type LayerBand = {
   /** Stable band identity for React keys (unique even when layers repeat). */
   bandKey: string;
@@ -51,6 +71,11 @@ export type LayerBand = {
   bandWidth?: number;
   /** CSS class suffix override (e.g. property-a, shared). */
   toneClass?: string;
+  /** Presentation header chrome. */
+  headerSubtitle?: string;
+  statusLabel?: string;
+  statusTone?: "healthy" | "degraded" | "critical" | "unknown";
+  isProperty?: boolean;
 };
 
 export type MoreNode = {
@@ -232,14 +257,43 @@ export const edgePath = (
   const dx = target.x - source.x;
   const dy = target.y - source.y;
   const absDy = Math.max(24, Math.abs(dy));
-  const curve = Math.max(36, Math.min(120, absDy * 0.42 + Math.abs(dx) * 0.08));
-  const lateral = laneOffset * 22;
-  const c1x = source.x + dx * 0.04 + lateral;
+  // Prefer vertical routing for long drops so edges do not slash across bands.
+  const verticalBias = Math.min(1, absDy / (Math.abs(dx) + absDy + 1));
+  const curve = Math.max(28, Math.min(100, absDy * (0.35 + verticalBias * 0.2)));
+  const lateral = laneOffset * (10 + (1 - verticalBias) * 10);
+  const c1x = source.x + dx * (0.02 * (1 - verticalBias)) + lateral;
   const c1y = source.y + curve;
-  const c2x = target.x - dx * 0.04 + lateral;
+  const c2x = target.x - dx * (0.02 * (1 - verticalBias)) + lateral;
   const c2y = target.y - curve;
 
   return `M ${source.x} ${source.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${target.x} ${target.y}`;
+};
+
+/** Route presentation relationships through the space between card rows. */
+export const presentationEdgePath = (source: NodePosition, target: NodePosition, lane = 0, bands: LayerBand[] = []): string => {
+  const half = PRESENTATION_LAYOUT.nodeHeight / 2;
+  const sameRow = Math.abs(source.y - target.y) < 1;
+  const startY = source.y + half;
+  const endY = target.y + (sameRow ? half : -half);
+  const exitY = startY + 7 + (Math.abs(lane) % 6) * 3;
+  if (sameRow) return `M ${source.x} ${startY} V ${exitY} H ${target.x} V ${endY}`;
+  const sourceBand = bands.find(band => source.y >= band.y && source.y <= band.y + band.height);
+  const targetBand = bands.find(band => target.y >= band.y && target.y <= band.y + band.height);
+  if (sourceBand && sourceBand === targetBand && Math.abs(source.y - target.y) <= PRESENTATION_LAYOUT.rowHeight + 1) {
+    const direction = target.y > source.y ? 1 : -1;
+    const start = source.y + direction * half;
+    const end = target.y - direction * half;
+    const gutterY = (start + end) / 2 + (Math.abs(lane) % 7 - 3) * 2;
+    return `M ${source.x} ${start} V ${gutterY} H ${target.x} V ${end}`;
+  }
+  if (!bands.length) {
+    const midY = (startY + endY) / 2;
+    return `M ${source.x} ${startY} V ${midY} H ${target.x} V ${endY}`;
+  }
+  // Cross-section runs stay outside headings; horizontal runs use card-row gutters.
+  const railX = 12 + (Math.abs(lane) % 25) * 3;
+  const entryY = endY - 8 - (Math.abs(lane) % 4) * 3;
+  return `M ${source.x} ${startY} V ${exitY} H ${railX} V ${entryY} H ${target.x} V ${endY}`;
 };
 
 /** Stable small integer lane for an edge key (−2…2). */
@@ -251,7 +305,16 @@ export const edgeLaneOffset = (edgeKey: string): number => {
   return (Math.abs(hash) % 5) - 2;
 };
 
-const placeSectionNodes = (
+const statusToneOf = (
+  status: TopologyNode["status"] | undefined
+): "healthy" | "degraded" | "critical" | "unknown" => {
+  if (status === "HEALTHY") return "healthy";
+  if (status === "DEGRADED") return "degraded";
+  if (status === "CRITICAL") return "critical";
+  return "unknown";
+};
+
+const placePresentationNodes = (
   nodeIds: string[],
   nodesById: Map<string, TopologyNode>,
   positions: Map<string, NodePosition>,
@@ -261,39 +324,40 @@ const placeSectionNodes = (
   startY: number,
   nodesPerRow: number
 ): number => {
+  const P = PRESENTATION_LAYOUT;
   const nodes = nodeIds
     .map((id) => nodesById.get(id))
     .filter((node): node is TopologyNode => Boolean(node));
-  if (nodes.length === 0) return LAYOUT.rowHeight + 20;
+  if (nodes.length === 0) return P.rowHeight;
 
-  const rows = Array.from({ length: Math.ceil(nodes.length / nodesPerRow) }, (_, row) =>
-    nodes.slice(row * nodesPerRow, (row + 1) * nodesPerRow)
+  const rowCount = Math.ceil(nodes.length / nodesPerRow);
+  const balancedColumns = Math.ceil(nodes.length / rowCount);
+  const rows = Array.from({ length: rowCount }, (_, row) =>
+    nodes.slice(row * balancedColumns, (row + 1) * balancedColumns)
   );
 
   rows.forEach((rowNodes, rowIndex) => {
-    const usable = Math.max(LAYOUT.nodeWidth, bandInnerWidth - 24);
-    const packed =
-      rowNodes.length * LAYOUT.nodeWidth + Math.max(0, rowNodes.length - 1) * LAYOUT.gapX;
+    const usable = Math.max(P.nodeWidth, bandInnerWidth - P.bandPadX * 2);
+    const packed = rowNodes.length * P.nodeWidth + Math.max(0, rowNodes.length - 1) * P.gapX;
     const localGap =
       rowNodes.length <= 1
-        ? LAYOUT.gapX
+        ? P.gapX
         : packed >= usable
-          ? LAYOUT.gapX
-          : (usable - rowNodes.length * LAYOUT.nodeWidth) / (rowNodes.length - 1);
-    const rowW =
-      rowNodes.length * LAYOUT.nodeWidth + Math.max(0, rowNodes.length - 1) * localGap;
-    const startX = originX + 12 + (usable - rowW) / 2;
+          ? P.gapX
+          : (usable - rowNodes.length * P.nodeWidth) / (rowNodes.length - 1);
+    const rowW = rowNodes.length * P.nodeWidth + Math.max(0, rowNodes.length - 1) * localGap;
+    const startX = originX + P.bandPadX + (usable - rowW) / 2;
 
     rowNodes.forEach((node, col) => {
       visibleNodeIds.add(node.id);
       positions.set(node.id, {
-        x: startX + col * (LAYOUT.nodeWidth + localGap) + LAYOUT.nodeWidth / 2,
-        y: startY + rowIndex * LAYOUT.rowHeight + LAYOUT.nodeHeight / 2
+        x: startX + col * (P.nodeWidth + localGap) + P.nodeWidth / 2,
+        y: startY + rowIndex * P.rowHeight + P.nodeHeight / 2
       });
     });
   });
 
-  return rows.length * LAYOUT.rowHeight + 28;
+  return rows.length * P.rowHeight + P.bandPadBottom;
 };
 
 /**
@@ -304,8 +368,9 @@ const placeSectionNodes = (
 export const computePresentationLayout = (
   nodes: TopologyNode[],
   groups: TopologyPresentationGroups,
-  minWidth: number = LAYOUT.minCanvasWidth
+  minWidth: number = PRESENTATION_LAYOUT.minCanvasWidth
 ): LayeredLayout => {
+  const P = PRESENTATION_LAYOUT;
   const positions = new Map<string, NodePosition>();
   const visibleNodeIds = new Set<string>();
   const layerBands: LayerBand[] = [];
@@ -314,46 +379,62 @@ export const computePresentationLayout = (
     .filter((node) => classifyVisualLayer(node) === "APP")
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  let maxCanvasWidth: number = Math.max(LAYOUT.minCanvasWidth, minWidth);
-  let currentY = LAYOUT.paddingY + (appNodes.length > 0 ? LAYOUT.appHeaderHeight : 0);
+  let maxCanvasWidth: number = Math.max(P.minCanvasWidth, minWidth);
+  let currentY = P.paddingY + (appNodes.length > 0 ? P.appHeaderHeight : 0);
 
   const propertySections = groups.sections.filter((section) => section.propertyNodeId);
   const otherSections = groups.sections.filter((section) => !section.propertyNodeId);
-  /** In-band titles replace the left gutter used by the layer layout. */
-  const bandStartX = 24;
-
-  const sectionLabelPad = 36;
+  const bandStartX = P.bandStartX;
 
   if (propertySections.length > 0) {
     const contentWidth = maxCanvasWidth - bandStartX - 12;
-    const gap = LAYOUT.propertyGap;
+    const gap = P.propertyGap;
     const cellWidth =
       (contentWidth - gap * Math.max(0, propertySections.length - 1)) /
       Math.max(1, propertySections.length);
-    const perRow = Math.max(2, Math.min(3, nodesPerRowForWidth(cellWidth + LAYOUT.paddingX)));
+    const perRow = Math.max(
+      1,
+      Math.min(
+        P.nodesPerRowMax,
+        Math.floor((cellWidth - P.bandPadX * 2 + P.gapX) / (P.nodeWidth + P.gapX))
+      )
+    );
 
     let maxBandHeight = 0;
     propertySections.forEach((section, index) => {
       const bandX = bandStartX + index * (cellWidth + gap);
-      const innerHeight =
-        sectionLabelPad +
-        placeSectionNodes(
-          section.nodeIds,
-          nodesById,
-          positions,
-          visibleNodeIds,
-          bandX,
-          cellWidth,
-          currentY + sectionLabelPad,
-          perRow
-        );
-      maxBandHeight = Math.max(maxBandHeight, innerHeight);
+      const propertyNode = section.propertyNodeId
+        ? nodesById.get(section.propertyNodeId)
+        : undefined;
+      const contentHeight = placePresentationNodes(
+        section.nodeIds,
+        nodesById,
+        positions,
+        visibleNodeIds,
+        bandX,
+        cellWidth,
+        currentY + P.propertyHeaderHeight + 22,
+        perRow
+      );
+      const bandHeight = P.propertyHeaderHeight + 22 + contentHeight;
+      maxBandHeight = Math.max(maxBandHeight, bandHeight);
       layerBands.push({
         bandKey: section.id,
         layer: "MODULE",
         label: section.title,
-        y: currentY - 8,
-        height: Math.max(innerHeight, LAYOUT.rowHeight + sectionLabelPad),
+        headerSubtitle: "Guest house",
+        statusLabel:
+          propertyNode?.status === "HEALTHY"
+            ? "Online"
+            : propertyNode?.status === "DEGRADED"
+              ? "Degraded"
+              : propertyNode?.status === "CRITICAL"
+                ? "Critical"
+                : "Unknown",
+        statusTone: statusToneOf(propertyNode?.status),
+        isProperty: true,
+        y: currentY,
+        height: bandHeight,
         count: section.nodeIds.length,
         bandX,
         bandWidth: cellWidth,
@@ -361,73 +442,75 @@ export const computePresentationLayout = (
       });
     });
 
-    // Normalize property band heights for a clean row.
     for (const band of layerBands) {
-      if (band.bandKey.startsWith("property:")) {
-        band.height = Math.max(maxBandHeight, LAYOUT.rowHeight + sectionLabelPad);
-      }
+      if (band.isProperty) band.height = maxBandHeight;
     }
-    currentY += Math.max(maxBandHeight, LAYOUT.rowHeight + sectionLabelPad) + LAYOUT.layerGap;
+    currentY += maxBandHeight + P.layerGap;
   }
 
   for (const section of otherSections) {
     const contentWidth = maxCanvasWidth - bandStartX - 12;
-    const perRow = nodesPerRowForWidth(maxCanvasWidth);
-    const bandHeight =
-      sectionLabelPad +
-      placeSectionNodes(
-        section.nodeIds,
-        nodesById,
-        positions,
-        visibleNodeIds,
-        bandStartX,
-        contentWidth,
-        currentY + sectionLabelPad,
-        perRow
-      );
+    const perRow = Math.max(
+      P.nodesPerRowMin,
+      Math.min(
+        P.nodesPerRowMax,
+        Math.floor((contentWidth - P.bandPadX * 2 + P.gapX) / (P.nodeWidth + P.gapX))
+      )
+    );
+    const contentHeight = placePresentationNodes(
+      section.nodeIds,
+      nodesById,
+      positions,
+      visibleNodeIds,
+      bandStartX,
+      contentWidth,
+      currentY + P.sectionHeaderHeight + 22,
+      perRow
+    );
+    const bandHeight = P.sectionHeaderHeight + 22 + contentHeight;
     const layerHint: VisualLayer =
       section.id === "processes"
         ? "WORKFLOW"
         : section.id === "infrastructure"
           ? "INFRASTRUCTURE"
           : section.id === "access"
-            ? "COMPONENT"
+            ? "SERVICE"
             : "MODULE";
     layerBands.push({
       bandKey: section.id,
       layer: layerHint,
       label: section.title,
-      y: currentY - 8,
+      headerSubtitle: `${section.nodeIds.length} component${section.nodeIds.length === 1 ? "" : "s"}`,
+      y: currentY,
       height: bandHeight,
       count: section.nodeIds.length,
       bandX: bandStartX,
       bandWidth: contentWidth,
       toneClass: section.tone
     });
-    currentY += bandHeight + LAYOUT.layerGap;
+    currentY += bandHeight + P.layerGap;
   }
 
-  // Ensure every provided node gets a position (filters may omit some).
   for (const node of nodes) {
     if (visibleNodeIds.has(node.id) || classifyVisualLayer(node) === "APP") continue;
     visibleNodeIds.add(node.id);
     if (!positions.has(node.id)) {
       positions.set(node.id, {
         x: maxCanvasWidth / 2,
-        y: currentY + LAYOUT.nodeHeight / 2
+        y: currentY + P.nodeHeight / 2
       });
-      currentY += LAYOUT.rowHeight;
+      currentY += P.rowHeight;
     }
   }
 
-  const firstBandY = layerBands[0]?.y ?? LAYOUT.paddingY;
+  const firstBandY = layerBands[0]?.y ?? P.paddingY;
   placeAppAnchors(positions, appNodes, maxCanvasWidth, firstBandY);
   for (const app of appNodes) visibleNodeIds.add(app.id);
 
   return {
     positions,
     width: maxCanvasWidth,
-    height: Math.max(LAYOUT.minCanvasHeight, currentY + LAYOUT.paddingY),
+    height: Math.max(LAYOUT.minCanvasHeight, currentY + P.paddingY),
     layerBands,
     moreNodes: [],
     visibleNodeIds

@@ -3,7 +3,7 @@ import {
   buildTopologyPresentationGroups,
   focusIdsForProperty
 } from "./topology-presentation-groups";
-import { computePresentationLayout } from "./topology-layout";
+import { computePresentationLayout, PRESENTATION_LAYOUT } from "./topology-layout";
 import type { ProjectTopologyResponse, TopologyNode, TopologyNodeContext } from "./topology-types";
 
 const baseMetrics = {
@@ -124,9 +124,9 @@ describe("buildTopologyPresentationGroups", () => {
     const topology = niinaTopology();
     const groups = buildTopologyPresentationGroups(topology);
     expect(groups).not.toBeNull();
-    expect(groups!.propertyOptions.map((row) => row.name).sort()).toEqual([
-      "Community 25",
-      "Kanewu"
+    expect(groups!.propertyOptions.map((row) => row.name)).toEqual([
+      "Kanewu",
+      "Community 25"
     ]);
 
     const propertySections = groups!.sections.filter((section) => section.propertyNodeId);
@@ -152,6 +152,48 @@ describe("buildTopologyPresentationGroups", () => {
     expect(focus.has("module:bookings")).toBe(true);
     expect(focus.has("module:c25")).toBe(false);
     expect(focus.has("installation:b")).toBe(false);
+  });
+});
+
+describe("presentation regressions", () => {
+  it.each(["TrueNumeris", "OkangGroup", "Other application"])("preserves the legacy layout for %s without property metadata", name => {
+    const topology = niinaTopology();
+    topology.project.name = name;
+    topology.nodes = topology.nodes.filter(row => !["module:kanewu", "module:c25"].includes(row.id));
+    expect(buildTopologyPresentationGroups(topology)).toBeNull();
+  });
+
+  it("keeps the Synchronisation module shared and its workflows in Business Processes", () => {
+    const topology = niinaTopology();
+    topology.nodes.push(node("sync", "Synchronisation", "MODULE"), node("sync-flow", "Room synchronisation", "WORKFLOW"));
+    topology.nodeContext.sync = context("module", "sync");
+    topology.nodeContext["sync-flow"] = context("workflow", "sync");
+    const groups = buildTopologyPresentationGroups(topology)!;
+    expect(groups.sections.find(section => section.id === "shared")?.nodeIds).toContain("sync");
+    expect(groups.sections.find(section => section.id === "processes")?.nodeIds).toContain("sync-flow");
+    const ids = groups.sections.flatMap(section => section.nodeIds);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("keeps dense property cards inside their containers and apart", () => {
+    const topology = niinaTopology();
+    for (let i = 0; i < 8; i++) {
+      topology.nodes.push(node('installation:extra-' + i, 'Desktop ' + i, 'COMPONENT', 'module:kanewu'));
+    }
+    const groups = buildTopologyPresentationGroups(topology)!;
+    const layout = computePresentationLayout(topology.nodes, groups);
+    for (const section of groups.sections.filter(section => section.propertyNodeId)) {
+      const band = layout.layerBands.find(band => band.bandKey === section.id)!;
+      const positions = section.nodeIds.map(id => layout.positions.get(id)!);
+      for (const position of positions) {
+        expect(position.x - PRESENTATION_LAYOUT.nodeWidth / 2).toBeGreaterThanOrEqual(band.bandX!);
+        expect(position.x + PRESENTATION_LAYOUT.nodeWidth / 2).toBeLessThanOrEqual(band.bandX! + band.bandWidth!);
+        expect(position.y + PRESENTATION_LAYOUT.nodeHeight / 2).toBeLessThanOrEqual(band.y + band.height);
+      }
+      positions.forEach((a, i) => positions.slice(i + 1).forEach(b => {
+        expect(Math.abs(a.x - b.x) >= PRESENTATION_LAYOUT.nodeWidth || Math.abs(a.y - b.y) >= PRESENTATION_LAYOUT.nodeHeight).toBe(true);
+      }));
+    }
   });
 });
 
