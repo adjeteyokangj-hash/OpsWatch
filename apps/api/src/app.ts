@@ -73,10 +73,17 @@ const isDevLocalOrigin = (origin: string): boolean =>
   process.env.NODE_ENV !== "production" &&
   /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
 
+const isNiinaiDesktopOrigin = (origin: string): boolean =>
+  origin === "http://tauri.localhost" ||
+  origin === "https://tauri.localhost" ||
+  origin === "tauri://localhost" ||
+  origin === "http://127.0.0.1:5173" ||
+  origin === "http://localhost:5173";
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedWebOrigins.includes(origin) || isDevLocalOrigin(origin)) {
+      if (!origin || allowedWebOrigins.includes(origin) || isDevLocalOrigin(origin) || isNiinaiDesktopOrigin(origin)) {
         callback(null, true);
         return;
       }
