@@ -28,6 +28,8 @@ describe("project module catalogue proposals", () => {
   it("matches complete terms rather than substrings", () => {
     expect(proposeProjectModules({ description: "staffing" }).map((row) => row.key)).not.toContain("identity");
     expect(proposeProjectModules({ description: "workflow approvals" }).map((row) => row.key)).toContain("tasks");
+    expect(proposeProjectModules({ description: "Payments and refunds" }).map((row) => row.key)).toContain("payments");
+    expect(proposeProjectModules({ description: "Bookings and rooms" }).map((row) => row.key)).toContain("bookings");
   });
   it("does not invent a module without matching evidence", () => {
     expect(proposeProjectModules({ publicUrl: "https://example.org" })).toEqual([]);
