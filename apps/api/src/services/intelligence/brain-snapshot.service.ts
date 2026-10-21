@@ -127,6 +127,7 @@ export type IntelligenceSnapshot = {
   };
   phase9: Phase9IntelligenceSection;
   emptyReason: string | null;
+  phase9Error: string | null;
 };
 
 const countJsonArray = (value: unknown): number =>
@@ -392,9 +393,11 @@ export const buildIntelligenceSnapshot = async (
     automationRuns;
 
   let phase9;
+  let phase9Error: string | null = null;
   try {
     phase9 = await buildPhase9IntelligenceSection(organizationId);
-  } catch {
+  } catch (error) {
+    phase9Error = error instanceof Error ? error.message : "Phase 9 snapshot unavailable";
     phase9 = await emptyPhase9Section();
   }
   // Legacy and Phase 9 evidence use distinct tables. Do not report zero learning
@@ -506,6 +509,7 @@ export const buildIntelligenceSnapshot = async (
       accuracyLogs: predictionAccuracyLogs
     },
     phase9,
+    phase9Error,
     emptyReason:
       learningState === "EMPTY"
         ? "No operational evidence yet. Heartbeats, checks, alerts, incidents, and deployments will build intelligence automatically."
