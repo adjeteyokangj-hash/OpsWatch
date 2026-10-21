@@ -45,6 +45,10 @@ type IntelligenceSnapshot = {
     automationRuns: number;
     auditEntries: number;
     predictionAccuracyLogs: number;
+    phase9RecentMetricBaselines: number;
+    phase9RecentReadyMetricBaselines: number;
+    phase9RecentOpenAnomalies: number;
+    phase9RecentIncidentPatterns: number;
   };
   recentTimeline: Array<{
     id: string;
@@ -194,6 +198,7 @@ type IntelligenceSnapshot = {
     }>;
   };
   emptyReason: string | null;
+  phase9Error: string | null;
 };
 
 type FeatureGate = {
@@ -309,13 +314,15 @@ export default function IntelligencePage() {
             action={<Link className="text-link" href="/insights">Product insights →</Link>}
           />
 
+          {data.phase9Error ? <section className="panel error-panel" role="alert">Phase 9 intelligence could not be loaded. Learning metrics may be incomplete. {data.phase9Error}</section> : null}
+
           <AiOperationsStatus status={opsStatus} loading={false} />
 
           <section className="grid-6 dashboard-metrics">
             <StatCard label="Observations" value={data.counters.observations} />
-            <StatCard label="Baselines ready" value={`${data.counters.baselinesReady}/${data.counters.baselines}`} />
-            <StatCard label="Metric baselines" value={phase9?.metricBaselines.length ?? 0} />
-            <StatCard label="Open anomalies" value={phase9?.anomalies.length ?? 0} />
+            <StatCard label="Legacy baselines ready" value={`${data.counters.baselinesReady}/${data.counters.baselines}`} />
+            <StatCard label="Recent Phase 9 baselines ready" value={`${data.counters.phase9RecentReadyMetricBaselines}/${data.counters.phase9RecentMetricBaselines}`} />
+            <StatCard label="Recent open anomalies" value={data.counters.phase9RecentOpenAnomalies} />
             <StatCard label="Prediction candidates" value={data.predictionReadiness.candidatesStored} />
             <StatCard label="Incident memory" value={data.counters.incidentMemories} href="/incidents" />
           </section>

@@ -108,7 +108,8 @@ export const buildPhase9IntelligenceSection = async (
         where: {
           organizationId,
           status: { in: ["READY", "INSUFFICIENT_DATA"] },
-          expiresAt: { not: null }
+          // Expired forecasts are historical evidence, not current candidates.
+          expiresAt: { gt: new Date(now) }
         },
         orderBy: { computedAt: "desc" },
         take: 40
