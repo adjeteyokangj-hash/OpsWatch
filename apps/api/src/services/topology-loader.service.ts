@@ -210,7 +210,7 @@ export const loadProjectTopology = async (
         projectId,
         await buildLegacyProjectTopology(organizationId, projectId, project)
       );
-      if (process.env.NODE_ENV !== "production") {
+      {
         fallback.readerDiagnostic = {
           reader: "LEGACY",
           fallbackUsed: true,
@@ -234,7 +234,7 @@ export const loadProjectTopology = async (
     projectId,
     await buildLegacyProjectTopology(organizationId, projectId, project)
   );
-  if (process.env.NODE_ENV !== "production") {
+  {
     topology.readerDiagnostic = {
       reader: "LEGACY",
       fallbackUsed: false,
