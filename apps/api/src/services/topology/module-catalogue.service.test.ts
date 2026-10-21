@@ -25,6 +25,10 @@ describe("project module catalogue proposals", () => {
     expect(proposeProjectModules({ description: "specialist inventory" }).map((row) => row.key)).not.toContain("inventory");
     expect(CORE_MODULE_CATALOGUE).toHaveLength(before);
   });
+  it("matches complete terms rather than substrings", () => {
+    expect(proposeProjectModules({ description: "staffing" }).map((row) => row.key)).not.toContain("identity");
+    expect(proposeProjectModules({ description: "workflow approvals" }).map((row) => row.key)).toContain("tasks");
+  });
   it("does not invent a module without matching evidence", () => {
     expect(proposeProjectModules({ publicUrl: "https://example.org" })).toEqual([]);
   });
