@@ -132,24 +132,16 @@ const classifySharedOrProcess = (
 };
 
 /**
- * Build presentation sections when the graph contains property nodes.
- * Returns null for projects without property metadata so the legacy layout remains.
+ * Build presentation sections for every project using its own registered nodes.
+ * Property containers are optional; other projects use shared functional sections.
  */
 export const buildTopologyPresentationGroups = (
   topology: ProjectTopologyResponse
 ): TopologyPresentationGroups | null => {
-  const propertyRank = (name: string): number => {
-    if (/kanewu/i.test(name)) return 0;
-    if (/community\s*25/i.test(name)) return 1;
-    return 2;
-  };
   const properties = topology.nodes
     .filter((node) => isPropertyNode(node, topology))
-    .sort((a, b) => {
-      const rankDelta = propertyRank(a.name) - propertyRank(b.name);
-      return rankDelta !== 0 ? rankDelta : a.name.localeCompare(b.name);
-    });
-  if (properties.length === 0) return null;
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (topology.nodes.length === 0) return null;
 
   const claimed = new Set<string>();
   const sections: PresentationSection[] = [];
@@ -161,16 +153,10 @@ export const buildTopologyPresentationGroups = (
     const installations = installationsForProperty(property, topology);
     const nodeIds = [property.id, ...installations.map((row) => row.id)];
     for (const id of nodeIds) claimed.add(id);
-    const tone: PresentationSectionTone = /kanewu/i.test(property.name)
-      ? "property-a"
-      : /community/i.test(property.name)
-        ? "property-b"
-        : index % 2 === 0
-          ? "property-a"
-          : "property-b";
+    const tone: PresentationSectionTone = index % 2 === 0 ? "property-a" : "property-b";
     sections.push({
       id: `property:${property.id}`,
-      title: `${property.name} Guest House`,
+      title: property.name,
       tone,
       nodeIds,
       propertyNodeId: property.id
