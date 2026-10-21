@@ -219,9 +219,7 @@ export const loadProjectTopology = async (
           legacyFallbackCount: fallback.nodes.length,
           unresolvedCanonicalReferences: 0,
           details: [
-            `canonical read failed: ${
-              error instanceof Error ? error.message : String(error)
-            }`
+            "canonical read failed; see server logs for the underlying error"
           ]
         };
       }
