@@ -230,6 +230,7 @@ export default function IntelligencePage() {
   const [learningStages, setLearningStages] = useState<LearningStage[]>([]);
   const [operatingProfile, setOperatingProfile] = useState<AiOperatingProfileSnapshot | null>(null);
   const [opsStatus, setOpsStatus] = useState<AiOperationsStatusPayload | null>(null);
+  const [opsStatusError, setOpsStatusError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
@@ -237,6 +238,7 @@ export default function IntelligencePage() {
   const load = async () => {
     setLoading(true);
     setError(null);
+    setOpsStatusError(null);
     try {
       // Skip on-read harvest — worker learning cycle owns writes; keeps UI reads light.
       const [snapshot, gatePayload, operationsStatus] = await Promise.all([
@@ -250,7 +252,10 @@ export default function IntelligencePage() {
           learningStages: [] as LearningStage[],
           operatingProfile: undefined as AiOperatingProfileSnapshot | undefined
         })),
-        apiFetch<AiOperationsStatusPayload>("/intelligence/operations-status").catch(() => null)
+        apiFetch<AiOperationsStatusPayload>("/intelligence/operations-status").catch((err: unknown) => {
+          setOpsStatusError(err instanceof Error ? err.message : "AI operations status request failed");
+          return null;
+        })
       ]);
       setData(snapshot);
       setGates(gatePayload.gates ?? []);
@@ -316,7 +321,7 @@ export default function IntelligencePage() {
 
           {data.phase9Error ? <section className="panel error-panel" role="alert">Phase 9 intelligence could not be loaded. Learning metrics may be incomplete. {data.phase9Error}</section> : null}
 
-          <AiOperationsStatus status={opsStatus} loading={false} />
+          <AiOperationsStatus status={opsStatus} loading={false} error={opsStatusError ? `AI operations status could not be retrieved: ${opsStatusError}. This does not mean AI is disabled.` : null} />
 
           <section className="grid-6 dashboard-metrics">
             <StatCard label="Observations" value={data.counters.observations} />
@@ -330,7 +335,9 @@ export default function IntelligencePage() {
           <PageSection
             title="Prediction readiness"
             description={
-              opsStatus?.capabilities.find((c) => c.id === "prediction_engine")?.tone === "green"
+              !opsStatus
+                ? "AI runtime status is unavailable. Prediction capability cannot be verified from this request."
+                : opsStatus.capabilities.find((c) => c.id === "prediction_engine")?.tone === "green"
                 ? "Prediction engine is active with recent candidates. Emission still requires evidence, confidence thresholds, expiry, and review for high impact."
                 : opsStatus?.capabilities.find((c) => c.id === "prediction_engine")?.tone === "amber"
                   ? "Prediction engine is enabled but waiting for enough evidence to emit confidence-gated candidates."
