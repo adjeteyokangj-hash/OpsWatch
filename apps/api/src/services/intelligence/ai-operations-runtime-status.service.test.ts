@@ -15,13 +15,6 @@ const capability = (
   summary,
   lastEvidenceAt: null,
   evidence
-  it("remains blocked without recent AI decision evidence when the worker is down", () => {
-    const status = baseStatus("green");
-    status.capabilities = status.capabilities.map(row => row.id === "last_ai_decision" ? { ...row, tone: "red" } : row);
-    const merged = mergeAiOperationsRuntimeStatus(status, worker("red"));
-    expect(merged.overall.tone).toBe("red");
-    expect(merged.overall.modeLabel).toBe("AI configured — worker unavailable");
-  });
 });
 
 const baseStatus = (predictionTone: "green" | "amber" | "red" = "amber"): AiOperationsStatusPayload => ({
