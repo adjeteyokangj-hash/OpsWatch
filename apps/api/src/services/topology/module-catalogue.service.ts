@@ -36,6 +36,12 @@ export type ModuleDiscoveryInput = {
   /** Extensions are scoped to this invocation, never mutated into the shared catalogue. */
   extensions?: readonly ModuleDefinition[];
 };
+const matchesTerm = (value: string, term: string): boolean => {
+  const normalized = ` ${value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+  const needle = ` ${term.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
+  return needle.trim().length > 0 && normalized.includes(needle);
+};
+
 export const proposeProjectModules = (input: ModuleDiscoveryInput): ModuleProposal[] => {
   const evidence: Array<{ source: ModuleEvidenceSource; value: string; verified: boolean }> = [];
   if (input.description?.trim()) evidence.push({ source: "description", value: input.description.trim(), verified: false });
@@ -56,7 +62,7 @@ export const proposeProjectModules = (input: ModuleDiscoveryInput): ModulePropos
   }
   return [...unique.values()].flatMap((definition) => {
     const matches = evidence.filter((entry) => definition.terms.some((term) =>
-      entry.value.toLowerCase().includes(term.toLowerCase())
+      matchesTerm(entry.value, term)
     ));
     if (!matches.length) return [];
     return [{
