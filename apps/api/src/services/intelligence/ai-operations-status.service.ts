@@ -423,6 +423,22 @@ export const buildAiOperationsStatus = async (input: {
     }
   };
 
+  // Configuration readiness is not evidence that the provider responds successfully.
+  const llmEnabled = process.env.INCIDENT_AI_LLM_ENABLED === "true";
+  const llmCredentialPresent = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const llmDiagnosisCapability: OpsStatusCapability = {
+    id: "llm_diagnosis",
+    label: "LLM incident analysis",
+    tone: llmEnabled && llmCredentialPresent ? "amber" : "red",
+    summary: !llmEnabled
+      ? "LLM incident enhancement is disabled by configuration. Rules-based diagnosis remains available."
+      : !llmCredentialPresent
+        ? "LLM incident enhancement is enabled but the provider credential is missing. Rules-based diagnosis remains available."
+        : "LLM incident enhancement is configured, but live provider availability is not verified. Rules-based diagnosis remains available.",
+    lastEvidenceAt: null,
+    evidence: { enabled: llmEnabled, providerConfigured: llmCredentialPresent, liveProviderVerified: false }
+  };
+
   // Advanced diagnosis
   const diagnosisAudit =
     latestAudit &&
@@ -640,6 +656,7 @@ export const buildAiOperationsStatus = async (input: {
     learningCapability,
     preventiveCapability,
     diagnosisCapability,
+    llmDiagnosisCapability,
     healCapability,
     recoveryCapability,
     topologyLearningCapability,

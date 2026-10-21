@@ -48,9 +48,13 @@ export const mergeAiOperationsRuntimeStatus = (
 
   if (aiLed) {
     if (worker.capability.tone === "red") {
-      modeLabel = "AI configured — worker unavailable";
-      tone = "red";
-      summary = worker.capability.summary;
+      modeLabel = lastDecision?.tone === "green"
+        ? "AI analysis evidenced — worker unavailable"
+        : "AI configured — worker unavailable";
+      tone = lastDecision?.tone === "green" ? "amber" : "red";
+      summary = lastDecision?.tone === "green"
+        ? `Worker-dependent operations are unavailable. Recent AI decision evidence exists, but current diagnosis availability is not verified. ${worker.capability.summary}`
+        : worker.capability.summary;
     } else if (prediction?.tone === "red") {
       modeLabel = "AI running — predictions off";
       tone = "amber";
@@ -77,9 +81,9 @@ export const mergeAiOperationsRuntimeStatus = (
       summary = "Worker runtime, learning and AI decision evidence are active.";
     }
   } else if (worker.capability.tone === "red") {
-    modeLabel = "Safety-gated — worker unavailable";
+    modeLabel = "Automation worker unavailable";
     tone = "red";
-    summary = worker.capability.summary;
+    summary = `Worker-dependent operations are unavailable; this does not establish whether read-only analysis is available. ${worker.capability.summary}`;
   }
 
   const blocked = [

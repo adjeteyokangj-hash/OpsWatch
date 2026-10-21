@@ -252,6 +252,7 @@ const tryLlmEnhancement = async (
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
+      signal: AbortSignal.timeout(12_000),
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json"
@@ -314,6 +315,7 @@ const tryLlmEnhancement = async (
       ]
     };
   } catch {
+    // Provider timeout or transport failure must not prevent evidence-based rule diagnosis.
     return null;
   }
 };

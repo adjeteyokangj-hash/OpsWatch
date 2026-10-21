@@ -79,11 +79,21 @@ describe("mergeAiOperationsRuntimeStatus", () => {
     expect(merged.overall.summary).toMatch(/can continue/i);
   });
 
-  it("prioritises an unavailable worker over other AI capability states", () => {
+  it("reports worker failure without claiming that recent AI decisions prove current availability", () => {
     const merged = mergeAiOperationsRuntimeStatus(baseStatus("green"), worker("red"));
 
-    expect(merged.overall.modeLabel).toBe("AI configured — worker unavailable");
-    expect(merged.overall.tone).toBe("red");
+    expect(merged.overall.modeLabel).toBe("AI analysis evidenced — worker unavailable");
+    expect(merged.overall.tone).toBe("amber");
+    expect(merged.overall.summary).toMatch(/current diagnosis availability is not verified/i);
     expect(merged.blocked.some((row) => row.id === "worker_runtime_unhealthy")).toBe(true);
+  });
+  it("reports blocked when the worker is down and no recent AI decision exists", () => {
+    const status = baseStatus("green");
+    status.capabilities = status.capabilities.map((row) =>
+      row.id === "last_ai_decision" ? { ...row, tone: "red" } : row
+    );
+    const merged = mergeAiOperationsRuntimeStatus(status, worker("red"));
+    expect(merged.overall.tone).toBe("red");
+    expect(merged.overall.modeLabel).toBe("AI configured — worker unavailable");
   });
 });
