@@ -9,6 +9,7 @@ type Props = {
   loading?: boolean;
   compact?: boolean;
   projectId?: string;
+  error?: string | null;
 };
 
 const toneBadge = (tone: OpsStatusTone): "success" | "warning" | "danger" => {
@@ -55,7 +56,7 @@ const formatWhen = (value: string | null | undefined): string => {
   }
 };
 
-export function AiOperationsStatus({ status, loading, compact, projectId }: Props) {
+export function AiOperationsStatus({ status, loading, compact, projectId, error }: Props) {
   if (loading) {
     return (
       <section className={compact ? "ai-ops-status ai-ops-status--compact" : "ai-ops-status panel"} aria-busy="true">
@@ -67,7 +68,7 @@ export function AiOperationsStatus({ status, loading, compact, projectId }: Prop
   if (!status) {
     return (
       <section className={compact ? "ai-ops-status ai-ops-status--compact" : "ai-ops-status panel"}>
-        <p className="muted">AI operations status unavailable.</p>
+        <p className="muted" role="status">{error ?? "AI operations status has not been loaded. This is not evidence that AI is disabled."}</p>
       </section>
     );
   }
