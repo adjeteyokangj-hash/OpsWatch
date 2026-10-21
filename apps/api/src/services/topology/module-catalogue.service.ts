@@ -39,7 +39,12 @@ export type ModuleDiscoveryInput = {
 const matchesTerm = (value: string, term: string): boolean => {
   const normalized = ` ${value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
   const needle = ` ${term.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `;
-  return needle.trim().length > 0 && normalized.includes(needle);
+  if (!needle.trim()) return false;
+  if (normalized.includes(needle)) return true;
+  // Support simple English plurals without accepting arbitrary substring matches.
+  const phrase = needle.trim();
+  if (phrase.endsWith("s")) return false;
+  return normalized.includes(` ${phrase}s `) || normalized.includes(` ${phrase}es `);
 };
 
 export const proposeProjectModules = (input: ModuleDiscoveryInput): ModuleProposal[] => {
