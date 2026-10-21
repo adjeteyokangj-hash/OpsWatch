@@ -56,6 +56,10 @@ export type IntelligenceSnapshot = {
     automationRuns: number;
     auditEntries: number;
     predictionAccuracyLogs: number;
+    phase9MetricBaselines: number;
+    phase9ReadyMetricBaselines: number;
+    phase9OpenAnomalies: number;
+    phase9IncidentPatterns: number;
   };
   recentTimeline: Array<{
     id: string;
@@ -387,18 +391,22 @@ export const buildIntelligenceSnapshot = async (
     timelineEvents +
     automationRuns;
 
-  let learningState: IntelligenceSnapshot["learningState"] = "EMPTY";
-  if (totalSignals === 0) learningState = "EMPTY";
-  else if (baselinesReady > 0 || patternsDisplayable > 0 || incidentMemories > 0)
-    learningState = "ACTIVE";
-  else learningState = "LEARNING";
-
   let phase9;
   try {
     phase9 = await buildPhase9IntelligenceSection(organizationId);
   } catch {
     phase9 = await emptyPhase9Section();
   }
+  // Legacy and Phase 9 evidence use distinct tables. Do not report zero learning
+  // solely because the legacy baseline table has no rows.
+  const phase9ReadyMetricBaselines = phase9.metricBaselines.filter(
+    (row) => row.dataQualityState === "LIVE" && row.confidenceLabel !== "INSUFFICIENT" && row.freshness === "FRESH"
+  ).length;
+  const phase9HasEvidence = phase9.metricBaselines.length > 0 || phase9.anomalies.length > 0 || phase9.incidentPatterns.length > 0;
+  const learningState: IntelligenceSnapshot["learningState"] =
+    baselinesReady > 0 || patternsDisplayable > 0 || incidentMemories > 0 || phase9ReadyMetricBaselines > 0
+      ? "ACTIVE"
+      : totalSignals > 0 || phase9HasEvidence ? "LEARNING" : "EMPTY";
   const stages = listLearningStages();
   const enabledStageLabels = stages.filter((s) => s.enabled).map((s) => s.key);
 
@@ -425,7 +433,11 @@ export const buildIntelligenceSnapshot = async (
       timelineEvents,
       automationRuns,
       auditEntries,
-      predictionAccuracyLogs
+      predictionAccuracyLogs,
+      phase9MetricBaselines: phase9.metricBaselines.length,
+      phase9ReadyMetricBaselines,
+      phase9OpenAnomalies: phase9.anomalies.length,
+      phase9IncidentPatterns: phase9.incidentPatterns.length
     },
     recentTimeline: recentTimeline.map((row) => ({
       id: row.id,
