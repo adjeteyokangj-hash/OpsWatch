@@ -110,14 +110,14 @@ const niinaTopology = (): ProjectTopologyResponse => {
 };
 
 describe("buildTopologyPresentationGroups", () => {
-  it("returns null when the graph has no property nodes", () => {
+  it("groups applications without property nodes", () => {
     const topology = niinaTopology();
     topology.nodes = topology.nodes.filter((row) => row.type === "APP" || row.name === "Bookings");
     topology.nodeContext = {
       [topology.nodes[0]!.id]: topology.nodeContext[topology.nodes[0]!.id]!,
       [topology.nodes[1]!.id]: topology.nodeContext[topology.nodes[1]!.id]!
     };
-    expect(buildTopologyPresentationGroups(topology)).toBeNull();
+    expect(buildTopologyPresentationGroups(topology)?.sections.find(section => section.id === "shared")?.nodeIds).toContain("module:bookings");
   });
 
   it("places guest houses separately and keeps shared modules once", () => {
@@ -125,8 +125,8 @@ describe("buildTopologyPresentationGroups", () => {
     const groups = buildTopologyPresentationGroups(topology);
     expect(groups).not.toBeNull();
     expect(groups!.propertyOptions.map((row) => row.name)).toEqual([
-      "Kanewu",
-      "Community 25"
+      "Community 25",
+      "Kanewu"
     ]);
 
     const propertySections = groups!.sections.filter((section) => section.propertyNodeId);
@@ -156,11 +156,11 @@ describe("buildTopologyPresentationGroups", () => {
 });
 
 describe("presentation regressions", () => {
-  it.each(["TrueNumeris", "OkangGroup", "Other application"])("preserves the legacy layout for %s without property metadata", name => {
+  it.each(["TrueNumeris", "OkangGroup", "Other application"])("uses the presentation layout for %s without property metadata", name => {
     const topology = niinaTopology();
     topology.project.name = name;
     topology.nodes = topology.nodes.filter(row => !["module:kanewu", "module:c25"].includes(row.id));
-    expect(buildTopologyPresentationGroups(topology)).toBeNull();
+    expect(buildTopologyPresentationGroups(topology)?.sections.length).toBeGreaterThan(0);
   });
 
   it("keeps the Synchronisation module shared and its workflows in Business Processes", () => {
