@@ -56,7 +56,7 @@ export const proposeProjectModules = (input: ModuleDiscoveryInput): ModulePropos
   }
   return [...unique.values()].flatMap((definition) => {
     const matches = evidence.filter((entry) => definition.terms.some((term) =>
-      new RegExp(`(^|[^a-z0-9])${term.replace(/[.*+?^$\{\}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i").test(entry.value)
+      entry.value.toLowerCase().includes(term.toLowerCase())
     ));
     if (!matches.length) return [];
     return [{
