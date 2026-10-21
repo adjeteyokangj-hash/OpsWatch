@@ -121,6 +121,7 @@ export default function ProjectTopologyPage() {
   const [sideStackCollapsed, setSideStackCollapsed] = useState(false);
   const [operatingProfile, setOperatingProfile] = useState<AiOperationsStatusPayload | null>(null);
   const [operatingProfileLoading, setOperatingProfileLoading] = useState(true);
+  const [operatingProfileError, setOperatingProfileError] = useState<string | null>(null);
 
   useEffect(() => {
     setSideStackCollapsed(readSideStackCollapsed());
@@ -133,15 +134,22 @@ export default function ProjectTopologyPage() {
   useEffect(() => {
     let cancelled = false;
     setOperatingProfileLoading(true);
+    setOperatingProfileError(null);
     const path = projectId
       ? `/intelligence/operations-status?projectId=${encodeURIComponent(projectId)}`
       : "/intelligence/operations-status";
     void apiFetch<AiOperationsStatusPayload>(path)
       .then((payload) => {
-        if (!cancelled) setOperatingProfile(payload);
+        if (!cancelled) {
+          setOperatingProfile(payload);
+          setOperatingProfileError(null);
+        }
       })
       .catch(() => {
-        if (!cancelled) setOperatingProfile(null);
+        if (!cancelled) {
+          setOperatingProfile(null);
+          setOperatingProfileError("AI status request failed. Capability state is unknown; check connectivity and retry the page.");
+        }
       })
       .finally(() => {
         if (!cancelled) setOperatingProfileLoading(false);
@@ -613,6 +621,7 @@ export default function ProjectTopologyPage() {
         <AiOperationsStatus
           status={operatingProfile}
           loading={operatingProfileLoading}
+          error={operatingProfileError}
           compact
           projectId={projectId}
         />

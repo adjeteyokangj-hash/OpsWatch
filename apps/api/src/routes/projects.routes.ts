@@ -25,6 +25,7 @@ import {
   patchSloDefinitionByProject
 } from "../controllers/slos.controller";
 import { getProjectTopology } from "../controllers/topology.controller";
+import { getProjectModuleCatalogue } from "../controllers/module-catalogue.controller";
 import { getRelationshipIncidentMemorySignals } from "../controllers/topology.controller";
 import {
   getProjectAutonomousMode,
@@ -51,6 +52,7 @@ projectsRouter.patch("/projects/:projectId", patchProject);
 projectsRouter.delete("/projects/:projectId", requireAdmin, deleteProject);
 
 projectsRouter.get("/projects/:projectId/topology", getProjectTopology);
+projectsRouter.get("/projects/:projectId/module-catalogue", getProjectModuleCatalogue);
 projectsRouter.get(
   "/projects/:projectId/topology/relationships/:edgeId/incident-memory",
   getRelationshipIncidentMemorySignals
