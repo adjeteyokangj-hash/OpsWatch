@@ -13,22 +13,34 @@ export const getProjectModuleCatalogue = async (req: AuthRequest, res: Response)
   const projectId = String(req.params.projectId);
   const project = await prisma.project.findFirst({
     where: { id: projectId, organizationId },
-    select: { id: true, name: true }
+    select: { id: true, name: true, description: true, frontendUrl: true }
   });
   if (!project) {
     res.status(404).json({ error: "Project not found" });
     return;
   }
-  // Project name is descriptive evidence, never proof of a deployed module.
-  const proposals = proposeProjectModules({ description: project.name });
+  // Owner-supplied description and configured URL are hints, not proof of deployed functionality.
+  // URL hostname inspection is deliberately not a network probe.
+  const proposals = proposeProjectModules({
+    description: project.description?.trim() || project.name,
+    publicUrl: project.frontendUrl ?? undefined
+  });
+  const sources = [
+    project.description?.trim() ? "project_description" : "project_name",
+    ...(project.frontendUrl?.trim() ? ["configured_public_url_hostname"] : [])
+  ];
   res.json({
     projectId: project.id,
     catalogue: CORE_MODULE_CATALOGUE.map(({ key, label }) => ({ key, label })),
     proposals,
     discovery: {
       state: "PARTIAL",
-      sources: ["project_name"],
-      missingSources: ["project_description", "public_url_inspection", "authorised_connected_api_capabilities"],
+      sources,
+      missingSources: [
+        ...(!project.description?.trim() ? ["project_description"] : []),
+        "public_url_inspection",
+        "authorised_connected_api_capabilities"
+      ],
       note: "Read-only preliminary suggestions. No live topology or monitoring is created."
     }
   });
