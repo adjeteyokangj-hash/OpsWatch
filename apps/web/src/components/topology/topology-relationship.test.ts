@@ -107,12 +107,15 @@ describe("evidence-based relationship summaries", () => {
 });
 
 describe("topology-relationship", () => {
-  it("marks zero-degree monitored areas as discovery incomplete", () => {
+  it("distinguishes awaiting monitoring from a pending discovery", () => {
     const diagnostics = buildNodeRelationshipDiagnostics(nobleLikeTopology());
     const admin = diagnostics.find((row) => row.moduleId === "area-admin-portal");
     expect(admin?.connectionState).toBe("awaiting_monitoring");
-    expect(isolationBadgeLabel(admin!.connectionState)).toBe("Discovery pending");
-    expect(admin?.isolatedStateReason).toMatch(/discovery pending/i);
+    expect(isolationBadgeLabel(admin!.connectionState)).toBe("Awaiting first check");
+    expect(admin?.isolatedStateReason).toMatch(/first monitoring result/i);
+    const pending = resolveConnectionState({ node: nobleLikeTopology().nodes[2], totalRelationships: 0, monitoringState: "DISCOVERY_PENDING" });
+    expect(pending.state).toBe("discovery_incomplete");
+    expect(isolationBadgeLabel(pending.state)).toBe("Discovery pending");
   });
 
   it("marks modules with relationships as connected", () => {
