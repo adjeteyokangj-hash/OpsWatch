@@ -55,8 +55,8 @@ export default function ModuleCataloguePage() {
       <label>Discovery terms separated by commas <input name="terms" required defaultValue={editing?.terms?.join(", ")} /></label>
       <label>Capabilities separated by commas <input name="capabilities" defaultValue={editing?.capabilities?.join(", ")} /></label>
       {editing && <label>Status <select name="status" aria-label="Module status" defaultValue={editing.status}><option>ACTIVE</option><option>ARCHIVED</option></select></label>}
-      <button className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : editing ? "Save module" : "Add custom module"}</button>
-      {editing && <button className="btn btn-secondary" type="button" onClick={() => setEditing(null)}>Cancel editing</button>}
+      <button className="primary-button" disabled={busy}>{busy ? "Saving…" : editing ? "Save module" : "Add custom module"}</button>
+      {editing && <button className="secondary-button" type="button" onClick={() => setEditing(null)}>Cancel editing</button>}
     </form>}
   </section></Shell>;
 }

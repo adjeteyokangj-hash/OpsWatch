@@ -1,6 +1,6 @@
 # Issue 19 implementation and release verification
 
-Status: implementation under validation. No production deployment or production database change is authorised by this report.
+Status: implemented in [draft PR 20](https://github.com/adjeteyokangj-hash/OpsWatch/pull/20), with release validation in progress. No production deployment or production database change is authorised by this report.
 
 ## Baseline and preservation
 
@@ -19,6 +19,8 @@ Implementation extends GitHub main `66f61d7b8a2dbeb2aad84d5a418d6102f34d8fc8` in
 
 Website metadata requests pin validated public DNS answers, use HTTPS with normal host verification, reject redirects/private addresses and bound response size/time. Website content is untrusted evidence, never executable instructions. API mutations retain session CSRF protection and administrator checks. Composite database foreign keys also prevent cross-project/tenant component bindings.
 
+Browser verification uncovered two additional runtime defects: a router-wide platform billing gate blocked ordinary authenticated requests to subsequent routers, including AI Operations; and concurrent initial plan seeding could fail with a unique-key race. The gate now applies only to platform billing paths, whose restrictions remain tested. Plan/entitlement seeding retries a unique-key race once; outages and persistent conflicts still fail. These are reproduced code-level causes, not proof of a retrospective production incident cause.
+
 ## Migration requirement
 
 One new migration: `apps/api/prisma/migrations/20261023090000_module_catalogue_assignments/migration.sql`.
@@ -31,7 +33,24 @@ The disposable test harness reconstructs the audited baseline in a newly generat
 
 ## Validation
 
-Final validation results are being collected. CI and browser evidence will be linked after the consolidated pull request is created.
+| Gate | Local evidence |
+| --- | --- |
+| Migration safety | Five guard tests and lifecycle scan passed. |
+| Build | Full workspace production build passed; API compiled again after routing/concurrency corrections. Web rebuilt for final styling. |
+| Lint/typecheck | Passed; one existing topology page `selectedEdge` hook dependency warning remains. |
+| Full unit suite | API 654 passed (47 database-gated skips), worker 43 passed (3 database-gated skips), web 228 passed across 53 files. Four additional route-boundary/concurrency tests passed after the runtime corrections. |
+| PostgreSQL integration | API 701 passed across 161 files and worker 46 passed across 17 files against disposable PostgreSQL 18; additive migration/schema parity passed. |
+| Browser acceptance | Desktop Chrome and mobile Chromium both passed against local built servers and a fresh disposable database. Requires full AI capability payload, persisted approval/note after reload, unchanged topology after approval, custom definition create/archive, foreign-tenant denial and missing-CSRF rejection. |
+
+The first browser extension exposed the billing-route gate; a subsequent run exposed the plan-seeding race rather than accepting a partial fallback as full readiness. Both were corrected and acceptance rerun. The first GitHub database job failed because shallow checkout omitted the baseline commit; the database job now fetches history. CI runs on Node 22/PostgreSQL 17; local checks used Node 26/PostgreSQL 18. No real model provider calls or live production smoke tests were made.
+
+Final CI is tracked in [PR checks](https://github.com/adjeteyokangj-hash/OpsWatch/pull/20/checks). The screenshots below use disposable fixtures and contain no production data:
+
+| View | Desktop | Mobile |
+| --- | --- | --- |
+| Approved assignment and evidence | [Screenshot](evidence/issue19/issue19-desktop-assignments.png) | [Screenshot](evidence/issue19/issue19-mobile-assignments.png) |
+| Managed catalogue | [Screenshot](evidence/issue19/issue19-desktop-catalogue.png) | [Screenshot](evidence/issue19/issue19-mobile-catalogue.png) |
+| Full AI Operations | [Screenshot](evidence/issue19/issue19-desktop-ai-operations.png) | [Screenshot](evidence/issue19/issue19-mobile-ai-operations.png) |
 
 ## Production verification blockers
 

@@ -26,7 +26,7 @@ export default function ProjectAiOperationsPage() {
   }, [projectId, revision]);
   return <ProjectWorkspaceShell projectId={projectId} project={workspace.project} loading={workspace.loading}
     error={workspace.error} title="AI Operations" subtitle="Capability configuration, worker diagnostics and application evidence."
-    actions={<button className="btn btn-secondary" disabled={loading} onClick={() => setRevision(value => value + 1)}>Refresh AI evidence</button>}>
+    actions={<button className="secondary-button" disabled={loading} onClick={() => setRevision(value => value + 1)}>Refresh AI evidence</button>}>
     <section className="panel">
       <p>Decisions and learning evidence are scoped to this application. Worker runtime describes shared infrastructure. Missing evidence stays unknown and does not enable remediation.</p>
       <div className="module-catalogue-actions">

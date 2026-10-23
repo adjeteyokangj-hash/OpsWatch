@@ -63,7 +63,7 @@ export function ModuleCataloguePanel({ projectId }: { projectId: string }) {
     {data?.canManage && <div className="module-catalogue-controls">
       <label className="module-catalogue-choice"><input type="checkbox" checked={inspectWebsite} onChange={event => setInspectWebsite(event.target.checked)} />Inspect metadata from this application’s configured public website</label>
       <label className="module-catalogue-choice"><input type="checkbox" checked={useAi} onChange={event => setUseAi(event.target.checked)} />Use configured AI to recommend modules from the collected evidence</label>
-      <button className="btn btn-primary" disabled={busy} onClick={() => void mutate()}>{busy ? "Working…" : "Analyse module evidence"}</button>
+      <button className="primary-button" disabled={busy} onClick={() => void mutate()}>{busy ? "Working…" : "Analyse module evidence"}</button>
       <p>Analysis uses stored application information and fresh authorised API imports. Website inspection is optional. Reanalysis preserves owner decisions.</p>
     </div>}
     {data && <div className="table-scroll"><table className="data-table"><thead><tr><th>Module</th><th>Assignment</th><th>Evidence</th><th>Review</th></tr></thead>
@@ -85,10 +85,10 @@ export function ModuleCataloguePanel({ projectId }: { projectId: string }) {
             <label>Owner note <input aria-label={`Owner note for ${definition.label}`} maxLength={500}
               value={notes[definition.key] ?? assignment?.note ?? ""}
               onChange={event => setNotes(current => ({ ...current, [definition.key]: event.target.value }))} /></label>
-            <button className="btn btn-primary" disabled={busy || assignment?.state === "APPROVED" || definition.status !== "ACTIVE"} onClick={() => void mutate(definition.key, "APPROVED", assignment)}>Approve</button>
-            <button className="btn btn-secondary" disabled={busy || assignment?.state === "REJECTED"} onClick={() => void mutate(definition.key, "REJECTED", assignment)}>Reject</button>
-            {assignment && <button className="btn btn-secondary" disabled={busy || assignment.state === "REMOVED"} onClick={() => void mutate(definition.key, "REMOVED", assignment)}>Remove assignment</button>}
-            {assignment && assignment.state !== "PROPOSED" && <button className="btn btn-secondary" disabled={busy} onClick={() => void mutate(definition.key, assignment.state, assignment)}>Save note</button>}
+            <button className="primary-button" disabled={busy || assignment?.state === "APPROVED" || definition.status !== "ACTIVE"} onClick={() => void mutate(definition.key, "APPROVED", assignment)}>Approve</button>
+            <button className="secondary-button" disabled={busy || assignment?.state === "REJECTED"} onClick={() => void mutate(definition.key, "REJECTED", assignment)}>Reject</button>
+            {assignment && <button className="secondary-button" disabled={busy || assignment.state === "REMOVED"} onClick={() => void mutate(definition.key, "REMOVED", assignment)}>Remove assignment</button>}
+            {assignment && assignment.state !== "PROPOSED" && <button className="secondary-button" disabled={busy} onClick={() => void mutate(definition.key, assignment.state, assignment)}>Save note</button>}
           </div> : <>{assignment?.note && <p>{assignment.note}</p>}Administrator review required</>}</td>
         </tr>;
       })}</tbody></table></div>}
