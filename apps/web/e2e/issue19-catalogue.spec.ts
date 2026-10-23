@@ -24,6 +24,11 @@ test("owner discovery, review, catalogue management and tenant boundaries", asyn
   await page.screenshot({ path: `../../test-artifacts/issue19-${testInfo.project.name}-assignments.png`, fullPage: true });
 
   await page.goto(`/projects/${projectId}/ai-operations`);
+  const operations = await page.request.get(`/api/intelligence/operations-status?projectId=${projectId}`);
+  expect(operations.status()).toBe(200);
+  const operationsPayload = await operations.json();
+  expect(operationsPayload.partial).toBe(false);
+  expect(operationsPayload.capabilities.some((capability: { id: string }) => capability.id === "llm_diagnosis")).toBe(true);
   await expect(page.getByRole("heading", { name: "AI Operations", exact: true })).toBeVisible();
   await expect(page.getByTestId("ai-ops-status")).toBeVisible();
   await expect(page.locator('[data-capability="worker_heartbeat"]')).toContainText(/not proven|unhealthy|stale|unavailable/i);

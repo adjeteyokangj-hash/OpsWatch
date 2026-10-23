@@ -10,7 +10,9 @@ import { requirePlatformSuperAdmin } from "../middleware/require-platform-super-
 
 export const adminBillingRouter = Router();
 
-adminBillingRouter.use(requirePlatformSuperAdmin);
+// This router is mounted at /api alongside other feature routers. Restrict
+// the platform-only gate to its own routes so unrelated requests can continue.
+adminBillingRouter.use("/admin/billing/stripe", requirePlatformSuperAdmin);
 
 adminBillingRouter.get("/admin/billing/stripe", getPlatformStripe);
 adminBillingRouter.put("/admin/billing/stripe", savePlatformStripe);
