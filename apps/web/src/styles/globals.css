@@ -667,6 +667,10 @@ h1 {
   margin: 20px 0;
   max-width: 720px;
 }
+.module-catalogue-panel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .module-definition-form label {
   display: grid;
   gap: 6px;
@@ -701,6 +705,8 @@ h1 {
 }
 .table-scroll {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
 }
 

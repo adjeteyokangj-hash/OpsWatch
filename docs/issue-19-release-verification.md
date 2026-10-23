@@ -40,11 +40,11 @@ The disposable test harness reconstructs the audited baseline in a newly generat
 | Lint/typecheck | Passed; one existing topology page `selectedEdge` hook dependency warning remains. |
 | Full unit suite | API 654 passed (47 database-gated skips), worker 43 passed (3 database-gated skips), web 228 passed across 53 files. Four additional route-boundary/concurrency tests passed after the runtime corrections. |
 | PostgreSQL integration | API 701 passed across 161 files and worker 46 passed across 17 files against disposable PostgreSQL 18; additive migration/schema parity passed. |
-| Browser acceptance | Desktop Chrome and mobile Chromium both passed against local built servers and a fresh disposable database. Requires full AI capability payload, persisted approval/note after reload, unchanged topology after approval, custom definition create/archive, foreign-tenant denial and missing-CSRF rejection. |
+| Browser acceptance | Desktop and mobile Chromium both passed against local built servers and a fresh disposable database. Requires a catalogue panel within the viewport, full AI capability payload, persisted approval/note after reload, unchanged topology after approval, custom definition create/archive, foreign-tenant denial and missing-CSRF rejection. Chrome was also exercised. |
 
 The first browser extension exposed the billing-route gate; a subsequent run exposed the plan-seeding race rather than accepting a partial fallback as full readiness. Both were corrected and acceptance rerun. The first GitHub database job failed because shallow checkout omitted the baseline commit; the database job now fetches history. CI runs on Node 22/PostgreSQL 17; local checks used Node 26/PostgreSQL 18. No real model provider calls or live production smoke tests were made.
 
-Final CI is tracked in [PR checks](https://github.com/adjeteyokangj-hash/OpsWatch/pull/20/checks). The screenshots below use disposable fixtures and contain no production data:
+[CI verified the runtime implementation](https://github.com/adjeteyokangj-hash/OpsWatch/actions/runs/39969253232), including 705 API and 46 worker database tests and both browser projects. Final revision CI is tracked in [PR checks](https://github.com/adjeteyokangj-hash/OpsWatch/pull/20/checks). The screenshots below use disposable fixtures and contain no production data:
 
 | View | Desktop | Mobile |
 | --- | --- | --- |

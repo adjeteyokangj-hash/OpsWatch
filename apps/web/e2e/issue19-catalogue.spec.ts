@@ -18,6 +18,9 @@ test("owner discovery, review, catalogue management and tenant boundaries", asyn
   await page.reload();
   await expect(row.getByText("APPROVED", { exact: true })).toBeVisible();
   await expect(row.getByRole("textbox", { name: "Owner note for Gameplay" })).toHaveValue("Reviewed against the application description");
+  const panelBounds = await page.getByRole("region", { name: "Module catalogue and assignments" }).boundingBox();
+  expect(panelBounds).not.toBeNull();
+  expect(panelBounds!.x + panelBounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   const after = await (await page.request.get(`/api/projects/${projectId}/topology`)).json();
   expect(after.nodes.map((node: { id: string }) => node.id)).toEqual(before.nodes.map((node: { id: string }) => node.id));
   expect(after.edges).toEqual(before.edges);
