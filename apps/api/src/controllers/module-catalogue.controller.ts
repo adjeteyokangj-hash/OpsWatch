@@ -136,10 +136,6 @@ export const getProjectModuleCatalogue = async (req: AuthRequest, res: Response)
   }
   // Owner-supplied description and configured URL are hints, not proof of deployed functionality.
   // URL hostname inspection is deliberately not a network probe.
-  const proposals = proposeProjectModules({
-    description: project.description?.trim() || project.name,
-    publicUrl: project.frontendUrl ?? undefined
-  });
   const sources = [
     project.description?.trim() ? "project_description" : "project_name",
     ...(project.frontendUrl?.trim() ? ["configured_public_url_hostname"] : [])
@@ -151,6 +147,13 @@ export const getProjectModuleCatalogue = async (req: AuthRequest, res: Response)
     prisma.operationalEntity.findMany({ where: { organizationId, projectId, entityType: "MODULE", lifecycle: "ACTIVE", confirmationState: "CONFIRMED", isTestSeed: false },
       select: { id: true, name: true, health: true, lastSeenAt: true }, take: 200 })
   ]);
+  const proposals = proposeProjectModules({
+    description: project.description?.trim() || project.name,
+    publicUrl: project.frontendUrl ?? undefined,
+    extensions: catalogue
+      .filter(row => row.source === "CUSTOM" && row.status === "ACTIVE" && Array.isArray(row.terms))
+      .map(row => ({ key: row.key, label: row.label, terms: row.terms as string[] }))
+  });
   const runEvidence = latestRun?.sourcesJson as { missing?: string[]; sources?: unknown[]; method?: string; aiState?: string } | null;
   res.json({
     projectId: project.id,

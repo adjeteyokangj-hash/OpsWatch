@@ -44,9 +44,13 @@ export async function recommendModulesWithAi(definitions: Array<{ key: string; l
         ]
       })
     });
-    if (!response.ok) return { state: "PROVIDER_UNAVAILABLE", recommendations: [] };
+    if (!response.ok) return { state: "PROVIDER_HTTP_ERROR", recommendations: [] };
     const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const recommendations = validateAiModuleRecommendations(JSON.parse(payload.choices?.[0]?.message?.content ?? "{}"), definitions, safeEvidence);
-    return { state: "COMPLETED", recommendations };
+    try {
+      const recommendations = validateAiModuleRecommendations(JSON.parse(payload.choices?.[0]?.message?.content ?? "{}"), definitions, safeEvidence);
+      return { state: "COMPLETED", recommendations };
+    } catch {
+      return { state: "PROVIDER_INVALID_RESPONSE", recommendations: [] };
+    }
   } catch { return { state: "PROVIDER_UNAVAILABLE", recommendations: [] }; }
 }

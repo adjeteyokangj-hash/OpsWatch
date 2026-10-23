@@ -7,6 +7,7 @@ afterEach(() => { cleanup(); vi.resetAllMocks(); });
 const payload = (canManage = true, state = "PROPOSED") => ({ projectId: "oware", canManage,
   catalogue: [{ key: "games", label: "Gameplay", description: "Game engine", source: "PLATFORM", category: "OPTIONAL", version: 1, status: "ACTIVE" }],
   assignments: [{ moduleKey: "games", state, confidence: 0.65, evidenceJson: [{ source: "description", reason: "Oware game engine" }], updatedAt: "2026-10-23T10:00:00.000Z" }],
+  proposals: [{ key: "games", label: "Gameplay", state: "inferred" as const, sources: ["description"], evidence: ["Oware game engine"], requiresApproval: true as const }],
   discovery: { state: "PARTIAL", method: "EVIDENCE_RULES", aiState: "NOT_REQUESTED" }
 });
 describe("project module review", () => {
@@ -14,6 +15,8 @@ describe("project module review", () => {
     vi.mocked(apiFetch).mockResolvedValueOnce(payload()).mockResolvedValueOnce({}).mockResolvedValueOnce(payload(true, "APPROVED"));
     render(<ModuleCataloguePanel projectId="oware" />);
     await screen.findByText("PROPOSED");
+    expect(screen.getByRole("region", { name: "Applicability hints" })).toHaveTextContent("Gameplay");
+    expect(screen.getByText(/not assignments, installed modules or health evidence/i)).toBeInTheDocument();
     expect(screen.getByText(/Installed components and operational health require separate verified evidence/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     await screen.findByText("APPROVED");

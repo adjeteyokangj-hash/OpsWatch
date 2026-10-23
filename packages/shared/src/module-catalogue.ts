@@ -28,9 +28,19 @@ export type CatalogueAssignment = {
   updatedAt: string; decidedAt: string | null; note: string | null;
   verifiedEntityId?: string | null;
 };
+export type CatalogueApplicabilityHint = {
+  key: string;
+  label: string;
+  state: "suggested" | "inferred" | "verified";
+  sources: string[];
+  evidence: string[];
+  requiresApproval: true;
+};
 export type ProjectCatalogue = {
   projectId: string; canManage: boolean; catalogue: CatalogueDefinition[];
   assignments: CatalogueAssignment[];
+  /** Read-only applicability hints from stored description/URL. Not assignments and not topology. */
+  proposals?: CatalogueApplicabilityHint[];
   verifiedComponents?: Array<{ id: string; name: string; health: string; lastSeenAt: string | null }>;
   discovery: { state: string; method?: string; aiState?: string; missingSources?: string[]; sourcesJson?: unknown; completedAt?: string | null } | null;
 };

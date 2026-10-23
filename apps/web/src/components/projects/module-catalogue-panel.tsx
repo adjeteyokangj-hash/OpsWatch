@@ -60,6 +60,11 @@ export function ModuleCataloguePanel({ projectId }: { projectId: string }) {
     {data?.discovery && <p role="status">Discovery: {data.discovery.state}. Method: {data.discovery.method ?? "Unknown"}. AI: {data.discovery.aiState ?? "Unknown"}.
       {data.discovery.missingSources?.length ? ` Missing evidence: ${data.discovery.missingSources.join(", ")}.` : ""}
     </p>}
+    {data?.proposals && data.proposals.length > 0 && <div className="module-catalogue-hints" role="region" aria-label="Applicability hints">
+      <h3>Applicability hints</h3>
+      <p>These are read-only matches from the stored application description and configured public URL. They are not assignments, installed modules or health evidence. Run analysis to persist proposals for review.</p>
+      <ul>{data.proposals.map(hint => <li key={hint.key}><strong>{hint.label}</strong> · {hint.state} · {hint.sources.join(", ")}</li>)}</ul>
+    </div>}
     {data?.canManage && <div className="module-catalogue-controls">
       <label className="module-catalogue-choice"><input type="checkbox" checked={inspectWebsite} onChange={event => setInspectWebsite(event.target.checked)} />Inspect metadata from this application’s configured public website</label>
       <label className="module-catalogue-choice"><input type="checkbox" checked={useAi} onChange={event => setUseAi(event.target.checked)} />Use configured AI to recommend modules from the collected evidence</label>

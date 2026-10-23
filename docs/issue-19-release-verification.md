@@ -12,14 +12,28 @@ Implementation extends GitHub main `66f61d7b8a2dbeb2aad84d5a418d6102f34d8fc8` in
 | --- | --- | --- |
 | Deployment safety | Removed SQL helper from Vercel build; explicit approval guard before helper configuration/database access; CI follows lifecycle aliases and helper imports to reject automatic migrations. | No migration helper was executed with approval. |
 | Catalogue | Existing platform catalogue plus tenant custom definitions, optimistic versioned management/archive, persisted project assignments, owner notes, approve/reject/remove, and audit records. | Approval records application intent; it never installs a component or creates health evidence. |
-| Discovery | Application descriptions, optional public website title/description and successful scoped API topology-import capabilities; optional schema-constrained model proposals with exact source quotes, confidence, approval state, rate/token/time limits and credential redaction. | Model/website access requires an explicit request; model discovery also requires its disabled-by-default feature flag and credential. No real model call was made during tests. |
-| Topology | Explicit mapping of approved assignments to existing confirmed same-project canonical modules; successful imports refresh proposals; unique edge counting, explicit discovery versus awaiting-monitoring states, generic property ordering. | Existing canonical topology remains authoritative. No synthetic nodes, relationships or healthy states are created. |
+| Discovery | Application descriptions, optional public website title/description and successful scoped API topology-import capabilities; optional schema-constrained model proposals with exact source quotes, confidence, approval state, rate/token/time limits and credential redaction. Website outcomes are classified as not requested, no website configured, analysis failed (empty response or inspection failure) or analysis completed. | Model/website access requires an explicit request; model discovery also requires its disabled-by-default feature flag and credential. No real model call was made during tests. |
+| Topology | Explicit mapping of approved assignments to existing confirmed same-project canonical modules; successful imports refresh proposals; unique edge counting, explicit discovery versus awaiting-monitoring states, generic property ordering. Incident-memory fetch depends on a derived relationship edge id rather than partial `selectedEdge` fields, clearing the prior exhaustive-deps warning without suppressing lint. | Existing canonical topology remains authoritative. No synthetic nodes, relationships or healthy states are created. |
 | AI Operations | Project-level capability page, independent partial status fallback, overdue/failing worker diagnostics, scoped decision/prediction evidence, separate Phase 9/legacy learning counts, and recent actual model-call outcomes. | Configuration alone cannot report verified provider availability. Worker infrastructure is shared and labelled accordingly. |
 | Monitoring coverage | Requires an active monitor and a fresh actual check result; payment/webhook endpoints are labelled as endpoint monitoring. | A tracked gap, integration row or isolated business event is not full journey coverage. |
 
 Website metadata requests pin validated public DNS answers, use HTTPS with normal host verification, reject redirects/private addresses and bound response size/time. Website content is untrusted evidence, never executable instructions. API mutations retain session CSRF protection and administrator checks. Composite database foreign keys also prevent cross-project/tenant component bindings.
 
 Browser verification uncovered two additional runtime defects: a router-wide platform billing gate blocked ordinary authenticated requests to subsequent routers, including AI Operations; and concurrent initial plan seeding could fail with a unique-key race. The gate now applies only to platform billing paths, whose restrictions remain tested. Plan/entitlement seeding retries a unique-key race once; outages and persistent conflicts still fail. These are reproduced code-level causes, not proof of a retrospective production incident cause.
+
+### Consolidated follow-up (same worktree / PR 20)
+
+Continuing from commit `31df66a` in `.worktrees/issue-19` without touching the outdated main checkout:
+
+1. **Website discovery status** — requested analysis with no frontend URL now records `website_url_missing` (`no_website_configured`). Skipped analysis remains `website_metadata_not_requested`. Configured URL with empty or failed inspection records `analysis_failed` (`website_metadata_empty` or `website_metadata_unavailable`). Successful metadata collection is `analysis_completed` and is admitted as evidence.
+2. **Topology hook** — `incidentMemoryEdgeId` is derived before the effect so relationship memory loads when a non-hierarchy edge is selected and clears otherwise. No `eslint-disable` was added. Property-focus highlighting, edge resolve, canvas selection and focus collapse remain covered by the web topology regressions above.
+3. **Discovery evidence refresh** — re-analysis already updates `confidence` / `evidenceJson` for undecided `PROPOSED` rows via `updateMany` (owner APPROVED/REJECTED/REMOVED remain untouched). Connected API imports now feed `proposeProjectModules` with `connectedApi.verified` plus declared `capabilitiesJson` keys, not free-text-only matching.
+4. **GET applicability hints** — project catalogue read includes custom-definition extensions and returns `proposals` as read-only hints; the Modules panel surfaces them separately from assignments and topology health.
+5. **AI discovery diagnostics** — empty completed model runs record `ai_insufficient_evidence`; HTTP and invalid-response failures are distinct from transport `PROVIDER_UNAVAILABLE`.
+
+Follow-up local regressions: API discovery/catalogue 18 passed; web catalogue panel 3 passed; earlier website/topology suites remain green. Audit browse UI, canonical-topology feature-flag product default, and live production parity remain out of this local fix set.
+
+These edits are local to the Issue 19 worktree pending inclusion in PR 20. No database reset, production migration or production deployment was performed.
 
 ## Migration requirement
 
@@ -37,7 +51,8 @@ The disposable test harness reconstructs the audited baseline in a newly generat
 | --- | --- |
 | Migration safety | Five guard tests and lifecycle scan passed. |
 | Build | Full workspace production build passed; API compiled again after routing/concurrency corrections. Web rebuilt for final styling. |
-| Lint/typecheck | Passed; one existing topology page `selectedEdge` hook dependency warning remains. |
+| Lint/typecheck | Passed. Topology page `eslint --max-warnings 0` is clean after the incident-memory dependency fix. |
+| Follow-up regressions (worktree, uncommitted on `codex/issue-19-release-review`) | Discovery/catalogue: 14 passed across 3 API files (website status classification, SSRF metadata, catalogue controller). Topology selection/focus/highlight: 35 passed across 5 web files (presentation groups including property focus, relationships, focus collapse, canvas selection, edge resolve). Migration guards: 5 passed plus lifecycle scan. |
 | Full unit suite | API 654 passed (47 database-gated skips), worker 43 passed (3 database-gated skips), web 228 passed across 53 files. Four additional route-boundary/concurrency tests passed after the runtime corrections. |
 | PostgreSQL integration | API 701 passed across 161 files and worker 46 passed across 17 files against disposable PostgreSQL 18; additive migration/schema parity passed. |
 | Browser acceptance | Desktop and mobile Chromium both passed against local built servers and a fresh disposable database. Requires a catalogue panel within the viewport, full AI capability payload, persisted approval/note after reload, unchanged topology after approval, custom definition create/archive, foreign-tenant denial and missing-CSRF rejection. Chrome was also exercised. |
