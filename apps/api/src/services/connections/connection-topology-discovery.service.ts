@@ -897,7 +897,21 @@ export const discoverAndReconcileConnectionTopology = async (
 ): Promise<ConnectionTopologySyncResult> => {
   try {
     const payload = await fetchManifestPayload(connection);
-    return await reconcileConnectionTopologyPayload(connection, payload);
+    const result = await reconcileConnectionTopologyPayload(connection, payload);
+    // Proposal refresh is separate from verified topology ingestion. It may
+    // create applicability suggestions, never services, edges or owner choices.
+    if (connection.projectId) {
+      try {
+        const manifest = parseConnectionTopologyManifest(payload);
+        if (manifest) {
+          const { refreshModuleProposalsAfterImport } = await import("../topology/module-discovery.service");
+          await refreshModuleProposalsAfterImport(connection.organizationId, connection.projectId, manifest.modules.map(module => module.key));
+        }
+      } catch {
+        console.warn("[module-discovery] Proposal refresh unavailable after successful topology import; retry from Modules.");
+      }
+    }
+    return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Topology discovery failed";
     await prisma.connection.update({

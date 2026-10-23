@@ -8,6 +8,7 @@ import {
   seedNobleExpressGraph
 } from "../../../../../scripts/lib/noble-express-graph.seed";
 import { runIncidentCorrelationJob } from "../../../../../apps/worker/src/jobs/run-incident-correlation.job";
+import { ensureE2EOrgPlan } from "../test-helpers/e2e-org-plan";
 
 const enabled = process.env.RUN_DATABASE_E2E === "true";
 const TAG = "automation-redis-playbook-e2e";
@@ -31,6 +32,8 @@ describe.runIf(enabled)("automation redis cascade playbook", () => {
 
     organizationId = project.organizationId;
     projectId = project.id;
+    await ensureE2EOrgPlan(organizationId, "BUSINESS");
+    await prisma.project.update({ where: { id: projectId }, data: { automationMode: "RECOMMEND" } });
 
     await prisma.automationPolicy.upsert({
       where: {
@@ -39,13 +42,13 @@ describe.runIf(enabled)("automation redis cascade playbook", () => {
           policyKey: "GLOBAL"
         }
       },
-      update: { executionMode: "OBSERVE", enabled: false, updatedAt: new Date() },
+      update: { executionMode: "RECOMMEND", enabled: true, updatedAt: new Date() },
       create: {
         id: randomUUID(),
         organizationId,
         policyKey: "GLOBAL",
-        enabled: false,
-        executionMode: "OBSERVE",
+        enabled: true,
+        executionMode: "RECOMMEND",
         updatedBy: TAG,
         updatedAt: new Date()
       }
@@ -139,7 +142,16 @@ describe.runIf(enabled)("automation redis cascade playbook", () => {
     await prisma.$disconnect();
   });
 
-  it("plans Redis cascade recovery in OBSERVE mode without executing steps", async () => {
+  it("does not plan repairs for an observation-only project", async () => {
+    await prisma.project.update({ where: { id: projectId }, data: { automationMode: "MONITOR_ONLY" } });
+    try {
+      expect(await planAutomationForIncident({ organizationId, incidentId })).toBeNull();
+    } finally {
+      await prisma.project.update({ where: { id: projectId }, data: { automationMode: "RECOMMEND" } });
+    }
+  });
+
+  it("plans Redis cascade recovery for human approval without executing steps", async () => {
     const plan = await planAutomationForIncident({
       organizationId,
       incidentId,
@@ -148,7 +160,7 @@ describe.runIf(enabled)("automation redis cascade playbook", () => {
 
     expect(plan).not.toBeNull();
     expect(plan?.playbookKey).toBe("REDIS_CASCADE_RECOVERY");
-    expect(plan?.executionMode).toBe("OBSERVE");
+    expect(plan?.executionMode).toBe("APPROVAL");
     expect(plan?.playbookVersion).toBe(1);
     expect(plan?.steps.length).toBeGreaterThanOrEqual(5);
     expect(plan?.reason.toLowerCase()).toContain("redis");
@@ -182,8 +194,8 @@ describe.runIf(enabled)("automation redis cascade playbook", () => {
       where: { id: plan!.runId! },
       include: { Steps: { orderBy: { stepOrder: "asc" } } }
     });
-    expect(run?.status).toBe("PLANNED");
-    expect(run?.executionMode).toBe("OBSERVE");
+    expect(run?.status).toBe("APPROVAL_PENDING");
+    expect(run?.executionMode).toBe("APPROVAL");
     expect(run?.Steps.every((step) => step.status === "PENDING")).toBe(true);
   });
 });

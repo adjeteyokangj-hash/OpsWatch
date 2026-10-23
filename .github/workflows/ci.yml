@@ -168,4 +168,3 @@ jobs:
           name: issue19-browser-evidence
           path: test-artifacts/
           retention-days: 7
-

@@ -1,7 +1,7 @@
 import type { ProjectTopologyResponse, TopologyEdge, TopologyNode } from "./topology-types";
 import { classifyVisualLayer } from "./topology-visual-layers";
 
-export type RelationshipConnectionState = "connected" | "intentionally_isolated" | "discovery_incomplete";
+export type RelationshipConnectionState = "connected" | "intentionally_isolated" | "discovery_incomplete" | "awaiting_monitoring";
 
 export type NodeRelationshipDiagnostic = {
   moduleId: string;
@@ -11,6 +11,7 @@ export type NodeRelationshipDiagnostic = {
   incomingRelationshipCount: number;
   outgoingRelationshipCount: number;
   totalRelationshipCount: number;
+  relationshipIds: string[];
   discoverySource: "declared" | "monitored-area" | "unknown";
   relationshipConfidence: "confirmed" | "inferred" | "insufficient";
   lastRelationshipDiscoveryTime: string | null;
@@ -54,16 +55,14 @@ export const resolveConnectionState = (input: {
     return { state: "connected", reason: null };
   }
 
-  const awaiting =
-    input.monitoringState === "AWAITING_FIRST_CHECK" ||
-    areaPattern.test(input.node.id) ||
-    /portal|website|system|centre|center/i.test(input.node.name);
-
-  if (awaiting) {
+  if (input.monitoringState === "DISCOVERY_PENDING") {
     return {
       state: "discovery_incomplete",
       reason: "Relationship discovery pending — OpsWatch has not mapped dependencies for this module yet."
     };
+  }
+  if (input.monitoringState === "AWAITING_FIRST_CHECK") {
+    return { state: "awaiting_monitoring", reason: "Awaiting the first monitoring result. No relationship evidence has been verified." };
   }
 
   return {
@@ -98,9 +97,10 @@ export const buildNodeRelationshipDiagnostics = (
       incomingRelationshipCount: counts.incoming,
       outgoingRelationshipCount: counts.outgoing,
       totalRelationshipCount: counts.total,
+      relationshipIds: topology.edges.filter(edge => edge.sourceId === node.id || edge.targetId === node.id).map(edge => edge.id),
       discoverySource,
       relationshipConfidence:
-        counts.total > 0 ? "confirmed" : resolved.state === "discovery_incomplete" ? "insufficient" : "inferred",
+        counts.total > 0 ? "confirmed" : "insufficient",
       lastRelationshipDiscoveryTime: counts.total > 0 ? generatedAt : null,
       connectionState: resolved.state,
       isolatedStateReason: resolved.reason
@@ -114,7 +114,7 @@ export const summarizeRelationshipDiagnostics = (rows: NodeRelationshipDiagnosti
     connectedModules: modules.filter((row) => row.connectionState === "connected").length,
     unconnectedModules: modules.filter((row) => row.connectionState !== "connected").length,
     discoveryPendingModules: modules.filter((row) => row.connectionState === "discovery_incomplete").length,
-    relationships: modules.reduce((sum, row) => sum + row.totalRelationshipCount, 0)
+    relationships: new Set(rows.flatMap(row => row.relationshipIds)).size
   };
 };
 
@@ -177,6 +177,7 @@ export const auditTopologyRelationships = (input: {
 /** Stable badge copy for isolated / incomplete modules. */
 export const isolationBadgeLabel = (state: RelationshipConnectionState): string | null => {
   if (state === "discovery_incomplete") return "Discovery pending";
+  if (state === "awaiting_monitoring") return "Awaiting first check";
   if (state === "intentionally_isolated") return "No mapped dependencies";
   return null;
 };

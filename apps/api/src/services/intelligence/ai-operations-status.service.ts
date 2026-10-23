@@ -10,6 +10,8 @@ import { isFeatureGateEnabled } from "./feature-gates.service";
 import { isLearningStageEnabled } from "../learning/learning-flags";
 import { normalizeProjectAutonomousMode } from "@opswatch/shared";
 import { buildEffectivePolicySnapshot } from "../policy/effective-policy-snapshot.service";
+import { MIN_PREDICTION_CONFIDENCE } from "./intelligence-constants";
+import { providerRuntimeEvidence } from "../ai/provider-call-evidence.service";
 
 export type OpsStatusTone = "green" | "amber" | "red";
 
@@ -95,6 +97,12 @@ export const buildAiOperationsStatus = async (input: {
     : { organizationId: orgId };
 
   const profile = resolveAiOperatingProfile();
+  const auditScope = { organizationId: orgId, ...(input.projectId ? { OR: [
+    { subjectType: "PROJECT", subjectId: input.projectId },
+    { evidenceJson: { path: ["projectId"], equals: input.projectId } }
+  ] } : {}) };
+  const eligiblePrediction = { status: "READY", expiresAt: { gt: now },
+    confidenceScore: { gte: MIN_PREDICTION_CONFIDENCE }, reviewState: { in: ["NEEDS_REVIEW", "CONFIRMED"] } };
   const snapshot = await buildEffectivePolicySnapshot({
     organizationId: orgId,
     projectId: input.projectId
@@ -134,7 +142,8 @@ export const buildAiOperationsStatus = async (input: {
     remediatorIntegrations,
     recentAudits,
     recentAutomations,
-    recentPredictions
+    recentPredictions,
+    latestProviderCall
   ] = await Promise.all([
     prisma.heartbeat.findFirst({
       where: { deviceId: null, Project: projectFilter },
@@ -147,7 +156,7 @@ export const buildAiOperationsStatus = async (input: {
       }
     }),
     prisma.aiDecisionAudit.findFirst({
-      where: { organizationId: orgId },
+      where: auditScope,
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
@@ -177,6 +186,7 @@ export const buildAiOperationsStatus = async (input: {
     }),
     prisma.predictionCandidate.findFirst({
       where: {
+        ...eligiblePrediction,
         organizationId: orgId,
         ...(input.projectId ? { projectId: input.projectId } : {})
       },
@@ -193,6 +203,7 @@ export const buildAiOperationsStatus = async (input: {
     }),
     prisma.predictionCandidate.count({
       where: {
+        ...eligiblePrediction,
         organizationId: orgId,
         ...(input.projectId ? { projectId: input.projectId } : {}),
         computedAt: { gte: new Date(now.getTime() - MS_7D) }
@@ -255,7 +266,7 @@ export const buildAiOperationsStatus = async (input: {
       take: 200
     }),
     prisma.aiDecisionAudit.findMany({
-      where: { organizationId: orgId },
+      where: auditScope,
       orderBy: { createdAt: "desc" },
       take: 5,
       select: {
@@ -286,6 +297,7 @@ export const buildAiOperationsStatus = async (input: {
     }),
     prisma.predictionCandidate.findMany({
       where: {
+        ...eligiblePrediction,
         organizationId: orgId,
         ...(input.projectId ? { projectId: input.projectId } : {})
       },
@@ -299,7 +311,12 @@ export const buildAiOperationsStatus = async (input: {
         status: true,
         reviewState: true
       }
-    })
+    }),
+    prisma.auditLog.findFirst({ where: { organizationId: orgId, action: "AI_PROVIDER_CALL", entityType: "PROJECT",
+      ...(input.projectId ? { entityId: input.projectId } : {}),
+      AND: [{ metadataJson: { path: ["purpose"], equals: "INCIDENT_DIAGNOSIS" } },
+        { metadataJson: { path: ["model"], equals: process.env.INCIDENT_AI_LLM_MODEL || "gpt-4o-mini" } }] },
+      orderBy: { createdAt: "desc" }, select: { createdAt: true, metadataJson: true } })
   ]);
 
   const learningBaselineCount = typeof baselineCount === "number" ? baselineCount : 0;
@@ -418,6 +435,8 @@ export const buildAiOperationsStatus = async (input: {
     evidence: {
       enabled: learningEnabled,
       baselines7d: baselineTotal,
+      legacyBaselines7d: learningBaselineCount,
+      phase9MetricBaselines7d: metricBaselineCount,
       anomalies7d: anomalyTotal,
       memories7d: memoryTotal
     }
@@ -426,17 +445,22 @@ export const buildAiOperationsStatus = async (input: {
   // Configuration readiness is not evidence that the provider responds successfully.
   const llmEnabled = process.env.INCIDENT_AI_LLM_ENABLED === "true";
   const llmCredentialPresent = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const providerRuntime = providerRuntimeEvidence(latestProviderCall, now);
   const llmDiagnosisCapability: OpsStatusCapability = {
     id: "llm_diagnosis",
     label: "LLM incident analysis",
-    tone: llmEnabled && llmCredentialPresent ? "amber" : "red",
+    tone: !llmEnabled || !llmCredentialPresent ? "red" : providerRuntime.reachable ? "green" : providerRuntime.state === "UNKNOWN" ? "amber" : "red",
     summary: !llmEnabled
       ? "LLM incident enhancement is disabled by configuration. Rules-based diagnosis remains available."
       : !llmCredentialPresent
         ? "LLM incident enhancement is enabled but the provider credential is missing. Rules-based diagnosis remains available."
-        : "LLM incident enhancement is configured, but live provider availability is not verified. Rules-based diagnosis remains available.",
-    lastEvidenceAt: null,
-    evidence: { enabled: llmEnabled, providerConfigured: llmCredentialPresent, liveProviderVerified: false }
+        : providerRuntime.reachable
+          ? "The latest incident model call succeeded within the last hour. This is recent runtime evidence; continuous availability is not assumed."
+          : providerRuntime.state === "UNKNOWN"
+            ? "LLM incident enhancement is configured, but no fresh provider-call evidence is available. Rules-based diagnosis remains available."
+            : `The latest incident model call failed (${providerRuntime.state}). Rules-based diagnosis remains available.`,
+    lastEvidenceAt: providerRuntime.at,
+    evidence: { enabled: llmEnabled, providerConfigured: llmCredentialPresent, liveProviderVerified: providerRuntime.reachable, providerCallState: providerRuntime.state }
   };
 
   // Advanced diagnosis

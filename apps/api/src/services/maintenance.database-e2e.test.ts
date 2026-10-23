@@ -27,6 +27,12 @@ describe.runIf(enabled)("maintenance window production smoke", () => {
       }
     });
     await ensureE2EOrgPlan(organizationId, "BUSINESS");
+    // Allow this fixture to reach the maintenance gate. The default OBSERVE
+    // organisation ceiling otherwise blocks earlier for an unrelated reason.
+    await prisma.automationPolicy.create({ data: {
+      id: randomUUID(), organizationId, policyKey: "GLOBAL", enabled: true,
+      executionMode: "AUTO_HEAL_SAFE", updatedBy: "maintenance-test", updatedAt: new Date()
+    } });
     await prisma.user.create({
       data: {
         id: userId,

@@ -18,6 +18,7 @@ const baseNavGroups = [
     label: "Operations",
     links: [
       ["Applications", "/projects"],
+      ["Module Catalogue", "/module-catalogue"],
       ["Incidents", "/incidents"],
       ["Alerts", "/alerts"]
     ] as const
@@ -55,6 +56,7 @@ const navIcons: Record<string, string> = {
   Dashboard: "⌂",
   Intelligence: "◉",
   Applications: "▣",
+  "Module Catalogue": "▦",
   Incidents: "◆",
   Alerts: "!",
   Connections: "⌁",

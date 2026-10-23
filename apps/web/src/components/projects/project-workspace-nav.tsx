@@ -43,6 +43,7 @@ export const buildProjectNavGroups = (projectId: string): ProjectNavGroup[] => [
   {
     label: "Automation & Intelligence",
     links: [
+      { label: "AI Operations", href: `/projects/${projectId}/ai-operations` },
       { label: "Automation", href: `/projects/${projectId}/automation` },
       { label: "Intelligence", href: `/projects/${projectId}/insights` },
       { label: "Predictions", href: `/projects/${projectId}/insights`, hash: "#predictions" },

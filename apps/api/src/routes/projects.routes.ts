@@ -25,7 +25,7 @@ import {
   patchSloDefinitionByProject
 } from "../controllers/slos.controller";
 import { getProjectTopology } from "../controllers/topology.controller";
-import { getProjectModuleCatalogue } from "../controllers/module-catalogue.controller";
+import { getProjectModuleCatalogue, getModuleCatalogue, createCustomModule, updateCustomModule, reviewProjectModule, analyseProjectModules, bindProjectModule } from "../controllers/module-catalogue.controller";
 import { getRelationshipIncidentMemorySignals } from "../controllers/topology.controller";
 import {
   getProjectAutonomousMode,
@@ -43,6 +43,12 @@ import { patchMonitoredDeviceLabel } from "../controllers/monitored-devices.cont
 import { requireAdmin } from "../middleware/auth";
 
 export const projectsRouter = Router();
+projectsRouter.get("/module-catalogue", getModuleCatalogue);
+projectsRouter.post("/module-catalogue", createCustomModule);
+projectsRouter.put("/module-catalogue/:moduleKey", updateCustomModule);
+projectsRouter.post("/projects/:projectId/module-catalogue/analyse", analyseProjectModules);
+projectsRouter.put("/projects/:projectId/module-catalogue/:moduleKey", reviewProjectModule);
+projectsRouter.put("/projects/:projectId/module-catalogue/:moduleKey/component", bindProjectModule);
 
 projectsRouter.get("/projects", listProjects);
 projectsRouter.post("/projects", createProject);

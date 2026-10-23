@@ -138,17 +138,10 @@ const classifySharedOrProcess = (
 export const buildTopologyPresentationGroups = (
   topology: ProjectTopologyResponse
 ): TopologyPresentationGroups | null => {
-  const propertyRank = (name: string): number => {
-    if (/kanewu/i.test(name)) return 0;
-    if (/community\s*25/i.test(name)) return 1;
-    return 2;
-  };
+  // Preserve the scoped graph's stable ordering for every application's
+  // properties. Application-specific names must not control the engine.
   const properties = topology.nodes
-    .filter((node) => isPropertyNode(node, topology))
-    .sort((a, b) => {
-      const rankDelta = propertyRank(a.name) - propertyRank(b.name);
-      return rankDelta !== 0 ? rankDelta : a.name.localeCompare(b.name);
-    });
+    .filter((node) => isPropertyNode(node, topology));
   if (properties.length === 0) return null;
 
   const claimed = new Set<string>();

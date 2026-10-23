@@ -97,7 +97,10 @@ describe("getProductInsights recommendation sync", () => {
         Event: expect.objectContaining({ select: { type: true, message: true } }),
         Service: expect.objectContaining({
           select: expect.objectContaining({
-            Check: { select: { id: true, name: true, type: true } }
+            Check: expect.objectContaining({ select: expect.objectContaining({
+              isActive: true,
+              CheckResult: expect.objectContaining({ take: 1, orderBy: { checkedAt: "desc" } })
+            }) })
           })
         })
       })

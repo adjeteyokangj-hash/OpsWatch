@@ -1,8 +1,10 @@
 import { Response } from "express";
+import { randomUUID } from "node:crypto";
 import type { AuthRequest } from "../middleware/auth";
 import { hasPermission } from "../auth/permissions";
 import { buildIntelligenceSnapshot } from "../services/intelligence/brain-snapshot.service";
 import { mergeAiOperationsRuntimeStatus } from "../services/intelligence/ai-operations-runtime-status.service";
+import { unavailableOperationsStatus, unavailableWorkerStatus } from "../services/intelligence/partial-operations-status";
 import { prisma } from "../lib/prisma";
 import { isPredictionsEnabled } from "../services/intelligence/intelligence-constants";
 import { listFeatureGates } from "../services/intelligence/feature-gates.service";
@@ -225,6 +227,7 @@ export const getAiOperationsStatusHandler = async (
     return;
   }
 
+  try {
   const projectId =
     typeof req.query.projectId === "string" && req.query.projectId.trim()
       ? req.query.projectId.trim()
@@ -241,22 +244,27 @@ export const getAiOperationsStatusHandler = async (
     }
   }
 
-  try {
     const [{ buildAiOperationsStatus }, { buildWorkerRuntimeStatus }] = await Promise.all([
       import("../services/intelligence/ai-operations-status.service"),
       import("../services/worker-tick/worker-runtime-status.service")
     ]);
-    const [status, worker] = await Promise.all([
+      const [statusResult, workerResult] = await Promise.allSettled([
       buildAiOperationsStatus({ organizationId: orgId, projectId }),
       buildWorkerRuntimeStatus()
     ]);
-
-    res.json(mergeAiOperationsRuntimeStatus(status, worker));
+      const status = statusResult.status === "fulfilled" ? statusResult.value : unavailableOperationsStatus();
+      const worker = workerResult.status === "fulfilled" ? workerResult.value : unavailableWorkerStatus();
+      const partial = statusResult.status === "rejected" || workerResult.status === "rejected";
+      const diagnosticId = partial ? randomUUID() : undefined;
+      if (partial) console.warn("[ai-operations] Partial status evidence", { diagnosticId, projectId: projectId ?? null,
+        capabilityQuery: statusResult.status, workerQuery: workerResult.status });
+      // Do not expose database exceptions, connection strings or another
+      // tenant's evidence. Partial results remain useful to the operator.
+      res.json({ ...mergeAiOperationsRuntimeStatus(status, worker),
+        partial, diagnosticId });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Operations status failed";
     res.status(503).json({
-      error: "AI operations status temporarily unavailable",
-      detail: message
+        error: "AI operations status temporarily unavailable"
     });
   }
 };
