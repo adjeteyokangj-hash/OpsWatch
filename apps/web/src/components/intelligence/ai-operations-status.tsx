@@ -25,6 +25,7 @@ const toneLabel = (tone: OpsStatusTone): string => {
 };
 
 const overallBadgeLabel = (status: AiOperationsStatusPayload): string => {
+  if (/Capability evidence unavailable/i.test(status.overall.modeLabel)) return "Unknown";
   if (/predictions off|learning off/i.test(status.overall.modeLabel)) return "Limited";
   return toneLabel(status.overall.tone);
 };
@@ -101,7 +102,7 @@ export function AiOperationsStatus({ status, loading, compact, projectId, error 
           </div>
           <p style={{ margin: 0 }}>{status.overall.summary}</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <span className="meta-chip">Worker: {workerLabel(worker?.tone)}</span>
+            <span className="meta-chip">Worker: {worker?.evidence?.state === "LOAD_ERROR" ? "Unknown" : workerLabel(worker?.tone)}</span>
             <span className="meta-chip">
               Predictions: {predictionLabel(prediction?.tone, prediction?.evidence)}
             </span>
@@ -109,6 +110,7 @@ export function AiOperationsStatus({ status, loading, compact, projectId, error 
           <Link className="text-link" href={reviewHref}>
             {reviewLabel} →
           </Link>
+          {projectId && <Link className="text-link" href={`/projects/${projectId}/ai-operations`}>View project AI operations →</Link>}
         </div>
       </section>
     );
@@ -138,7 +140,7 @@ export function AiOperationsStatus({ status, loading, compact, projectId, error 
           >
             <div className="ai-ops-status__item-head">
               <strong>{capability.label}</strong>
-              <StatusBadge label={toneLabel(capability.tone)} tone={toneBadge(capability.tone)} />
+              <StatusBadge label={capability.evidence?.state === "LOAD_ERROR" ? "Unknown" : toneLabel(capability.tone)} tone={toneBadge(capability.tone)} />
             </div>
             <p className="muted">{capability.summary}</p>
             {capability.lastEvidenceAt ? (

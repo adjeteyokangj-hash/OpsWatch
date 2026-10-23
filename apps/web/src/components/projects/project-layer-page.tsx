@@ -11,6 +11,7 @@ import { PageSection } from "../ui/page-section";
 import { EmptyState } from "../ui/empty-state";
 import { useProjectWorkspace } from "../../hooks/use-project-workspace";
 import { apiFetch } from "../../lib/api";
+import { ModuleCataloguePanel } from "./module-catalogue-panel";
 
 const componentTypes = new Set([
   "COMPONENT",
@@ -141,6 +142,7 @@ export function ProjectLayerPage({ layerKey }: { layerKey: LayerKey }) {
         </section>
       ) : (
         <>
+          {layerKey === "modules" && <ModuleCataloguePanel projectId={projectId} />}
           <WorkspaceSummaryStrip
             cards={[
               { key: "total", label: "Total", value: summary.total, tone: "info" },

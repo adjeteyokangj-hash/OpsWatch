@@ -347,6 +347,7 @@ model OrgApiKey {
 }
 
 model Organization {
+  ModuleDefinitions                   ModuleCatalogueDefinition[]
   id                                  String                                @id
   name                                String
   slug                                String                                @unique
@@ -442,6 +443,8 @@ model OrganizationIncidentGroup {
 }
 
 model Project {
+  ModuleAssignments                   ProjectModuleAssignment[]
+  ModuleDiscoveryRuns                 ModuleDiscoveryRun[]
   id                                  String                                @id
   name                                String
   slug                                String                                @unique
@@ -533,6 +536,64 @@ model Project {
   @@index([organizationId])
   @@index([operationalLocationId])
   @@index([signingCredentialFamilyId])
+  @@unique([organizationId, id])
+}
+
+/// Core definitions remain versioned in code; custom definitions are tenant owned.
+model ModuleCatalogueDefinition {
+  id             String @id @default(uuid())
+  organizationId String
+  key            String
+  label          String
+  description    String
+  category       String
+  terms          String[]
+  capabilities   String[]
+  status         String @default("ACTIVE")
+  version        Int @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  Organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, key])
+}
+
+/// Applicability and approval are deliberately separate from runtime graph nodes.
+model ProjectModuleAssignment {
+  id             String @id @default(uuid())
+  organizationId String
+  projectId      String
+  moduleKey      String
+  state          String @default("PROPOSED")
+  source         String
+  confidence     Float
+  evidenceJson   Json
+  decidedBy      String?
+  decidedAt      DateTime?
+  note           String?
+  verifiedEntityId String?
+  VerifiedEntity OperationalEntity? @relation(fields: [organizationId, projectId, verifiedEntityId], references: [organizationId, projectId, id], onDelete: NoAction, map: "ProjectModuleAssignment_verified_entity_fkey")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  Project        Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([organizationId, projectId, moduleKey])
+  @@index([organizationId, projectId, state])
+}
+
+model ModuleDiscoveryRun {
+  id             String @id @default(uuid())
+  organizationId String
+  projectId      String
+  slot           Int
+  status         String @default("RUNNING")
+  sourcesJson    Json
+  createdAt      DateTime @default(now())
+  completedAt    DateTime?
+  Project        Project @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([organizationId, projectId, slot])
+  @@index([organizationId, projectId, createdAt])
 }
 
 /// A generic, organization-scoped operational connection. Secret material is
@@ -662,6 +723,7 @@ model OperationalLocation {
 /// Flexible graph node. entityType intentionally remains a string so product
 /// capabilities are not constrained by a brittle platform enum.
 model OperationalEntity {
+  ModuleAssignments          ProjectModuleAssignment[]
   id                         String                                @id
   organizationId             String
   projectId                  String?
@@ -730,6 +792,7 @@ model OperationalEntity {
   ApmDependencyWindowsAsTgt  ApmDependencyWindow[]          @relation("ApmDepTargetEntity")
 
   @@unique([organizationId, entityType, externalId])
+  @@unique([organizationId, projectId, id])
   @@unique([organizationId, projectScopeKey, environment, entityType, stableIdentityKey])
   @@index([organizationId, projectId, entityType])
   @@index([organizationId, projectScopeKey, environment, entityType])

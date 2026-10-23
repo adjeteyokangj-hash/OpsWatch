@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 import pg from "pg";
 
+// Explicit maintenance only: verify approval before configuration or connection.
+await import("../../../scripts/guard-db-migration.mjs");
+
 const here = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(here, "../.env") });
 

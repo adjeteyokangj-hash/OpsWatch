@@ -10,6 +10,7 @@ import { classifyHttpCheckFailure } from "@opswatch/shared";
 import { parseIncidentLlmDiagnosis } from "@opswatch/shared";
 import { redactForPrompt } from "../../lib/redact-secrets";
 import { findSimilarIncidents, type SimilarIncidentMatch } from "./incident-memory.service";
+import { recordProviderCall, type ProviderCallState } from "./provider-call-evidence.service";
 
 export type AnalysisMode = "RULES" | "CORRELATION" | "LLM";
 
@@ -249,6 +250,8 @@ const tryLlmEnhancement = async (
     }))
   });
 
+  let providerState: ProviderCallState = "UNAVAILABLE";
+  let providerHttpStatus: number | null = null;
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -275,7 +278,9 @@ const tryLlmEnhancement = async (
       })
     });
 
-    if (!response.ok) return null;
+    providerHttpStatus = response.status;
+    if (!response.ok) { providerState = "HTTP_ERROR"; return null; }
+    providerState = "INVALID_RESPONSE";
     const payload = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
@@ -291,6 +296,7 @@ const tryLlmEnhancement = async (
 
     const validated = parseIncidentLlmDiagnosis(parsedJson);
     if (!validated.success) return null;
+    providerState = "SUCCEEDED";
 
     return {
       ...draft,
@@ -317,6 +323,9 @@ const tryLlmEnhancement = async (
   } catch {
     // Provider timeout or transport failure must not prevent evidence-based rule diagnosis.
     return null;
+  } finally {
+    await recordProviderCall({ organizationId: context.organizationId, projectId: context.projectId,
+      model, state: providerState, httpStatus: providerHttpStatus });
   }
 };
 

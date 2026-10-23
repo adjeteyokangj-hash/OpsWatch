@@ -94,7 +94,9 @@ export const mergeAiOperationsRuntimeStatus = (
   return {
     ...status,
     overall: { modeLabel, tone, summary },
-    capabilities,
+    capabilities: capabilities.map(capability => capability.id === "overall_mode" ? {
+      ...capability, tone, summary, evidence: { ...capability.evidence, modeLabel }
+    } : capability),
     blocked
   };
 };

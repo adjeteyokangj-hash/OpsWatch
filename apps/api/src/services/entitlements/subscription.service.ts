@@ -19,10 +19,22 @@ const periodEndFromStart = (start: Date): Date => {
   return end;
 };
 
+// Prisma can emulate these upserts because the create includes another unique
+// key. Concurrent first requests may insert the same plan/entitlement. Retry
+// that operation once to read/update the committed winner; other failures and
+// persistent key conflicts still propagate.
+const retryUniqueInsertRace = async <T>(operation: () => Promise<T>): Promise<T> => {
+  try { return await operation(); }
+  catch (error) {
+    if ((error as { code?: string })?.code !== "P2002") throw error;
+    return operation();
+  }
+};
+
 export const seedPlans = async (): Promise<void> => {
   for (const definition of PLAN_DEFINITIONS) {
     const planId = `plan_${definition.code.toLowerCase()}`;
-    await prisma.plan.upsert({
+    await retryUniqueInsertRace(() => prisma.plan.upsert({
       where: { code: definition.code },
       update: {
         name: definition.name,
@@ -44,11 +56,11 @@ export const seedPlans = async (): Promise<void> => {
         sortOrder: definition.sortOrder,
         updatedAt: now()
       }
-    });
+    }));
 
     const plan = await prisma.plan.findUniqueOrThrow({ where: { code: definition.code } });
     for (const row of definition.entitlements) {
-      await prisma.planEntitlement.upsert({
+      await retryUniqueInsertRace(() => prisma.planEntitlement.upsert({
         where: {
           planId_featureKey: {
             planId: plan.id,
@@ -70,7 +82,7 @@ export const seedPlans = async (): Promise<void> => {
           retentionDays: row.retentionDays ?? null,
           configuration: (row.configuration ?? undefined) as Prisma.InputJsonValue | undefined
         }
-      });
+      }));
     }
   }
 };

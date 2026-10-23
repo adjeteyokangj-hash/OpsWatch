@@ -45,7 +45,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Enforce no automatic database migration
-        run: node scripts/assert-no-automatic-migrations.mjs
+        run: |
+          node --test scripts/assert-no-automatic-migrations.test.mjs
+          node scripts/assert-no-automatic-migrations.mjs
 
       - name: Generate Prisma client
         run: pnpm --filter @opswatch/api exec prisma generate
@@ -83,6 +85,12 @@ jobs:
           'src/services/worker-tick/serverless-tick.service.test.ts'
           'src/services/worker-tick/worker-runtime-status.service.test.ts'
           'src/services/learning/learning-cycle.service.test.ts'
+          'src/controllers/module-catalogue.controller.test.ts'
+          'src/controllers/intelligence-status-resilience.test.ts'
+          'src/controllers/insights-monitoring-coverage.test.ts'
+          'src/services/topology/module-ai-discovery.service.test.ts'
+          'src/services/topology/public-website-metadata.test.ts'
+          'src/services/ai/provider-call-evidence.service.test.ts'
 
       - name: Affected worker regression tests
         run: >-
@@ -102,8 +110,63 @@ jobs:
           'src/app/projects/[projectId]/billing/page.test.tsx'
           'src/lib/api.csrf.test.ts'
           'src/lib/auth.csrf.test.ts'
+          'src/components/projects/module-catalogue-panel.test.tsx'
+          'src/components/topology/topology-relationship.test.ts'
+          'src/components/topology/topology-presentation-groups.test.ts'
 
       - name: Build
         run: pnpm build
         env:
           NODE_ENV: production
+
+  database-and-browser:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      DIRECT_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+      JWT_SECRET: ci-opswatch-jwt-secret-for-github-actions-32
+      WORKER_INTERNAL_SECRET: ci-worker-internal-secret
+      OPSWATCH_WEB_URL: http://127.0.0.1:3109
+      PLAYWRIGHT_CHANNEL: chromium
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Full unit suite
+        run: pnpm test
+        env:
+          RUN_DATABASE_E2E: "false"
+      - name: Disposable database integration suite
+        run: node scripts/run-issue19-database-tests.cjs
+      - run: pnpm --filter @opswatch/web exec playwright install --with-deps chromium
+      - name: Disposable desktop and mobile browser acceptance
+        run: node scripts/run-issue19-database-tests.cjs
+        env:
+          RUN_ISSUE19_BROWSER: "true"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue19-browser-evidence
+          path: test-artifacts/
+          retention-days: 7

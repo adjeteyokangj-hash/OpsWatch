@@ -268,13 +268,11 @@ export default function ProjectTopologyPage() {
     incidentMemorySignals
   ]);
 
-  useEffect(() => {
-    if (!projectId || !selectedEdge) {
-      setIncidentMemorySignals(null);
-      return;
-    }
+  const incidentMemoryEdgeId =
+    selectedEdge && selectedEdge.kind !== "hierarchy" ? selectedEdge.id : null;
 
-    if (selectedEdge.kind === "hierarchy") {
+  useEffect(() => {
+    if (!projectId || !incidentMemoryEdgeId) {
       setIncidentMemorySignals(null);
       return;
     }
@@ -284,7 +282,7 @@ export default function ProjectTopologyPage() {
     setIncidentMemorySignals(null);
 
     apiFetch<RelationshipIncidentMemorySignals | null>(
-      `/projects/${projectId}/topology/relationships/${encodeURIComponent(selectedEdge.id)}/incident-memory`
+      `/projects/${projectId}/topology/relationships/${encodeURIComponent(incidentMemoryEdgeId)}/incident-memory`
     )
       .then((signals) => {
         if (cancelled) return;
@@ -302,7 +300,7 @@ export default function ProjectTopologyPage() {
     return () => {
       cancelled = true;
     };
-  }, [projectId, selectedEdge?.id, selectedEdge?.kind]);
+  }, [projectId, incidentMemoryEdgeId]);
 
   useEffect(() => {
     if (!selectedEdge) return;

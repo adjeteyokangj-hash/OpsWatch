@@ -132,14 +132,22 @@ const serviceMatchesUrl = (service: any, url: string): boolean => {
   return service.baseUrl === url;
 };
 
+export const hasFreshActiveMonitoring = (check: any, now = Date.now()): boolean => {
+  if (check?.isActive !== true) return false;
+  const latest = check.results?.[0] ?? check.CheckResult?.[0];
+  const at = latest?.checkedAt ? new Date(latest.checkedAt).getTime() : NaN;
+  const freshnessMs = Math.max(15 * 60_000, (Number(check.intervalSeconds) || 60) * 3000);
+  return Number.isFinite(at) && at <= now && now - at <= freshnessMs;
+};
+
 const isValidPublicHttpCheck = (check: any): boolean => {
   const targetUrl = check?.service?.baseUrl;
-  return check?.type === "HTTP" && isPublicHttpUrl(targetUrl) && !isDemoText(check?.name);
+  return check?.type === "HTTP" && hasFreshActiveMonitoring(check) && isPublicHttpUrl(targetUrl) && !isDemoText(check?.name);
 };
 
 const isValidPublicSslCheck = (check: any): boolean => {
   const targetUrl = check?.service?.baseUrl;
-  return check?.type === "SSL" && isPublicHttpsUrl(targetUrl) && !isDemoText(check?.name);
+  return check?.type === "SSL" && hasFreshActiveMonitoring(check) && isPublicHttpsUrl(targetUrl) && !isDemoText(check?.name);
 };
 
 const isCredibleOperationalAlert = (alert: any): boolean => {
@@ -156,13 +164,11 @@ const hasSignal = (project: any, signal: string): boolean => {
       .filter((check: any) => {
         if (check.type === "SSL") return isValidPublicSslCheck({ ...check, service });
         if (check.type === "HTTP") return isValidPublicHttpCheck({ ...check, service });
-        return !isDemoText(check.name);
+        return hasFreshActiveMonitoring(check) && !isDemoText(check.name);
       })
       .map((check: any) => `${service.type} ${check.type} ${check.name}`),
   );
-  const integrations = project.integrations.map((integration: any) => integration.type);
-  const events = project.events.filter((event: any) => !isDemoText(event.message)).map((event: any) => event.type);
-  return [...checks, ...integrations, ...events].some((value) => String(value).toUpperCase().includes(signal));
+  return checks.some((value: string) => String(value).toUpperCase().includes(signal));
 };
 
 const coverageItem = (
@@ -422,7 +428,8 @@ const loadProjectsForInsights = async (orgId: string) => {
           name: true,
           type: true,
           baseUrl: true,
-          Check: { select: { id: true, name: true, type: true } },
+          Check: { select: { id: true, name: true, type: true, isActive: true, intervalSeconds: true,
+            CheckResult: { orderBy: { checkedAt: "desc" }, take: 1, select: { checkedAt: true, status: true } } } },
         },
       },
     },
@@ -444,7 +451,7 @@ const loadProjectsForInsights = async (orgId: string) => {
     syntheticJourneyDrafts: journeys.filter((journey: any) => journey.projectId === project.id),
     services: project.Service.map((service: any) => ({
       ...service,
-      checks: service.Check.map((check: any) => ({ ...check, results: [] })),
+      checks: service.Check.map((check: any) => ({ ...check, results: check.CheckResult ?? [] })),
     })),
   }));
 };
@@ -462,12 +469,12 @@ const buildProjectInsight = (project: any) => {
   const meaningfulEvents = project.events.filter((event: any) => !isDemoText(event.message));
   const credibleAlerts = project.alerts.filter((alert: any) => isCredibleOperationalAlert(alert));
   const coverage = [
-    coverageItem("public_site", "Public site monitored", serviceTypes.has("FRONTEND") && validHttpChecks.length > 0, "HTTP check", "Add an HTTP or keyword check for the main public URL."),
+    coverageItem("public_site", "Public site monitored", validHttpChecks.some((check: any) => check.service.type === "FRONTEND" || check.service.baseUrl === project.frontendUrl), "Fresh active HTTP check", "Add an HTTP or keyword check for the main public URL."),
     coverageItem("admin_flow", "Admin flow monitored", false, null, "Synthetic journeys are Draft — execution not yet enabled."),
-    coverageItem("payment_flow", "Payment flow monitored", meaningfulEvents.some((event: any) => event.type === "PAYMENT_FAILED"), "Payment event signal", "Add a test-mode payment journey and ingest PAYMENT_FAILED events."),
-    coverageItem("webhook_health", "Webhook health monitored", integrations.has("WEBHOOK") || meaningfulEvents.some((event: any) => event.type === "WEBHOOK_FAILED"), "Webhook integration", "Add webhook delivery monitoring and signature failure events."),
+    coverageItem("payment_flow", "Payment endpoint monitored", validHttpChecks.some((check: any) => check.service.type === "PAYMENT"), "Fresh active payment endpoint check", "Configure active payment monitoring; an isolated failure event does not verify a monitored flow."),
+    coverageItem("webhook_health", "Webhook endpoint monitored", validHttpChecks.some((check: any) => check.service.type === "WEBHOOK"), "Fresh active webhook endpoint check", "Add webhook delivery monitoring and signature failure events."),
     coverageItem("ssl", "SSL monitored", validSslChecks.length > 0, "SSL check", "Add SSL expiry checks only for public https:// origins."),
-    coverageItem("domain_expiry", "Domain expiry monitored", meaningfulEvents.some((event: any) => event.type === "DOMAIN_EXPIRING"), "Domain event", "Add domain expiry monitoring for production domains."),
+    coverageItem("domain_expiry", "Domain expiry monitored", false, null, "Domain event ingestion alone does not establish active domain-expiry monitoring."),
   ];
   const criticalPaths = FLOW_STEPS.map((step) => ({
     ...step,

@@ -4,6 +4,7 @@ import {
   buildNodeRelationshipDiagnostics,
   isolationBadgeLabel,
   matchesConnectionFilter,
+  resolveConnectionState,
   summarizeRelationshipDiagnostics
 } from "./topology-relationship";
 import { computeLayeredLayout } from "./topology-layout";
@@ -92,13 +93,29 @@ const nobleLikeTopology = (): ProjectTopologyResponse => ({
   }
 });
 
+describe("evidence-based relationship summaries", () => {
+  it("does not infer a running discovery job from endpoint names", () => {
+    const node = { ...nobleLikeTopology().nodes[2], name: "Public website", id: "website", parentId: null };
+    expect(resolveConnectionState({ node, totalRelationships: 0, monitoringState: "LIVE" }).state).toBe("intentionally_isolated");
+  });
+  it("counts each persisted edge once, including non-module relationships", () => {
+    const topology = nobleLikeTopology();
+    topology.edges.push({ ...topology.edges[0], id: "module-to-module", sourceId: "svc-communications", targetId: "area-admin-portal" });
+    topology.edges.push({ ...topology.edges[0], id: "workflow-to-app", sourceId: "wf-email", targetId: "app" });
+    expect(summarizeRelationshipDiagnostics(buildNodeRelationshipDiagnostics(topology)).relationships).toBe(4);
+  });
+});
+
 describe("topology-relationship", () => {
-  it("marks zero-degree monitored areas as discovery incomplete", () => {
+  it("distinguishes awaiting monitoring from a pending discovery", () => {
     const diagnostics = buildNodeRelationshipDiagnostics(nobleLikeTopology());
     const admin = diagnostics.find((row) => row.moduleId === "area-admin-portal");
-    expect(admin?.connectionState).toBe("discovery_incomplete");
-    expect(isolationBadgeLabel(admin!.connectionState)).toBe("Discovery pending");
-    expect(admin?.isolatedStateReason).toMatch(/discovery pending/i);
+    expect(admin?.connectionState).toBe("awaiting_monitoring");
+    expect(isolationBadgeLabel(admin!.connectionState)).toBe("Awaiting first check");
+    expect(admin?.isolatedStateReason).toMatch(/first monitoring result/i);
+    const pending = resolveConnectionState({ node: nobleLikeTopology().nodes[2], totalRelationships: 0, monitoringState: "DISCOVERY_PENDING" });
+    expect(pending.state).toBe("discovery_incomplete");
+    expect(isolationBadgeLabel(pending.state)).toBe("Discovery pending");
   });
 
   it("marks modules with relationships as connected", () => {
@@ -112,7 +129,7 @@ describe("topology-relationship", () => {
     const summary = summarizeRelationshipDiagnostics(buildNodeRelationshipDiagnostics(nobleLikeTopology()));
     expect(summary.totalModules).toBe(2);
     expect(summary.connectedModules).toBe(1);
-    expect(summary.discoveryPendingModules).toBe(1);
+    expect(summary.discoveryPendingModules).toBe(0);
   });
 
   it("filters connection states", () => {

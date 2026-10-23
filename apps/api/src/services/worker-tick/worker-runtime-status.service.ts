@@ -47,6 +47,7 @@ export const buildWorkerRuntimeStatus = async (
 
   const cadenceByName = new Map(JOB_CADENCES.map((row) => [row.name, row]));
   const overdue = states.filter((state) => {
+    if (state.lastStatus === "DISABLED") return false;
     const cadence = cadenceByName.get(state.jobName);
     if (!cadence || !state.nextDueAt) return false;
     const overdueBy = now.getTime() - state.nextDueAt.getTime();
@@ -60,13 +61,14 @@ export const buildWorkerRuntimeStatus = async (
     (cadence) => !states.some((state) => state.jobName === cadence.name)
   );
 
-  const tone = toneForRun(
+  const tickTone = toneForRun(
     latestRun?.status,
     latestRun?.startedAt,
     latestRun?.jobsFailed ?? 0,
     latestRun?.jobsDeferred ?? 0,
     now
   );
+  const tone: OpsStatusTone = failing.length ? "red" : overdue.length && tickTone === "green" ? "amber" : tickTone;
   const latestAgeMinutes = latestRun?.startedAt
     ? Math.max(0, Math.round((now.getTime() - latestRun.startedAt.getTime()) / MINUTE_MS))
     : null;

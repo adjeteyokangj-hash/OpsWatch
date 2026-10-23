@@ -660,8 +660,53 @@ h1 {
   overflow: hidden;
 }
 
+.module-catalogue-controls,
+.module-definition-form {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+  max-width: 720px;
+}
+.module-catalogue-panel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.module-definition-form label {
+  display: grid;
+  gap: 6px;
+}
+.module-catalogue-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.module-catalogue-choice input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+.module-catalogue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.module-catalogue-actions > label {
+  flex-basis: 100%;
+}
+.module-catalogue-controls > button {
+  justify-self: start;
+}
+.module-catalogue-panel .data-table td {
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.module-catalogue-panel .data-table small {
+  display: block;
+  margin-top: 8px;
+}
 .table-scroll {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
 }
 
